@@ -1,0 +1,598 @@
+export type Language = 'it' | 'en' | 'de' | 'fr' | 'es' | 'ar';
+
+export interface LangInfo {
+  id: Language;
+  name: string; // nome nativo
+  flag: string;
+}
+
+export const LANGUAGES: LangInfo[] = [
+  { id: 'it', name: 'Italiano', flag: '🇮🇹' },
+  { id: 'en', name: 'English', flag: '🇬🇧' },
+  { id: 'de', name: 'Deutsch', flag: '🇩🇪' },
+  { id: 'fr', name: 'Français', flag: '🇫🇷' },
+  { id: 'es', name: 'Español', flag: '🇪🇸' },
+  { id: 'ar', name: 'العربية', flag: '🇸🇦' },
+];
+
+export interface Strings {
+  language: string;
+  // menu
+  badgeMatch: string;
+  badgePens: string;
+  tagA: string;
+  tagBlu: string;
+  tagB: string;
+  tagRossa: string;
+  tagC: string;
+  featGolden: string;
+  featPens: string;
+  modeMatch: string;
+  modeMatchDesc: string;
+  modePens: string;
+  modePensDesc: string;
+  diffEasy: string;
+  diffEasyDesc: string;
+  diffNormal: string;
+  diffNormalDesc: string;
+  diffHard: string;
+  diffHardDesc: string;
+  btnPlay: string;
+  btnPlayPens: string;
+  menuMove: string;
+  menuSprint: string;
+  menuShoot: string;
+  menuPass: string;
+  menuSwitch: string;
+  mobileHint: string;
+  // HUD
+  teamBlue: string;
+  teamRed: string;
+  kickOff: string;
+  badgeGolden: string;
+  goal: string;
+  goalBlue: string;
+  goalRed: string;
+  // pannello rigori
+  psSeries: string; // contiene {n}
+  psSuddenDeath: string;
+  psGetReadyShoot: string;
+  psGetReadySave: string;
+  psAimShoot: string;
+  psSaveNow: string;
+  psYourShot: string;
+  psTheirShot: string;
+  // suggerimenti tasti (barra in basso)
+  kMove: string;
+  kSprint: string;
+  kShoot: string;
+  kPass: string;
+  kSwitch: string;
+  kPause: string;
+  hintAimUpDown: string;
+  hintKickPen: string;
+  hintKeeperMove: string;
+  hintDive: string;
+  // banner eventi
+  extraTimeTitle: string;
+  extraTimeSub: string;
+  pensTitle: string;
+  pensSub: string;
+  saveTitle: string;
+  saveSub: string;
+  postTitle: string;
+  postSub: string;
+  missTitle: string;
+  missSub: string;
+  // pausa
+  pauseTitle: string;
+  pauseSub: string;
+  btnResume: string;
+  btnRestart: string;
+  btnMenu: string;
+  // fine partita
+  win: string;
+  draw: string;
+  lose: string;
+  decGolden: string;
+  decPens: string;
+  pensOnlyTitle: string;
+  pensScoreLabel: string;
+  shots: string;
+  btnRematch: string;
+  // touch
+  touchMove: string;
+}
+
+const it: Strings = {
+  language: 'LINGUA',
+  badgeMatch: 'PARTITA LAMPO · 90 SECONDI',
+  badgePens: 'SERIE DI RIGORI · MORTE SUBITA',
+  tagA: 'Tre contro tre, ritmo altissimo. Guida la squadra ',
+  tagBlu: 'BLU',
+  tagB: ', dribbla, passa e trafigli la ',
+  tagRossa: 'ROSSA',
+  tagC: ' prima che scada il tempo.',
+  featGolden: 'Pareggio? Supplementari con golden goal',
+  featPens: 'Ancora pari? Calci di rigore!',
+  modeMatch: 'PARTITA 90s',
+  modeMatchDesc: 'poi supplementari e rigori',
+  modePens: 'SOLO RIGORI',
+  modePensDesc: 'dritto al dischetto',
+  diffEasy: 'FACILE',
+  diffEasyDesc: 'avversari rilassati',
+  diffNormal: 'NORMALE',
+  diffNormalDesc: 'partita equilibrata',
+  diffHard: 'DIFFICILE',
+  diffHardDesc: 'pressing feroce',
+  btnPlay: 'GIOCA ORA',
+  btnPlayPens: 'BATTILO DAL DISCHETTO',
+  menuMove: 'movimento',
+  menuSprint: 'scatto',
+  menuShoot: 'tiro',
+  menuPass: 'passaggio',
+  menuSwitch: 'cambia giocatore',
+  mobileHint: 'Su mobile: joystick a sinistra, pulsanti a destra',
+  teamBlue: 'BLU',
+  teamRed: 'ROS',
+  kickOff: "CALCIO D'INIZIO",
+  badgeGolden: 'SUPPLEMENTARI · GOLDEN GOAL',
+  goal: 'GOOOL!',
+  goalBlue: 'RETE DELLA SQUADRA BLU',
+  goalRed: 'RETE DELLA SQUADRA ROSSA',
+  psSeries: 'RIGORI · SERIE {n}',
+  psSuddenDeath: 'RIGORI · MORTE SUBITA',
+  psGetReadyShoot: 'PREPARATI A TIRARE...',
+  psGetReadySave: 'PREPARATI A PARARE...',
+  psAimShoot: 'MIRA E CALCIA!',
+  psSaveNow: 'PARA IL RIGORE!',
+  psYourShot: 'IL TUO TIRO...',
+  psTheirShot: 'LA LORO CONCLUSIONE...',
+  kMove: 'muoviti',
+  kSprint: 'scatto',
+  kShoot: 'tiro',
+  kPass: 'passaggio',
+  kSwitch: 'cambia',
+  kPause: 'pausa',
+  hintAimUpDown: 'mira dentro la porta',
+  hintKickPen: 'calcia il rigore',
+  hintKeeperMove: 'muovi il guantone',
+  hintDive: 'tuffati in quella direzione',
+  extraTimeTitle: 'TEMPI SUPPLEMENTARI',
+  extraTimeSub: 'GOLDEN GOAL · CHI SEGNA VINCE',
+  pensTitle: 'CALCI DI RIGORE',
+  pensSub: 'MEGLIO DI 5 · POI MORTE SUBITA',
+  saveTitle: 'PARATA!',
+  saveSub: 'IL PORTIERE DICE NO',
+  postTitle: 'PALO!',
+  postSub: 'CHE BRIVIDO... PALLONE FUORI',
+  missTitle: 'FUORI!',
+  missSub: 'ERRORE DAL DISCHETTO',
+  pauseTitle: 'PAUSA',
+  pauseSub: 'Prendi fiato, la partita ti aspetta.',
+  btnResume: 'RIPRENDI',
+  btnRestart: 'RICOMINCIA',
+  btnMenu: 'MENU',
+  win: 'VITTORIA!',
+  draw: 'PAREGGIO',
+  lose: 'SCONFITTA',
+  decGolden: 'DECISA DAL GOLDEN GOAL NEI SUPPLEMENTARI',
+  decPens: 'DECISA AI CALCI DI RIGORE',
+  pensOnlyTitle: 'SERIE DI CALCI DI RIGORE',
+  pensScoreLabel: 'RIGORI',
+  shots: 'TIRI',
+  btnRematch: 'RIVINCITA',
+  touchMove: 'MUOVI',
+};
+
+const en: Strings = {
+  language: 'LANGUAGE',
+  badgeMatch: 'LIGHTNING MATCH · 90 SECONDS',
+  badgePens: 'PENALTY SHOOTOUT · SUDDEN DEATH',
+  tagA: 'Three against three, full throttle. Lead the ',
+  tagBlu: 'BLUE',
+  tagB: ' team — dribble, pass and put it past the ',
+  tagRossa: 'REDS',
+  tagC: ' before time runs out.',
+  featGolden: 'Draw? Extra time, golden goal',
+  featPens: 'Still level? Penalties!',
+  modeMatch: 'MATCH 90s',
+  modeMatchDesc: 'then extra time & pens',
+  modePens: 'PENS ONLY',
+  modePensDesc: 'straight to the spot',
+  diffEasy: 'EASY',
+  diffEasyDesc: 'laid-back rivals',
+  diffNormal: 'NORMAL',
+  diffNormalDesc: 'evenly matched',
+  diffHard: 'HARD',
+  diffHardDesc: 'relentless pressing',
+  btnPlay: 'PLAY NOW',
+  btnPlayPens: 'FROM THE SPOT',
+  menuMove: 'movement',
+  menuSprint: 'sprint',
+  menuShoot: 'shoot',
+  menuPass: 'pass',
+  menuSwitch: 'switch player',
+  mobileHint: 'On mobile: joystick on the left, buttons on the right',
+  teamBlue: 'BLU',
+  teamRed: 'RED',
+  kickOff: 'KICK-OFF',
+  badgeGolden: 'EXTRA TIME · GOLDEN GOAL',
+  goal: 'GOOOAL!',
+  goalBlue: 'SCORED BY THE BLUE TEAM',
+  goalRed: 'SCORED BY THE RED TEAM',
+  psSeries: 'PENS · ROUND {n}',
+  psSuddenDeath: 'PENS · SUDDEN DEATH',
+  psGetReadyShoot: 'GET READY TO SHOOT...',
+  psGetReadySave: 'GET READY TO SAVE...',
+  psAimShoot: 'AIM AND STRIKE!',
+  psSaveNow: 'SAVE THE PENALTY!',
+  psYourShot: 'YOUR SHOT...',
+  psTheirShot: 'THEIR SHOT...',
+  kMove: 'move',
+  kSprint: 'sprint',
+  kShoot: 'shoot',
+  kPass: 'pass',
+  kSwitch: 'switch',
+  kPause: 'pause',
+  hintAimUpDown: 'aim anywhere in goal',
+  hintKickPen: 'take the penalty',
+  hintKeeperMove: 'move the glove',
+  hintDive: 'dive that way',
+  extraTimeTitle: 'EXTRA TIME',
+  extraTimeSub: 'GOLDEN GOAL · NEXT GOAL WINS',
+  pensTitle: 'PENALTY SHOOTOUT',
+  pensSub: 'BEST OF 5 · THEN SUDDEN DEATH',
+  saveTitle: 'SAVED!',
+  saveSub: 'THE KEEPER SAYS NO',
+  postTitle: 'OFF THE POST!',
+  postSub: 'SO CLOSE... IT STAYS OUT',
+  missTitle: 'WIDE!',
+  missSub: 'MISSED FROM THE SPOT',
+  pauseTitle: 'PAUSE',
+  pauseSub: 'Catch your breath, the match is waiting.',
+  btnResume: 'RESUME',
+  btnRestart: 'RESTART',
+  btnMenu: 'MENU',
+  win: 'VICTORY!',
+  draw: 'DRAW',
+  lose: 'DEFEAT',
+  decGolden: 'DECIDED BY A GOLDEN GOAL IN EXTRA TIME',
+  decPens: 'DECIDED ON PENALTIES',
+  pensOnlyTitle: 'PENALTY SHOOTOUT',
+  pensScoreLabel: 'PENS',
+  shots: 'SHOTS',
+  btnRematch: 'REMATCH',
+  touchMove: 'MOVE',
+};
+
+const de: Strings = {
+  language: 'SPRACHE',
+  badgeMatch: 'BLITZSPIEL · 90 SEKUNDEN',
+  badgePens: 'ELFMETERSCHIESSEN · SUDDEN DEATH',
+  tagA: 'Drei gegen drei, rasantes Tempo. Führe Team ',
+  tagBlu: 'BLAU',
+  tagB: ' – drbble, passe und überliste Team ',
+  tagRossa: 'ROT',
+  tagC: ', bevor die Zeit abläuft.',
+  featGolden: 'Unentschieden? Verlängerung mit Golden Goal',
+  featPens: 'Immer noch Gleichstand? Elfmeterschießen!',
+  modeMatch: 'SPIEL 90s',
+  modeMatchDesc: 'dann Verlängerung & Elfmeter',
+  modePens: 'NUR ELFMETER',
+  modePensDesc: 'direkt zum Punkt',
+  diffEasy: 'LEICHT',
+  diffEasyDesc: 'lockere Gegner',
+  diffNormal: 'NORMAL',
+  diffNormalDesc: 'ausgeglichenes Spiel',
+  diffHard: 'SCHWER',
+  diffHardDesc: 'gnadenloses Pressing',
+  btnPlay: 'JETZT SPIELEN',
+  btnPlayPens: 'VOM PUNKT AUS',
+  menuMove: 'bewegen',
+  menuSprint: 'sprinten',
+  menuShoot: 'schießen',
+  menuPass: 'passen',
+  menuSwitch: 'spieler wechseln',
+  mobileHint: 'Auf dem Handy: Joystick links, Buttons rechts',
+  teamBlue: 'BLA',
+  teamRed: 'ROT',
+  kickOff: 'ANSTOSS',
+  badgeGolden: 'VERLÄNGERUNG · GOLDEN GOAL',
+  goal: 'TOOOR!',
+  goalBlue: 'TOR FÜR TEAM BLAU',
+  goalRed: 'TOR FÜR TEAM ROT',
+  psSeries: 'ELFMETER · SERIE {n}',
+  psSuddenDeath: 'ELFMETER · SUDDEN DEATH',
+  psGetReadyShoot: 'MACH DICH BEREIT...',
+  psGetReadySave: 'MACH DICH ZUM HALTEN BEREIT...',
+  psAimShoot: 'ZIELE UND SCHIESSE!',
+  psSaveNow: 'HALTE DEN ELFMETER!',
+  psYourShot: 'DEIN SCHUSS...',
+  psTheirShot: 'IHR SCHUSS...',
+  kMove: 'bewegen',
+  kSprint: 'sprint',
+  kShoot: 'schuss',
+  kPass: 'pass',
+  kSwitch: 'wechseln',
+  kPause: 'pause',
+  hintAimUpDown: 'ins Tor zielen',
+  hintKickPen: 'Elfmeter schießen',
+  hintKeeperMove: 'Handschuh bewegen',
+  hintDive: 'in die Richtung hechten',
+  extraTimeTitle: 'VERLÄNGERUNG',
+  extraTimeSub: 'GOLDEN GOAL · WER TRIFFT, GEWINNT',
+  pensTitle: 'ELFMETERSCHIESSEN',
+  pensSub: 'BEST OF 5 · DANN SUDDEN DEATH',
+  saveTitle: 'GEHALTEN!',
+  saveSub: 'DER KEEPER SAGT NEIN',
+  postTitle: 'PFOSTEN!',
+  postSub: 'KNAPP... DER BALL BLEIBT DRAUßEN',
+  missTitle: 'DANEBEN!',
+  missSub: 'FEHLER VOM PUNKT',
+  pauseTitle: 'PAUSE',
+  pauseSub: 'Kurz durchatmen, das Spiel wartet.',
+  btnResume: 'WEITER',
+  btnRestart: 'NEU STARTEN',
+  btnMenu: 'MENÜ',
+  win: 'SIEG!',
+  draw: 'UNENTSCHIEDEN',
+  lose: 'NIEDERLAGE',
+  decGolden: 'ENTSCHEIDEN DURCH GOLDEN GOAL IN DER VERLÄNGERUNG',
+  decPens: 'ENTSCHEIDEN IM ELFMETERSCHIESSEN',
+  pensOnlyTitle: 'ELFMETERSCHIESSEN',
+  pensScoreLabel: 'ELFMETER',
+  shots: 'SCHÜSSE',
+  btnRematch: 'REVANCHE',
+  touchMove: 'BEWEGEN',
+};
+
+const fr: Strings = {
+  language: 'LANGUE',
+  badgeMatch: 'MATCH ÉCLAIR · 90 SECONDES',
+  badgePens: 'TIRS AU BUT · MORT SUBITE',
+  tagA: 'Trois contre trois, rythme effréné. Mène l’équipe ',
+  tagBlu: 'BLEUE',
+  tagB: ' : dribble, passe et trompe l’équipe ',
+  tagRossa: 'ROUGE',
+  tagC: ' avant la fin du temps réglementaire.',
+  featGolden: 'Égalité ? Prolongations, but en or',
+  featPens: 'Toujours à égalité ? Tirs au but !',
+  modeMatch: 'MATCH 90s',
+  modeMatchDesc: 'puis prolongations et TAB',
+  modePens: 'TIRS AU BUT',
+  modePensDesc: 'direct au point de penalty',
+  diffEasy: 'FACILE',
+  diffEasyDesc: 'adversaires cool',
+  diffNormal: 'NORMAL',
+  diffNormalDesc: 'match équilibré',
+  diffHard: 'DIFFICILE',
+  diffHardDesc: 'pressing féroce',
+  btnPlay: 'JOUER',
+  btnPlayPens: 'AU POINT DE PENALTY',
+  menuMove: 'déplacement',
+  menuSprint: 'sprint',
+  menuShoot: 'tir',
+  menuPass: 'passe',
+  menuSwitch: 'changer de joueur',
+  mobileHint: 'Sur mobile : joystick à gauche, boutons à droite',
+  teamBlue: 'BLE',
+  teamRed: 'ROU',
+  kickOff: 'COUP D’ENVOI',
+  badgeGolden: 'PROLONGATIONS · BUT EN OR',
+  goal: 'BUUUT !',
+  goalBlue: 'BUT DE L’ÉQUIPE BLEUE',
+  goalRed: 'BUT DE L’ÉQUIPE ROUGE',
+  psSeries: 'TAB · SÉRIE {n}',
+  psSuddenDeath: 'TAB · MORT SUBITE',
+  psGetReadyShoot: 'PRÊT À TIRER...',
+  psGetReadySave: 'PRÊT À PLONGER...',
+  psAimShoot: 'VISE ET FRAPPE !',
+  psSaveNow: 'ARRÊTE LE PENALTY !',
+  psYourShot: 'TON TIR...',
+  psTheirShot: 'LEUR TIR...',
+  kMove: 'bouger',
+  kSprint: 'sprint',
+  kShoot: 'tir',
+  kPass: 'passe',
+  kSwitch: 'changer',
+  kPause: 'pause',
+  hintAimUpDown: 'vise dans le but',
+  hintKickPen: 'tire le penalty',
+  hintKeeperMove: 'déplace le gant',
+  hintDive: 'plonge dans cette direction',
+  extraTimeTitle: 'PROLONGATIONS',
+  extraTimeSub: 'BUT EN OR · LE PROCHAIN BUT GAGNE',
+  pensTitle: 'TIRS AU BUT',
+  pensSub: 'LE MEILLEUR DE 5 · PUIS MORT SUBITE',
+  saveTitle: 'ARRÊT !',
+  saveSub: 'LE GARDIEN DIT NON',
+  postTitle: 'POTEAU !',
+  postSub: 'OUF... LE BALLON RESTE DEHORS',
+  missTitle: 'À CÔTÉ !',
+  missSub: 'RATÉ DEPUIS LE POINT',
+  pauseTitle: 'PAUSE',
+  pauseSub: 'Souffle un peu, le match t’attend.',
+  btnResume: 'REPRENDRE',
+  btnRestart: 'RECOMMENCER',
+  btnMenu: 'MENU',
+  win: 'VICTOIRE !',
+  draw: 'MATCH NUL',
+  lose: 'DÉFAITE',
+  decGolden: 'REMPORTÉ SUR BUT EN OR EN PROLONGATION',
+  decPens: 'DÉCIDÉ AUX TIRS AU BUT',
+  pensOnlyTitle: 'SÉRIE DE TIRS AU BUT',
+  pensScoreLabel: 'TAB',
+  shots: 'TIRS',
+  btnRematch: 'REVANCHE',
+  touchMove: 'BOUGER',
+};
+
+const es: Strings = {
+  language: 'IDIOMA',
+  badgeMatch: 'PARTIDO RELÁMPAGO · 90 SEGUNDOS',
+  badgePens: 'TANDA DE PENALES · MUERTE SÚBITA',
+  tagA: 'Tres contra tres, ritmo altísimo. Lleva al equipo ',
+  tagBlu: 'AZUL',
+  tagB: ', regatea, pasa y supera al equipo ',
+  tagRossa: 'ROJO',
+  tagC: ' antes de que se acabe el tiempo.',
+  featGolden: '¿Empate? Prórroga con gol de oro',
+  featPens: '¿Siguen empatados? ¡Tiros penales!',
+  modeMatch: 'PARTIDO 90s',
+  modeMatchDesc: 'luego prórroga y penales',
+  modePens: 'SOLO PENALES',
+  modePensDesc: 'directo al punto penal',
+  diffEasy: 'FÁCIL',
+  diffEasyDesc: 'rivales tranquilos',
+  diffNormal: 'NORMAL',
+  diffNormalDesc: 'partido equilibrado',
+  diffHard: 'DIFÍCIL',
+  diffHardDesc: 'presión feroz',
+  btnPlay: 'JUGAR AHORA',
+  btnPlayPens: 'DESDE EL PUNTO PENAL',
+  menuMove: 'movimiento',
+  menuSprint: 'sprint',
+  menuShoot: 'tiro',
+  menuPass: 'pase',
+  menuSwitch: 'cambiar jugador',
+  mobileHint: 'En móvil: joystick a la izquierda, botones a la derecha',
+  teamBlue: 'AZU',
+  teamRed: 'ROJ',
+  kickOff: 'SAQUE INICIAL',
+  badgeGolden: 'PRÓRROGA · GOL DE ORO',
+  goal: '¡GOOOL!',
+  goalBlue: 'GOL DEL EQUIPO AZUL',
+  goalRed: 'GOL DEL EQUIPO ROJO',
+  psSeries: 'PENALES · SERIE {n}',
+  psSuddenDeath: 'PENALES · MUERTE SÚBITA',
+  psGetReadyShoot: 'PREPÁRATE PARA TIRAR...',
+  psGetReadySave: 'PREPÁRATE PARA PARAR...',
+  psAimShoot: '¡APUNTA Y DISPARA!',
+  psSaveNow: '¡PARA EL PENAL!',
+  psYourShot: 'TU TIRO...',
+  psTheirShot: 'SU TIRO...',
+  kMove: 'muévete',
+  kSprint: 'sprint',
+  kShoot: 'tiro',
+  kPass: 'pase',
+  kSwitch: 'cambiar',
+  kPause: 'pausa',
+  hintAimUpDown: 'apunta a cualquier zona',
+  hintKickPen: 'lanza el penal',
+  hintKeeperMove: 'mueve el guante',
+  hintDive: 'lánzate en esa dirección',
+  extraTimeTitle: 'PRÓRROGA',
+  extraTimeSub: 'GOL DE ORO · EL QUE MARQUE GANA',
+  pensTitle: 'TIROS PENALES',
+  pensSub: 'MEJOR DE 5 · LUEGO MUERTE SÚBITA',
+  saveTitle: '¡PARADA!',
+  saveSub: 'EL PORTERO DICE NO',
+  postTitle: '¡PALO!',
+  postSub: 'QUÉ SUSTO... SE MARCHA FUERA',
+  missTitle: '¡FUERA!',
+  missSub: 'ERROR DESDE EL PUNTO',
+  pauseTitle: 'PAUSA',
+  pauseSub: 'Toma aire, el partido te espera.',
+  btnResume: 'CONTINUAR',
+  btnRestart: 'REINICIAR',
+  btnMenu: 'MENÚ',
+  win: '¡VICTORIA!',
+  draw: 'EMPATE',
+  lose: 'DERROTA',
+  decGolden: 'DECIDIDO CON GOL DE ORO EN LA PRÓRROGA',
+  decPens: 'DECIDIDO EN LOS TIROS PENALES',
+  pensOnlyTitle: 'TANDA DE TIROS PENALES',
+  pensScoreLabel: 'PENALES',
+  shots: 'TIROS',
+  btnRematch: 'REVANCHA',
+  touchMove: 'MUÉVETE',
+};
+
+const ar: Strings = {
+  language: 'اللغة',
+  badgeMatch: 'مباراة خاطفة · ٩٠ ثانية',
+  badgePens: 'ركلات الجزاء · الموت المفاجئ',
+  tagA: 'ثلاثة ضد ثلاثة، إيقاع سريع جداً. قُد فريق ',
+  tagBlu: 'الأزرق',
+  tagB: '، مراوغ ومرر وسجّل في مرمى فريق ',
+  tagRossa: 'الأحمر',
+  tagC: ' قبل انتهاء الوقت.',
+  featGolden: 'تعادل؟ وقت إضافي بهدف ذهبي',
+  featPens: 'ما زال التعادل قائماً؟ ركلات جزاء!',
+  modeMatch: 'مباراة ٩٠ ث',
+  modeMatchDesc: 'ثم وقت إضافي وركلات جزاء',
+  modePens: 'ركلات جزاء فقط',
+  modePensDesc: 'مباشرة إلى النقطة',
+  diffEasy: 'سهل',
+  diffEasyDesc: 'خصوم مسترخون',
+  diffNormal: 'عادي',
+  diffNormalDesc: 'مباراة متوازنة',
+  diffHard: 'صعب',
+  diffHardDesc: 'ضغط شرس',
+  btnPlay: 'العب الآن',
+  btnPlayPens: 'سدّد من النقطة',
+  menuMove: 'التحرك',
+  menuSprint: 'انطلاق',
+  menuShoot: 'تسديد',
+  menuPass: 'تمرير',
+  menuSwitch: 'تبديل اللاعب',
+  mobileHint: 'على الجوال: عصا تحكم يساراً وأزرار يميناً',
+  teamBlue: 'أزرق',
+  teamRed: 'أحمر',
+  kickOff: 'ركلة البداية',
+  badgeGolden: 'وقت إضافي · هدف ذهبي',
+  goal: 'هــدف!',
+  goalBlue: 'هدف للفريق الأزرق',
+  goalRed: 'هدف للفريق الأحمر',
+  psSeries: 'ركلات الجزاء · الجولة {n}',
+  psSuddenDeath: 'ركلات الجزاء · الموت المفاجئ',
+  psGetReadyShoot: 'استعد للتسديد...',
+  psGetReadySave: 'استعد للتصدي...',
+  psAimShoot: 'صوّب وسدّد!',
+  psSaveNow: 'تصدَّ لركلة الجزاء!',
+  psYourShot: 'تسديدتك...',
+  psTheirShot: 'تسديدتهم...',
+  kMove: 'تحرّك',
+  kSprint: 'انطلاق',
+  kShoot: 'تسديد',
+  kPass: 'تمرير',
+  kSwitch: 'تبديل',
+  kPause: 'إيقاف',
+  hintAimUpDown: 'صوّب نحو أي نقطة من المرمى',
+  hintKickPen: 'سدّد ركلة الجزاء',
+  hintKeeperMove: 'حرّك القفاز',
+  hintDive: 'ارمِ نفسك في ذلك الاتجاه',
+  extraTimeTitle: 'وقت إضافي',
+  extraTimeSub: 'هدف ذهبي · من يسجّل يفوز',
+  pensTitle: 'ركلات جزاء',
+  pensSub: 'الأفضل من ٥ · ثم موت مفاجئ',
+  saveTitle: 'تصدّى لها!',
+  saveSub: 'الحارس يقول لا',
+  postTitle: 'القائم!',
+  postSub: 'يا لها من قشعريرة... الكرة خارجاً',
+  missTitle: 'خارجاً!',
+  missSub: 'خطأ من النقطة',
+  pauseTitle: 'إيقاف مؤقت',
+  pauseSub: 'خذ نفساً، المباراة بانتظارك.',
+  btnResume: 'استئناف',
+  btnRestart: 'إعادة البدء',
+  btnMenu: 'القائمة',
+  win: 'فوز!',
+  draw: 'تعادل',
+  lose: 'خسارة',
+  decGolden: 'حُسمت بهدف ذهبي في الوقت الإضافي',
+  decPens: 'حُسمت بركلات الجزاء',
+  pensOnlyTitle: 'سلسلة ركلات الجزاء',
+  pensScoreLabel: 'ركلات',
+  shots: 'تسديدات',
+  btnRematch: 'مباراة العودة',
+  touchMove: 'تحرّك',
+};
+
+export const STRINGS: Record<Language, Strings> = { it, en, de, fr, es, ar };
+
+export const isRTL = (lang: Language) => lang === 'ar';
+
+export const fmt = (template: string, vars: Record<string, string | number>) =>
+  Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, String(v)), template);

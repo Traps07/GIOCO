@@ -1,8 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GameEngine, type Difficulty, type Snapshot } from './game/engine';
+import { GameEngine, type Difficulty, type GameMode, type Snapshot } from './game/engine';
 import HUD from './components/HUD';
 import TouchControls from './components/TouchControls';
 import { MenuScreen, PauseScreen, EndScreen } from './components/Menus';
+import { STRINGS, isRTL, type Language } from './i18n';
+
+const LANG_KEY = 'ss3v3-lang';
+
+function loadLang(): Language {
+  try {
+    const v = window.localStorage.getItem(LANG_KEY);
+    if (v && v in STRINGS) return v as Language;
+  } catch {
+    /* ignore */
+  }
+  const nav = window.navigator.language?.slice(0, 2);
+  return nav && nav in STRINGS ? (nav as Language) : 'it';
+}
 
 type Screen = 'menu' | 'playing' | 'paused' | 'over';
 
@@ -10,14 +24,32 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const bannerTimer = useRef<number | null>(null);
+  const eventTimer = useRef<number | null>(null);
   const endTimer = useRef<number | null>(null);
 
   const [screen, setScreen] = useState<Screen>('menu');
   const [difficulty, setDifficulty] = useState<Difficulty>('normal');
+  const [mode, setMode] = useState<GameMode>('match');
+  const [lang, setLangState] = useState<Language>(loadLang);
+  const t = STRINGS[lang];
+  const tRef = useRef(t);
+  tRef.current = t;
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [muted, setMuted] = useState(false);
   const [goalBanner, setGoalBanner] = useState<{ team: number; id: number } | null>(null);
-  const [result, setResult] = useState<{ winner: number; score: [number, number]; shots: [number, number] } | null>(null);
+  const [eventBanner, setEventBanner] = useState<{
+    title: string;
+    sub: string;
+    tone: 'amber' | 'sky' | 'rose' | 'white';
+    id: number;
+  } | null>(null);
+  const [result, setResult] = useState<{
+    winner: number;
+    score: [number, number];
+    shots: [number, number];
+    pens: [number, number] | null;
+    decidedBy: 'regular' | 'golden' | 'pens';
+  } | null>(null);
   const [isTouch] = useState(
     () => window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window,
   );
@@ -32,19 +64,52 @@ export default function App() {
     engineRef.current = engine;
     engine.inputEnabled = false;
 
+    const showEventBanner = (
+      title: string,
+      sub: string,
+      tone: 'amber' | 'sky' | 'rose' | 'white',
+      dur = 2400,
+    ) => {
+      setEventBanner({ title, sub, tone, id: Date.now() });
+      if (eventTimer.current) window.clearTimeout(eventTimer.current);
+      eventTimer.current = window.setTimeout(() => setEventBanner(null), dur);
+    };
+
     engine.on((e) => {
       if (e.type === 'goal') {
         setGoalBanner({ team: e.team, id: Date.now() });
         if (bannerTimer.current) window.clearTimeout(bannerTimer.current);
         bannerTimer.current = window.setTimeout(() => setGoalBanner(null), 1900);
+      } else if (e.type === 'extratime') {
+        showEventBanner(tRef.current.extraTimeTitle, tRef.current.extraTimeSub, 'amber', 2700);
+      } else if (e.type === 'pensstart') {
+        showEventBanner(tRef.current.pensTitle, tRef.current.pensSub, 'white', 2700);
+      } else if (e.type === 'penResult') {
+        if (e.result === 'goal') {
+          setGoalBanner({ team: e.team, id: Date.now() });
+          if (bannerTimer.current) window.clearTimeout(bannerTimer.current);
+          bannerTimer.current = window.setTimeout(() => setGoalBanner(null), 1400);
+        } else if (e.result === 'save') {
+          showEventBanner(tRef.current.saveTitle, tRef.current.saveSub, 'sky', 1300);
+        } else if (e.result === 'post') {
+          showEventBanner(tRef.current.postTitle, tRef.current.postSub, 'amber', 1300);
+        } else {
+          showEventBanner(tRef.current.missTitle, tRef.current.missSub, 'rose', 1300);
+        }
       } else if (e.type === 'end') {
         const s = engine.getSnapshot();
-        const res = { winner: e.winner, score: e.score, shots: [...s.shots] as [number, number] };
+        const res = {
+          winner: e.winner,
+          score: e.score,
+          shots: [...s.shots] as [number, number],
+          pens: e.pens,
+          decidedBy: e.decidedBy,
+        };
         endTimer.current = window.setTimeout(() => {
           setResult(res);
           setScreen('over');
           engine.inputEnabled = false;
-        }, 1100);
+        }, e.pens ? 1500 : 1100);
       } else if (e.type === 'pause') {
         setScreen('paused');
       } else if (e.type === 'resume') {
@@ -68,6 +133,7 @@ export default function App() {
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('visibilitychange', onBlur);
       if (bannerTimer.current) window.clearTimeout(bannerTimer.current);
+      if (eventTimer.current) window.clearTimeout(eventTimer.current);
       if (endTimer.current) window.clearTimeout(endTimer.current);
       engine.dispose();
     };
@@ -77,13 +143,14 @@ export default function App() {
     const engine = engineRef.current;
     if (!engine) return;
     engine.unlockAudio();
-    engine.startMatch(difficulty);
+    engine.startMatch(difficulty, mode);
     engine.inputEnabled = true;
     engine.setPaused(false);
     setResult(null);
     setGoalBanner(null);
+    setEventBanner(null);
     setScreen('playing');
-  }, [difficulty]);
+  }, [difficulty, mode]);
 
   const pauseGame = useCallback(() => {
     const engine = engineRef.current;
@@ -106,6 +173,7 @@ export default function App() {
     engine.setPaused(false);
     engine.startDemo();
     setGoalBanner(null);
+    setEventBanner(null);
     setResult(null);
     setScreen('menu');
   }, []);
@@ -119,8 +187,17 @@ export default function App() {
     setMuted(next);
   }, [muted]);
 
+  const setLang = useCallback((l: Language) => {
+    setLangState(l);
+    try {
+      window.localStorage.setItem(LANG_KEY, l);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[#02040a]">
+    <div dir={isRTL(lang) ? 'rtl' : 'ltr'} className="relative h-full w-full overflow-hidden bg-[#02040a]">
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
       {screen !== 'menu' && (
@@ -130,24 +207,39 @@ export default function App() {
           onToggleMute={toggleMute}
           onPause={pauseGame}
           goalBanner={goalBanner}
+          eventBanner={eventBanner}
+          t={t}
         />
       )}
 
-      {screen === 'playing' && isTouch && <TouchControls engine={engineRef.current} />}
+      {screen === 'playing' && isTouch && <TouchControls engine={engineRef.current} t={t} />}
 
       {screen === 'menu' && (
-        <MenuScreen difficulty={difficulty} setDifficulty={setDifficulty} onStart={startGame} />
+        <MenuScreen
+          difficulty={difficulty}
+          setDifficulty={setDifficulty}
+          mode={mode}
+          setMode={setMode}
+          lang={lang}
+          setLang={setLang}
+          onStart={startGame}
+          t={t}
+        />
       )}
       {screen === 'paused' && (
-        <PauseScreen onResume={resumeGame} onRestart={startGame} onMenu={toMenu} />
+        <PauseScreen onResume={resumeGame} onRestart={startGame} onMenu={toMenu} t={t} />
       )}
       {screen === 'over' && result && (
         <EndScreen
           winner={result.winner}
           score={result.score}
           shots={result.shots}
+          pens={result.pens}
+          decidedBy={result.decidedBy}
+          pensOnly={mode === 'pens'}
           onRematch={startGame}
           onMenu={toMenu}
+          t={t}
         />
       )}
     </div>

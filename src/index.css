@@ -93,6 +93,9 @@ kbd {
 .menu-stagger > *:nth-child(5) { animation-delay: 0.36s; }
 .menu-stagger > *:nth-child(6) { animation-delay: 0.44s; }
 .menu-stagger > *:nth-child(7) { animation-delay: 0.52s; }
+.menu-stagger > *:nth-child(8) { animation-delay: 0.6s; }
+.menu-stagger > *:nth-child(9) { animation-delay: 0.68s; }
+.menu-stagger > *:nth-child(10) { animation-delay: 0.76s; }
 
 @keyframes playGlow {
   0%, 100% { box-shadow: 0 0 26px rgba(56, 189, 248, 0.45), 0 0 70px rgba(56, 189, 248, 0.2); }

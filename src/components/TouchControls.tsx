@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
 import { Zap, Send, RefreshCw } from 'lucide-react';
 import type { GameEngine } from '../game/engine';
+import type { Strings } from '../i18n';
 
 const STICK_R = 60;
 
-export default function TouchControls({ engine }: { engine: GameEngine | null }) {
+export default function TouchControls({ engine, t }: { engine: GameEngine | null; t: Strings }) {
   const [stick, setStick] = useState<{ ox: number; oy: number; dx: number; dy: number; active: boolean }>({
     ox: 0,
     oy: 0,
@@ -76,7 +77,7 @@ export default function TouchControls({ engine }: { engine: GameEngine | null })
           </>
         ) : (
           <div className="absolute left-8 bottom-10 flex h-28 w-28 items-center justify-center rounded-full border border-dashed border-white/20 text-[10px] font-display tracking-widest text-white/30">
-            MUOVI
+            {t.touchMove}
           </div>
         )}
       </div>
