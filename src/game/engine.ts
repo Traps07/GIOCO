@@ -1,10 +1,25 @@
 import { SFX } from './sound';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
-export type Phase = 'demo' | 'countdown' | 'play' | 'goal' | 'over';
+export type GameMode = 'match' | 'pens';
+export type Phase = 'demo' | 'countdown' | 'play' | 'goal' | 'pens' | 'over';
+export type Period = 'regular' | 'extra' | 'pens';
+export type PenKickResult = 'goal' | 'save' | 'miss' | 'post';
+export type PenStage = 'intro' | 'aim' | 'kick' | 'resolve';
+export type DecidedBy = 'regular' | 'golden' | 'pens';
+
+export interface PensSnap {
+  score: [number, number];
+  taken: [number, number];
+  turn: number; // 0 = tira il BLU, 1 = tira il ROSSO
+  stage: PenStage;
+  stageT: number;
+  results: [Exclude<PenKickResult, 'post'>[], Exclude<PenKickResult, 'post'>[]];
+}
 
 export interface Snapshot {
   phase: Phase;
+  period: Period;
   score: [number, number];
   shots: [number, number];
   timeLeft: number;
@@ -13,11 +28,15 @@ export interface Snapshot {
   winner: number; // -2 = non finita, -1 = pareggio
   muted: boolean;
   controlled: number;
+  pens: PensSnap | null;
 }
 
 export type EngineEvent =
   | { type: 'goal'; team: number; score: [number, number] }
-  | { type: 'end'; winner: number; score: [number, number] }
+  | { type: 'extratime' }
+  | { type: 'pensstart' }
+  | { type: 'penResult'; result: PenKickResult; team: number }
+  | { type: 'end'; winner: number; score: [number, number]; pens: [number, number] | null; decidedBy: DecidedBy }
   | { type: 'pause' }
   | { type: 'resume' };
 
@@ -28,6 +47,8 @@ const GOAL_DEPTH = 32;
 const P_R = 17;
 const B_R = 9;
 const MATCH_TIME = 90;
+const EXTRA_TIME = 30;
+const PEN_ROUNDS = 5;
 const KICK_RANGE = P_R + B_R + 22;
 
 const TEAM_COLORS = ['#38bdf8', '#fb7185'];
@@ -114,6 +135,54 @@ interface Particle {
   grav: number;
 }
 
+interface PensState {
+  score: [number, number];
+  taken: [number, number];
+  turn: number; // 0 = TIRA il giocatore (vista da dietro la palla), 1 = PARA il giocatore (vista dalla porta)
+  stage: PenStage;
+  stageT: number;
+  aimX: number; // mira in coordinate porta normalizzate: gx ∈ [-1,1], gy ∈ [0,1]
+  aimY: number;
+  aimT: number; // da quanto si sta mirando (cresce il wobble)
+  gloveX: number;
+  gloveY: number;
+  diveT: number;
+  diveDx: number;
+  diveDy: number;
+  kickT: number;
+  kickDur: number;
+  resolveDur: number;
+  toX: number; // destinazione palla (coordinate porta)
+  toY: number;
+  outX: number; // direzione di uscita dopo parata/palo
+  outY: number;
+  aiDiveX: number; // tuffo del portiere IA quando tira il giocatore
+  aiDiveY: number;
+  outcomeDone: boolean;
+  result: PenKickResult | null;
+  results: [Exclude<PenKickResult, 'post'>[], Exclude<PenKickResult, 'post'>[]];
+}
+
+interface FPParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  color: string;
+}
+
+interface FPLayout {
+  horizon: number;
+  gw: number;
+  gh: number;
+  cx: number;
+  top: number;
+  bottom: number;
+}
+
 export class GameEngine {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -138,6 +207,10 @@ export class GameEngine {
   private lastGoalTeam = -1;
   private goalSide: -1 | 1 = 1;
   private winner = -2;
+  private period: Period = 'regular';
+  private pens: PensState | null = null;
+  private fpFx: FPParticle[] = [];
+  private fpTrail: { x: number; y: number; r: number }[] = [];
   private diff: Difficulty = 'normal';
   private shake = 0;
   private time = 0;
@@ -262,11 +335,15 @@ export class GameEngine {
     this.shots = [0, 0];
     this.timeLeft = MATCH_TIME;
     this.winner = -2;
+    this.period = 'regular';
+    this.pens = null;
+    this.fpFx = [];
+    this.fpTrail = [];
     this.players.forEach((p) => p.reset());
     this.newBall();
   }
 
-  startMatch(diff: Difficulty) {
+  startMatch(diff: Difficulty, mode: GameMode = 'match') {
     this.diff = diff;
     this.demo = false;
     this.sfx.ensure();
@@ -276,7 +353,16 @@ export class GameEngine {
     this.winner = -2;
     this.lastGoalTeam = -1;
     this.controlledIdx = 1;
-    this.kickoff();
+    this.period = 'regular';
+    this.pens = null;
+    this.fpFx = [];
+    this.fpTrail = [];
+    if (mode === 'pens') {
+      // modalità "solo rigori": dritti alla serie dal dischetto
+      this.startPens();
+    } else {
+      this.kickoff();
+    }
   }
 
   private kickoff() {
@@ -313,13 +399,306 @@ export class GameEngine {
     if (this.demo) this.goalT = 1.6;
   }
 
-  private endMatch() {
+  private endMatch(penScore?: [number, number]) {
+    let decidedBy: DecidedBy = 'regular';
+    if (penScore) {
+      decidedBy = 'pens';
+      this.winner = penScore[0] > penScore[1] ? 0 : 1;
+    } else if (this.period === 'extra') {
+      decidedBy = 'golden';
+      this.winner = this.score[0] > this.score[1] ? 0 : 1;
+    } else {
+      this.winner = this.score[0] > this.score[1] ? 0 : this.score[1] > this.score[0] ? 1 : -1;
+    }
     this.phase = 'over';
     this.timeLeft = 0;
-    this.winner = this.score[0] > this.score[1] ? 0 : this.score[1] > this.score[0] ? 1 : -1;
+    this.pens = null;
     this.sfx.whistle(true);
     if (this.winner === 0) setTimeout(() => this.sfx.cheer(), 400);
-    this.emit({ type: 'end', winner: this.winner, score: [...this.score] });
+    this.emit({
+      type: 'end',
+      winner: this.winner,
+      score: [...this.score],
+      pens: penScore ?? null,
+      decidedBy,
+    });
+  }
+
+  // ---------- supplementari & rigori ----------
+  private startExtraTime() {
+    this.period = 'extra';
+    this.timeLeft = EXTRA_TIME;
+    this.lastWholeSec = -1;
+    this.sfx.whistle(true);
+    this.emit({ type: 'extratime' });
+    this.kickoff();
+  }
+
+  private startPens() {
+    this.period = 'pens';
+    this.phase = 'pens';
+    this.timeLeft = 0;
+    this.pens = {
+      score: [0, 0],
+      taken: [0, 0],
+      turn: 0,
+      stage: 'intro',
+      stageT: 2.0,
+      aimX: 0,
+      aimY: 0.5,
+      aimT: 0,
+      gloveX: 0,
+      gloveY: 0.45,
+      diveT: 0,
+      diveDx: 0,
+      diveDy: 1,
+      kickT: 0,
+      kickDur: 0.62,
+      resolveDur: 1.2,
+      toX: 0,
+      toY: 0.5,
+      outX: 0,
+      outY: 0.5,
+      aiDiveX: 0,
+      aiDiveY: 0.5,
+      outcomeDone: false,
+      result: null,
+      results: [[], []],
+    };
+    this.fpFx = [];
+    this.fpTrail = [];
+    this.players.forEach((p) => p.reset());
+    this.newBall();
+    this.sfx.whistle(true);
+    this.emit({ type: 'pensstart' });
+  }
+
+  private penSetupKick() {
+    const ps = this.pens!;
+    ps.aimX = 0;
+    ps.aimY = 0.5;
+    ps.aimT = 0;
+    ps.gloveX = 0;
+    ps.gloveY = 0.45;
+    ps.diveT = 0;
+    ps.diveDx = 0;
+    ps.diveDy = 1;
+    ps.kickT = 0;
+    ps.toX = 0;
+    ps.toY = 0.5;
+    ps.outX = 0;
+    ps.outY = 0.5;
+    ps.aiDiveX = 0;
+    ps.aiDiveY = 0.5;
+    ps.result = null;
+    ps.outcomeDone = false;
+    this.fpTrail = [];
+  }
+
+  // imprecisione della mira: cresce se temporeggi
+  private penWobble(ps: PensState) {
+    const mul = this.diff === 'easy' ? 0.85 : this.diff === 'hard' ? 1.15 : 1;
+    return Math.min(0.26, 0.05 + ps.aimT * 0.024) * mul;
+  }
+
+  private penRelease() {
+    const ps = this.pens!;
+    if (ps.stage !== 'aim') return;
+    ps.stage = 'kick';
+    ps.kickT = 0;
+    ps.outcomeDone = false;
+    this.fpTrail = [];
+
+    if (ps.turn === 0) {
+      // tira il giocatore: destinazione = mirino + imprecisione
+      const w = this.penWobble(ps);
+      ps.toX = clamp(ps.aimX + (Math.random() * 2 - 1) * w, -1.25, 1.25);
+      ps.toY = clamp(ps.aimY + (Math.random() * 2 - 1) * w * 0.8, 0.02, 1.15);
+      ps.kickDur = 0.62;
+      // il portiere IA sceglie dove tuffarsi (a volte legge la mira)
+      const readChance = this.diff === 'easy' ? 0.2 : this.diff === 'normal' ? 0.32 : 0.45;
+      if (Math.random() < readChance) {
+        ps.aiDiveX = clamp(ps.toX + (Math.random() - 0.5) * 0.34, -1, 1);
+        ps.aiDiveY = clamp(ps.toY + (Math.random() - 0.5) * 0.3, 0.1, 0.95);
+      } else {
+        const side = Math.random() < 0.5 ? -1 : 1;
+        ps.aiDiveX = side * (0.45 + Math.random() * 0.5);
+        ps.aiDiveY = Math.random() < 0.55 ? 0.25 + Math.random() * 0.25 : 0.68 + Math.random() * 0.3;
+      }
+    } else {
+      // tira l'IA: angolo segreto, ma la postura in rincorsa suggerisce il lato
+      const side = Math.random() < 0.5 ? -1 : 1;
+      ps.toX = side * (0.35 + Math.random() * 0.6);
+      ps.toY = 0.16 + Math.random() * 0.76;
+      const errChance = this.diff === 'easy' ? 0.16 : this.diff === 'normal' ? 0.1 : 0.06;
+      if (Math.random() < errChance) {
+        if (Math.random() < 0.5) ps.toX = side * (1.08 + Math.random() * 0.15);
+        else ps.toY = 1.04 + Math.random() * 0.1;
+      }
+      ps.kickDur = this.diff === 'easy' ? 0.74 : this.diff === 'normal' ? 0.64 : 0.56;
+    }
+    this.sfx.kick(1);
+    this.shake = Math.min(this.shake + 4, 10);
+  }
+
+  private penEvaluate(): PenKickResult {
+    const ps = this.pens!;
+    // geometria del tiro: fuori o legno
+    if (Math.abs(ps.toX) > 1.04 || ps.toY > 1.02) return 'miss';
+    if (Math.abs(ps.toX) > 0.95 || ps.toY > 0.93) return 'post';
+    if (ps.turn === 0) {
+      // portiere IA: posizione raggiunta all'impatto
+      const prog = clamp((ps.kickT - 0.03) / 0.4, 0, 1);
+      const kx = ps.aiDiveX * prog;
+      const ky = 0.45 + (ps.aiDiveY - 0.45) * prog;
+      return dist(kx, ky, ps.toX, ps.toY) < 0.44 ? 'save' : 'goal';
+    }
+    // guantone del giocatore
+    const r = ps.diveT > 0 ? 0.5 : 0.32;
+    return dist(ps.gloveX, ps.gloveY, ps.toX, ps.toY) <= r ? 'save' : 'goal';
+  }
+
+  private penRegister(result: PenKickResult) {
+    const ps = this.pens!;
+    ps.result = result;
+    ps.results[ps.turn].push(result === 'post' ? 'miss' : result);
+    if (result === 'goal') ps.score[ps.turn]++;
+    ps.taken[ps.turn]++;
+
+    // traiettoria di uscita della palla dopo l'impatto
+    if (result === 'save') {
+      const dx = ps.toX - (ps.turn === 0 ? ps.aiDiveX : ps.gloveX);
+      const dy = ps.toY - (ps.turn === 0 ? ps.aiDiveY : ps.gloveY);
+      ps.outX = clamp(ps.toX + dx * 1.6 + (Math.random() - 0.5) * 0.4, -1.4, 1.4);
+      ps.outY = clamp(ps.toY + dy * 1.2 + 0.25, 0.05, 1.2);
+    } else if (result === 'post') {
+      ps.outX = clamp(-ps.toX * 0.5, -0.8, 0.8);
+      ps.outY = 0.3 + Math.random() * 0.35;
+    } else if (result === 'miss') {
+      ps.outX = clamp(ps.toX * 1.5, -1.6, 1.6);
+      ps.outY = clamp(ps.toY * 1.3, 0, 1.5);
+    } else {
+      ps.outX = ps.toX * 0.78;
+      ps.outY = clamp(ps.toY * 0.9, 0, 0.95);
+    }
+    ps.stage = 'resolve';
+    ps.resolveDur = result === 'goal' ? 1.5 : 1.25;
+    ps.stageT = ps.resolveDur;
+
+    // effetti particellari nel punto d'impatto
+    const attack = ps.turn === 0;
+    const L = attack ? this.fpLayoutA(this.vw, this.vh) : this.fpLayoutD(this.vw, this.vh);
+    const pt = this.fpMap(L, ps.toX, ps.toY);
+    if (result === 'goal') {
+      this.sfx.goal();
+      this.shake = 12;
+      this.fpBurst(pt.x, pt.y, ['#38bdf8', '#fb7185', '#fbbf24', '#ffffff', '#4ade80'], 70);
+    } else if (result === 'save') {
+      this.sfx.block();
+      this.shake = Math.min(this.shake + 6, 12);
+      this.fpBurst(pt.x, pt.y, ['#ffffff', '#7dd3fc', '#bae6fd'], 30);
+    } else if (result === 'post') {
+      this.sfx.block();
+      this.shake = Math.min(this.shake + 7, 12);
+      this.fpBurst(pt.x, pt.y, ['#fbbf24', '#ffffff', '#fde68a'], 24);
+    } else {
+      this.sfx.whistle(false);
+    }
+    this.emit({ type: 'penResult', result, team: ps.turn });
+  }
+
+  private penDecided(): boolean {
+    const ps = this.pens!;
+    const [b, r] = ps.score;
+    const [bt, rt] = ps.taken;
+    if (bt < PEN_ROUNDS || rt < PEN_ROUNDS) {
+      const bLeft = Math.max(0, PEN_ROUNDS - bt);
+      const rLeft = Math.max(0, PEN_ROUNDS - rt);
+      return b > r + rLeft || r > b + bLeft;
+    }
+    // morte subita: a parità di tiri effettuati, chi è avanti vince
+    return bt === rt && b !== r;
+  }
+
+  private penAdvance() {
+    const ps = this.pens!;
+    if (this.penDecided()) {
+      this.endMatch([...ps.score]);
+      return;
+    }
+    ps.turn = 1 - ps.turn;
+    ps.stage = 'intro';
+    ps.stageT = 1.35;
+    this.penSetupKick();
+  }
+
+  private updatePens(dt: number) {
+    const ps = this.pens!;
+    ps.stageT -= dt;
+    this.updateFpFx(dt);
+    const attack = ps.turn === 0;
+    const dir = this.inputDir();
+
+    // il giocatore muove il guantone (quando difende), sempre tranne che a risultato mostrato
+    if (!attack && ps.stage !== 'resolve') {
+      const gx = dir.x;
+      const gy = -dir.y;
+      if (this.shootQ && ps.diveT <= 0 && (Math.abs(gx) > 0.15 || Math.abs(gy) > 0.15)) {
+        ps.diveT = 0.38;
+        ps.diveDx = gx;
+        ps.diveDy = gy;
+        this.sfx.swap();
+      }
+      if (ps.diveT > 0) {
+        ps.diveT -= dt;
+        ps.gloveX += ps.diveDx * 3.2 * dt;
+        ps.gloveY += ps.diveDy * 3.2 * dt;
+      } else {
+        ps.gloveX += gx * 1.9 * dt;
+        ps.gloveY += gy * 1.9 * dt;
+      }
+      ps.gloveX = clamp(ps.gloveX, -1.1, 1.1);
+      ps.gloveY = clamp(ps.gloveY, 0.05, 1.1);
+    }
+
+    if (ps.stage === 'intro') {
+      if (ps.stageT <= 0) {
+        ps.stage = 'aim';
+        ps.aimT = 0;
+        ps.stageT = attack
+          ? 8 // tempo massimo per mirare
+          : (this.diff === 'hard' ? 1.0 : this.diff === 'normal' ? 1.3 : 1.6) + Math.random() * 0.4;
+        if (attack) this.sfx.whistle(false);
+      }
+      return;
+    }
+
+    if (ps.stage === 'aim') {
+      if (attack) {
+        ps.aimT += dt;
+        ps.aimX = clamp(ps.aimX + dir.x * 1.5 * dt, -0.96, 0.96);
+        ps.aimY = clamp(ps.aimY - dir.y * 1.35 * dt, 0.05, 0.96);
+        if (this.shootQ) {
+          this.penRelease();
+          return;
+        }
+      }
+      if (ps.stageT <= 0) this.penRelease(); // scaduto il tempo / l'IA calcia
+      return;
+    }
+
+    if (ps.stage === 'kick') {
+      ps.kickT += dt;
+      if (!ps.outcomeDone && ps.kickT >= ps.kickDur * 0.86) {
+        ps.outcomeDone = true;
+        this.penRegister(this.penEvaluate());
+      }
+      return;
+    }
+
+    if (ps.stage === 'resolve') {
+      if (ps.stageT <= 0) this.penAdvance();
+    }
   }
 
   // ---------- update ----------
@@ -371,6 +750,8 @@ export class GameEngine {
           this.players.forEach((p) => p.reset());
           this.newBall();
           this.phase = 'demo';
+        } else if (this.period === 'extra') {
+          this.endMatch(); // golden goal: chi segna nei supplementari vince
         } else {
           this.kickoff();
         }
@@ -380,6 +761,14 @@ export class GameEngine {
 
     if (this.phase === 'over') return;
 
+    if (this.phase === 'pens') {
+      this.updatePens(dt);
+      this.shootQ = false;
+      this.passQ = false;
+      this.switchQ = false;
+      return;
+    }
+
     if (this.phase === 'play') {
       this.timeLeft -= dt;
       const whole = Math.ceil(this.timeLeft);
@@ -387,7 +776,13 @@ export class GameEngine {
         this.lastWholeSec = whole;
         if (whole <= 5 && whole > 0) this.sfx.count(false);
         if (whole <= 0) {
-          this.endMatch();
+          if (this.period === 'regular' && this.score[0] === this.score[1]) {
+            this.startExtraTime();
+          } else if (this.period === 'extra') {
+            this.startPens();
+          } else {
+            this.endMatch();
+          }
           return;
         }
       }
@@ -935,6 +1330,518 @@ export class GameEngine {
   }
 
   // ---------- rendering ----------
+  // ---------- rigori in prima persona ----------
+  private fpLayoutA(vw: number, vh: number): FPLayout {
+    const horizon = vh * 0.4;
+    const gw = Math.min(vw * 0.64, 660);
+    const gh = gw / 3.05;
+    const cx = vw / 2;
+    const bottom = horizon + gh * 0.24;
+    return { horizon, gw, gh, cx, top: bottom - gh, bottom };
+  }
+
+  private fpLayoutD(vw: number, vh: number): FPLayout {
+    const horizon = vh * 0.26;
+    const gw = Math.min(vw * 0.88, 940);
+    const gh = vh * 0.62;
+    const cx = vw / 2;
+    const bottom = vh * 0.94;
+    return { horizon, gw, gh, cx, top: bottom - gh, bottom };
+  }
+
+  private fpMap(L: FPLayout, gx: number, gy: number) {
+    return { x: L.cx + (gx * L.gw) / 2, y: L.bottom - gy * L.gh };
+  }
+
+  private fpBall(ps: PensState, vw: number, vh: number) {
+    const attack = ps.turn === 0;
+    const L = attack ? this.fpLayoutA(vw, vh) : this.fpLayoutD(vw, vh);
+    const end = this.fpMap(L, ps.toX, ps.toY);
+    const start = attack
+      ? { x: L.cx, y: vh * 0.86, r: Math.min(30, L.gw * 0.05) }
+      : { x: L.cx + 10, y: vh * 0.405, r: Math.max(6, vh * 0.013) };
+    if (ps.stage === 'intro' || ps.stage === 'aim') {
+      return { x: start.x, y: start.y, r: start.r, alpha: 1, inNet: false };
+    }
+    const t = clamp(ps.kickT / ps.kickDur, 0, 1);
+    const far = attack ? Math.max(8, L.gh * 0.085) : Math.min(54, L.gh * 0.16);
+    const bezier = (a: number, b: number, c: number, e: number) =>
+      (1 - e) * (1 - e) * a + 2 * (1 - e) * e * b + e * e * c;
+    const cxz = (start.x + end.x) / 2;
+    const cyz = Math.min(start.y, end.y) - vh * (attack ? 0.05 : 0.03);
+    const outPt = this.fpMap(L, ps.outX, ps.outY);
+    const goalIn = ps.result === 'goal';
+
+    if (ps.stage === 'resolve') {
+      const t2 = clamp((1 - ps.stageT / ps.resolveDur) * 1.35, 0, 1);
+      const inT = clamp(t + t2, 0, 1);
+      const outT = clamp(t2 - (1 - t), 0, 1);
+      if (outT <= 0) {
+        const bx = bezier(start.x, cxz, end.x, inT);
+        const by = bezier(start.y, cyz, end.y, inT);
+        const rr = attack ? start.r + (far - start.r) * inT : start.r + (far - start.r) * Math.pow(inT, 0.9);
+        return { x: bx, y: by, r: rr, alpha: 1, inNet: false };
+      }
+      const c2x = (end.x + outPt.x) / 2;
+      const c2y = Math.min(end.y, outPt.y) - vh * 0.045;
+      const bx = bezier(end.x, c2x, outPt.x, outT);
+      const by = bezier(end.y, c2y, outPt.y, outT);
+      const shrink = goalIn ? (attack ? 0.5 : 0.35) : attack ? 0.35 : 0.6;
+      const rr = far * (1 - outT * shrink);
+      const alpha = goalIn ? 1 : Math.max(0, 1 - outT * outT);
+      return { x: bx, y: by, r: rr, alpha, inNet: goalIn || attack };
+    }
+    const e = t;
+    const bx = bezier(start.x, cxz, end.x, e);
+    const by = bezier(start.y, cyz, end.y, e);
+    const rr = attack ? start.r + (far - start.r) * e : start.r + (far - start.r) * Math.pow(e, 0.9);
+    return { x: bx, y: by, r: rr, alpha: 1, inNet: false };
+  }
+
+  private renderPensFP(ctx: CanvasRenderingContext2D, vw: number, vh: number) {
+    const ps = this.pens!;
+    ctx.save();
+    const shx = (Math.random() - 0.5) * this.shake;
+    const shy = (Math.random() - 0.5) * this.shake;
+    ctx.translate(shx, shy);
+    if (ps.turn === 0) this.drawFPAttack(ctx, vw, vh, ps);
+    else this.drawFPDefend(ctx, vw, vh, ps);
+    this.drawFpFx(ctx);
+    ctx.restore();
+  }
+
+  private drawPitchFP(ctx: CanvasRenderingContext2D, vw: number, vh: number, horizon: number, topY: number, topHalfW: number) {
+    // orizzonte luminoso (fari dello stadio)
+    ctx.fillStyle = 'rgba(160,210,255,0.10)';
+    ctx.fillRect(0, horizon - 2, vw, 4);
+    // campo in prospettiva
+    const cx = vw / 2;
+    const botHalfW = vw * 0.62;
+    const g = ctx.createLinearGradient(0, topY, 0, vh);
+    g.addColorStop(0, '#0d4d33');
+    g.addColorStop(1, '#09331f');
+    ctx.beginPath();
+    ctx.moveTo(cx - topHalfW, topY);
+    ctx.lineTo(cx + topHalfW, topY);
+    ctx.lineTo(cx + botHalfW, vh);
+    ctx.lineTo(cx - botHalfW, vh);
+    ctx.closePath();
+    ctx.fillStyle = g;
+    ctx.fill();
+    // strisce tosaerba prospettiche
+    const bands = 8;
+    for (let i = 0; i < bands; i++) {
+      if (i % 2 !== 0) continue;
+      const t0 = Math.pow(i / bands, 1.75);
+      const t1 = Math.pow((i + 1) / bands, 1.75);
+      const y0 = topY + (vh - topY) * t0;
+      const y1 = topY + (vh - topY) * t1;
+      const w0 = topHalfW + (botHalfW - topHalfW) * t0;
+      const w1 = topHalfW + (botHalfW - topHalfW) * t1;
+      ctx.beginPath();
+      ctx.moveTo(cx - w0, y0);
+      ctx.lineTo(cx + w0, y0);
+      ctx.lineTo(cx + w1, y1);
+      ctx.lineTo(cx - w1, y1);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255,255,255,0.03)';
+      ctx.fill();
+    }
+  }
+
+  private drawGoalBackFP(ctx: CanvasRenderingContext2D, L: FPLayout) {
+    const { cx, gw, gh, top, bottom } = L;
+    const bh = gw * 0.44; // mezza larghezza del fondo rete
+    const bt = top - gh * 0.1; // traversa posteriore
+    const bb = bottom - gh * 0.2; // fondo rete
+    ctx.save();
+    // struttura posteriore
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - gw / 2, top); ctx.lineTo(cx - bh, bt);
+    ctx.moveTo(cx + gw / 2, top); ctx.lineTo(cx + bh, bt);
+    ctx.moveTo(cx - bh, bt); ctx.lineTo(cx - bh, bb);
+    ctx.moveTo(cx + bh, bt); ctx.lineTo(cx + bh, bb);
+    ctx.moveTo(cx - bh, bt); ctx.lineTo(cx + bh, bt);
+    ctx.moveTo(cx - gw / 2, bottom); ctx.lineTo(cx - bh, bb);
+    ctx.moveTo(cx + gw / 2, bottom); ctx.lineTo(cx + bh, bb);
+    ctx.stroke();
+    // griglia del fondo
+    ctx.strokeStyle = 'rgba(220,240,255,0.13)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 5; i++) {
+      const y = bt + ((bb - bt) * i) / 5;
+      ctx.beginPath(); ctx.moveTo(cx - bh, y); ctx.lineTo(cx + bh, y); ctx.stroke();
+    }
+    for (let i = 1; i < 10; i++) {
+      const x = cx - bh + ((bh * 2) * i) / 10;
+      ctx.beginPath(); ctx.moveTo(x, bt); ctx.lineTo(x, bb); ctx.stroke();
+    }
+    // drappeggio rete tra telaio e fondo
+    ctx.strokeStyle = 'rgba(220,240,255,0.09)';
+    for (let i = 0; i <= 8; i++) {
+      const xf = cx - gw / 2 + (gw * i) / 8;
+      const xb = cx + ((xf - cx) * bh) / (gw / 2);
+      ctx.beginPath(); ctx.moveTo(xf, top); ctx.lineTo(xb, bt); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private drawGoalFrontFP(ctx: CanvasRenderingContext2D, L: FPLayout) {
+    const { cx, gw, top, bottom } = L;
+    ctx.save();
+    ctx.strokeStyle = '#f8fafc';
+    ctx.lineCap = 'round';
+    ctx.lineWidth = Math.max(3, gw * 0.011);
+    ctx.shadowColor = 'rgba(255,255,255,0.7)';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(cx - gw / 2, bottom + 3);
+    ctx.lineTo(cx - gw / 2, top);
+    ctx.lineTo(cx + gw / 2, top);
+    ctx.lineTo(cx + gw / 2, bottom + 3);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawFigure(
+    ctx: CanvasRenderingContext2D,
+    hipX: number,
+    hipY: number,
+    h: number,
+    color: string,
+    lean: number,
+    run: number,
+    reach: { x: number; y: number } | null = null,
+  ) {
+    ctx.save();
+    ctx.translate(hipX, hipY);
+    ctx.rotate(lean);
+    ctx.lineCap = 'round';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12;
+    const sw = run ? Math.sin(run) * h * 0.13 : 0;
+    // gambe
+    ctx.strokeStyle = color;
+    ctx.lineWidth = h * 0.085;
+    ctx.beginPath(); ctx.moveTo(-h * 0.09, 0); ctx.lineTo(-h * 0.11 + sw, h * 0.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(h * 0.09, 0); ctx.lineTo(h * 0.11 - sw, h * 0.5); ctx.stroke();
+    // scarpe
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#0b1526';
+    ctx.beginPath(); ctx.ellipse(-h * 0.11 + sw, h * 0.5, h * 0.07, h * 0.032, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(h * 0.11 - sw, h * 0.5, h * 0.07, h * 0.032, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 12;
+    // torso
+    ctx.lineWidth = h * 0.21;
+    ctx.beginPath(); ctx.moveTo(0, -h * 0.34); ctx.lineTo(0, 0); ctx.stroke();
+    // braccia
+    const shx = h * 0.13;
+    const shy = -h * 0.31;
+    ctx.lineWidth = h * 0.06;
+    if (reach) {
+      ctx.beginPath(); ctx.moveTo(shx, shy); ctx.lineTo(reach.x + h * 0.05, reach.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-shx, shy); ctx.lineTo(reach.x - h * 0.05, reach.y); ctx.stroke();
+      // guanti
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath(); ctx.arc(reach.x + h * 0.05, reach.y, h * 0.072, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(reach.x - h * 0.05, reach.y, h * 0.072, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 12;
+    } else {
+      ctx.beginPath(); ctx.moveTo(shx, shy); ctx.lineTo(shx + h * 0.04 + sw * 0.6, -h * 0.02); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-shx, shy); ctx.lineTo(-shx - h * 0.04 - sw * 0.6, -h * 0.02); ctx.stroke();
+    }
+    // testa
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(0, -h * 0.45, h * 0.115, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  private drawFPBall(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, alpha: number) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = 'rgba(255,255,255,0.7)';
+    ctx.shadowBlur = r * 0.6;
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(15,23,42,0.4)';
+    ctx.lineWidth = Math.max(1, r * 0.1);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(15,23,42,0.5)';
+    const spin = this.time * 9;
+    for (let i = 0; i < 3; i++) {
+      const a = (i * Math.PI * 2) / 3 + spin;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(a) * r * 0.5, y + Math.sin(a) * r * 0.5, r * 0.17, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private drawFPTrail(ctx: CanvasRenderingContext2D) {
+    for (let i = 0; i < this.fpTrail.length; i++) {
+      const t = i / this.fpTrail.length;
+      const p = this.fpTrail[i];
+      ctx.fillStyle = `rgba(226,240,255,${t * 0.14})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * (0.35 + t * 0.6), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  private drawFPAttack(ctx: CanvasRenderingContext2D, vw: number, vh: number, ps: PensState) {
+    const L = this.fpLayoutA(vw, vh);
+    this.drawPitchFP(ctx, vw, vh, L.horizon, L.bottom - L.gh * 0.16, L.gw * 0.78);
+    this.drawGoalBackFP(ctx, L);
+
+    // portiere IA
+    const prog =
+      ps.stage === 'kick' || ps.stage === 'resolve'
+        ? 1 - Math.pow(1 - clamp(ps.kickT / 0.42, 0, 1), 3)
+        : 0;
+    const kh = L.gh * 0.98;
+    const tgt = this.fpMap(L, ps.aiDiveX, ps.aiDiveY);
+    const hipX0 = L.cx;
+    const hipY0 = L.bottom - kh * 0.52;
+    const hipX = hipX0 + (tgt.x - hipX0) * 0.82 * prog;
+    const hipY = hipY0 + (tgt.y - hipY0 - L.gh * 0.08) * 0.82 * prog + (prog === 0 ? Math.sin(this.time * 2.2) * 2 : 0);
+    const lean = (ps.aiDiveX !== 0 ? Math.sign(ps.aiDiveX) : 0) * prog * 0.7;
+    // ombra
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(hipX * (1 - prog * 0.5) + L.cx * prog * 0.5, L.bottom + 4, 26 + prog * 26, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // punto di presa (mani) nello spazio locale della figura
+    const rdx = tgt.x - hipX;
+    const rdy = tgt.y - hipY;
+    const rl = Math.hypot(rdx, rdy) || 1;
+    const rmax = kh * 0.52;
+    const reach = { x: (rdx / rl) * Math.min(rl, rmax), y: (rdy / rl) * Math.min(rl, rmax) };
+    this.drawFigure(ctx, hipX, hipY, kh, TEAM_COLORS[1], lean, 0, reach);
+
+    // palla
+    const b = this.fpBall(ps, vw, vh);
+    // scia
+    if (ps.stage === 'kick' || ps.stage === 'resolve') {
+      this.fpTrail.push({ x: b.x, y: b.y, r: b.r });
+      if (this.fpTrail.length > 9) this.fpTrail.shift();
+    }
+    this.drawFPTrail(ctx);
+
+    // dischetto e scarpa (primo piano, solo fermo palla)
+    if (ps.stage === 'intro' || ps.stage === 'aim') {
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath(); ctx.ellipse(L.cx, vh * 0.86 + b.r * 0.7, b.r * 1.5, b.r * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    this.drawFPBall(ctx, b.x, b.y, b.r, b.alpha);
+
+    // scarpa che colpisce all'inizio del calcio
+    if (ps.stage === 'kick' && ps.kickT < 0.15) {
+      const fp = ps.kickT / 0.15;
+      ctx.save();
+      ctx.translate(L.cx + (1 - fp) * 130 + 18, vh * 0.86 + (1 - fp) * 40 - 4);
+      ctx.rotate(-0.6 + fp * 0.5);
+      ctx.fillStyle = '#101c2e';
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(-14, -26, 44, 26, 9); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(-14, -2, 44, 5);
+      ctx.restore();
+    }
+
+    // mirino
+    if (ps.stage === 'aim') {
+      const wob = this.penWobble(ps);
+      const nx = (Math.sin(this.time * 11.3) + Math.sin(this.time * 5.1 + 1.7)) / 2;
+      const ny = (Math.sin(this.time * 9.7 + 0.6) + Math.sin(this.time * 4.3)) / 2;
+      const aimPt = this.fpMap(
+        L,
+        clamp(ps.aimX + nx * wob, -1.25, 1.25),
+        clamp(ps.aimY + ny * wob, 0, 1.15),
+      );
+      // anello di dispersione
+      ctx.strokeStyle = 'rgba(251,191,36,0.28)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 7]);
+      ctx.beginPath(); ctx.arc(aimPt.x, aimPt.y, Math.max(8, (wob * L.gw) / 2), 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      // croce del mirino
+      const pulse = 1 + Math.sin(this.time * 7) * 0.08;
+      ctx.strokeStyle = '#fbbf24';
+      ctx.shadowColor = 'rgba(251,191,36,0.9)';
+      ctx.shadowBlur = 12;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(aimPt.x, aimPt.y, 11 * pulse, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(aimPt.x - 18 * pulse, aimPt.y); ctx.lineTo(aimPt.x - 7, aimPt.y);
+      ctx.moveTo(aimPt.x + 7, aimPt.y); ctx.lineTo(aimPt.x + 18 * pulse, aimPt.y);
+      ctx.moveTo(aimPt.x, aimPt.y - 18 * pulse); ctx.lineTo(aimPt.x, aimPt.y - 7);
+      ctx.moveTo(aimPt.x, aimPt.y + 7); ctx.lineTo(aimPt.x, aimPt.y + 18 * pulse);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    this.drawGoalFrontFP(ctx, L);
+  }
+
+  private drawFPDefend(ctx: CanvasRenderingContext2D, vw: number, vh: number, ps: PensState) {
+    const L = this.fpLayoutD(vw, vh);
+    this.drawPitchFP(ctx, vw, vh, L.horizon, L.horizon + 6, vw * 0.34);
+
+    // cornice della nostra porta (siamo davanti alla linea)
+    const half = L.gw / 2 + 24;
+    const frameTop = L.top - 26;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 7;
+    ctx.shadowColor = 'rgba(255,255,255,0.6)';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(L.cx - half, vh);
+    ctx.lineTo(L.cx - half, frameTop);
+    ctx.lineTo(L.cx + half, frameTop);
+    ctx.lineTo(L.cx + half, vh);
+    ctx.stroke();
+    // rete laterale accennata
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(220,240,255,0.08)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 5; i++) {
+      const t = i / 5;
+      ctx.beginPath();
+      ctx.moveTo(L.cx - half + t * 30, frameTop);
+      ctx.lineTo(L.cx - half + t * 90, vh);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(L.cx + half - t * 30, frameTop);
+      ctx.lineTo(L.cx + half - t * 90, vh);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // rigorista IA: la postura in rincorsa suggerisce il lato del tiro
+    const kh2 = vh * 0.145;
+    const kFeet = vh * 0.415;
+    const leanP =
+      ps.stage === 'aim'
+        ? clamp(1 - ps.stageT / 0.35, 0, 1)
+        : ps.stage === 'intro'
+          ? 0
+          : 1;
+    const leanK = (ps.toX !== 0 || ps.stage === 'kick' || ps.stage === 'resolve' ? Math.sign(ps.toX || 1) : 0) * leanP * 0.24;
+    const run = ps.stage === 'aim' || ps.stage === 'intro' ? this.time * 16 : 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.ellipse(L.cx, kFeet + 4, 22, 5, 0, 0, Math.PI * 2); ctx.fill();
+    this.drawFigure(ctx, L.cx, kFeet - kh2 * 0.5, kh2, TEAM_COLORS[1], leanK, leanP > 0.15 ? run : 0, null);
+
+    // palla
+    const b = this.fpBall(ps, vw, vh);
+    if (ps.stage === 'kick' || ps.stage === 'resolve') {
+      this.fpTrail.push({ x: b.x, y: b.y, r: b.r });
+      if (this.fpTrail.length > 9) this.fpTrail.shift();
+    }
+    this.drawFPTrail(ctx);
+    this.drawFPBall(ctx, b.x, b.y, b.r, b.alpha);
+
+    // guantone del giocatore
+    const g = this.fpMap(L, ps.gloveX, ps.gloveY);
+    const gr = Math.min(34, vh * 0.048);
+    // scia del tuffo
+    if (ps.diveT > 0) {
+      ctx.save();
+      const sx = ps.diveDx * (L.gw / 2);
+      const sy = -ps.diveDy * L.gh;
+      const sl = Math.hypot(sx, sy) || 1;
+      for (let i = 1; i <= 3; i++) {
+        ctx.globalAlpha = 0.16 / i;
+        ctx.fillStyle = '#7dd3fc';
+        ctx.beginPath();
+        ctx.ellipse(g.x - (sx / sl) * i * 16, g.y - (sy / sl) * i * 16, gr * 0.9, gr * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.save();
+    const divePulse = ps.diveT > 0 ? 1.18 : 1;
+    ctx.translate(g.x, g.y);
+    ctx.rotate(ps.diveDx * 0.3 * (ps.diveT > 0 ? 1 : 0));
+    ctx.scale(divePulse, divePulse);
+    ctx.shadowColor = 'rgba(125,211,252,0.9)';
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath(); ctx.ellipse(0, 0, gr, gr * 0.74, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#38bdf8';
+    ctx.beginPath(); ctx.ellipse(0, gr * 0.52, gr * 0.62, gr * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(3,16,36,0.55)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(0, 0, gr, gr * 0.74, 0, 0, Math.PI * 2); ctx.stroke();
+    // dita accennate
+    ctx.strokeStyle = 'rgba(3,16,36,0.3)';
+    ctx.lineWidth = 1.5;
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * gr * 0.4, -gr * 0.5);
+      ctx.lineTo(i * gr * 0.42, -gr * 0.1);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private updateFpFx(dt: number) {
+    for (let i = this.fpFx.length - 1; i >= 0; i--) {
+      const p = this.fpFx[i];
+      p.life -= dt;
+      if (p.life <= 0) {
+        this.fpFx.splice(i, 1);
+        continue;
+      }
+      p.vy += 480 * dt;
+      const d = Math.exp(-1.4 * dt);
+      p.vx *= d;
+      p.vy *= d;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+  }
+
+  private fpBurst(x: number, y: number, colors: string[], n: number) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 60 + Math.random() * 380;
+      this.fpFx.push({
+        x,
+        y,
+        vx: Math.cos(a) * s,
+        vy: Math.sin(a) * s - 140,
+        life: 0.7 + Math.random() * 0.9,
+        maxLife: 1.6,
+        size: 2 + Math.random() * 3.5,
+        color: colors[(Math.random() * colors.length) | 0],
+      });
+    }
+  }
+
+  private drawFpFx(ctx: CanvasRenderingContext2D) {
+    if (this.fpFx.length === 0) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of this.fpFx) {
+      const a = clamp(p.life / p.maxLife, 0, 1);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (0.5 + a * 0.7), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   private resize() {
     const rect = this.canvas.getBoundingClientRect();
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -994,6 +1901,13 @@ export class GameEngine {
 
     if (this.bgCanvas) ctx.drawImage(this.bgCanvas, 0, 0, vw, vh);
 
+    // rigori: scena in prima persona
+    if (this.phase === 'pens') {
+      this.renderPensFP(ctx, vw, vh);
+      this.drawVignette(ctx, vw, vh);
+      return;
+    }
+
     const margin = 34;
     const s = Math.min((vw - margin * 2) / W, (vh - margin * 2) / H);
     const ox = (vw - W * s) / 2;
@@ -1048,7 +1962,10 @@ export class GameEngine {
 
     ctx.restore();
 
-    // vignette
+    this.drawVignette(ctx, vw, vh);
+  }
+
+  private drawVignette(ctx: CanvasRenderingContext2D, vw: number, vh: number) {
     const vg = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.42, vw / 2, vh / 2, Math.max(vw, vh) * 0.72);
     vg.addColorStop(0, 'rgba(0,0,0,0)');
     vg.addColorStop(1, 'rgba(0,0,0,0.5)');
@@ -1245,8 +2162,10 @@ export class GameEngine {
 
   // ---------- snapshot ----------
   getSnapshot(): Snapshot {
+    const ps = this.pens;
     return {
       phase: this.phase,
+      period: this.period,
       score: [...this.score],
       shots: [...this.shots],
       timeLeft: Math.max(0, this.timeLeft),
@@ -1255,6 +2174,16 @@ export class GameEngine {
       winner: this.winner,
       muted: this.sfx.muted,
       controlled: this.controlledIdx,
+      pens: ps
+        ? {
+            score: [...ps.score],
+            taken: [...ps.taken],
+            turn: ps.turn,
+            stage: ps.stage,
+            stageT: Math.max(0, ps.stageT),
+            results: [[...ps.results[0]], [...ps.results[1]]],
+          }
+        : null,
     };
   }
 }
