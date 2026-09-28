@@ -1,5 +1,5 @@
 import { Volume2, VolumeX, Pause, Check, X } from 'lucide-react';
-import type { Snapshot, PensSnap } from '../game/engine';
+import type { Snapshot, PensSnap, PlayerCount } from '../game/engine';
 import { fmt, type Strings } from '../i18n';
 
 interface Props {
@@ -7,6 +7,7 @@ interface Props {
   muted: boolean;
   onToggleMute: () => void;
   onPause: () => void;
+  playerCount: PlayerCount;
   goalBanner: { team: number; id: number } | null;
   eventBanner: { title: string; sub: string; tone: 'amber' | 'sky' | 'rose' | 'white'; id: number } | null;
   t: Strings;
@@ -65,23 +66,30 @@ function PenDots({ results, taken }: { results: PensSnap['results'][0]; taken: n
   );
 }
 
-function PensPanel({ pens, t }: { pens: PensSnap; t: Strings }) {
+function PensPanel({ pens, t, playerCount }: { pens: PensSnap; t: Strings; playerCount: PlayerCount }) {
   const round = Math.min(pens.taken[0], pens.taken[1]) + 1;
   const suddenDeath = round > 5;
   const yourShot = pens.turn === 0;
+  const shooterPrefix = playerCount === 2 ? `${yourShot ? 'P1' : 'P2'} · ` : '';
   const status =
     pens.stage === 'intro'
-      ? yourShot
-        ? t.psGetReadyShoot
-        : t.psGetReadySave
+      ? playerCount === 2
+        ? `${shooterPrefix}${t.psGetReadyShoot}`
+        : yourShot
+          ? t.psGetReadyShoot
+          : t.psGetReadySave
       : pens.stage === 'aim'
-        ? yourShot
-          ? `${t.psAimShoot} · ${Math.ceil(pens.stageT)}`
-          : t.psSaveNow
+        ? playerCount === 2
+          ? `${shooterPrefix}${t.psAimShoot} · ${Math.ceil(pens.stageT)}`
+          : yourShot
+            ? `${t.psAimShoot} · ${Math.ceil(pens.stageT)}`
+            : t.psSaveNow
         : pens.stage === 'kick'
-          ? yourShot
-            ? t.psYourShot
-            : t.psTheirShot
+          ? playerCount === 2
+            ? `${shooterPrefix}${t.psYourShot}`
+            : yourShot
+              ? t.psYourShot
+              : t.psTheirShot
           : '';
   return (
     <div className="mt-2 flex flex-col items-center gap-1.5 rounded-2xl border border-amber-300/30 bg-black/55 px-4 py-2 backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
@@ -105,7 +113,7 @@ function PensPanel({ pens, t }: { pens: PensSnap; t: Strings }) {
   );
 }
 
-export default function HUD({ snap, muted, onToggleMute, onPause, goalBanner, eventBanner, t }: Props) {
+export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, goalBanner, eventBanner, t }: Props) {
   if (!snap) return null;
   const inPens = snap.period === 'pens' && snap.pens;
   const inExtra = snap.period === 'extra';
@@ -128,7 +136,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, goalBanner, ev
             <span className="hidden sm:block font-display text-[11px] tracking-[0.25em] text-rose-300">{t.teamRed}</span>
           </div>
           {inPens ? (
-            <PensPanel pens={snap.pens!} t={t} />
+            <PensPanel pens={snap.pens!} t={t} playerCount={playerCount} />
           ) : (
             <>
               <div className={`mt-2 flex w-56 items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 backdrop-blur-md`}>
@@ -217,22 +225,52 @@ export default function HUD({ snap, muted, onToggleMute, onPause, goalBanner, ev
       {/* controlli a fondo pagina (desktop) */}
       <div className="mt-auto hidden justify-center pb-4 md:flex">
         {inPens ? (
-          <div className="flex items-center gap-4 rounded-full border border-amber-300/25 bg-black/50 px-6 py-2 text-[11px] font-medium tracking-wide text-amber-100/80 backdrop-blur-md">
-            {snap.pens!.turn === 0 ? (
-              <>
-                <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.hintAimUpDown}</span>
-                <span className="text-white/20">•</span>
-                <span><kbd>Spazio</kbd> {t.hintKickPen}</span>
-              </>
-            ) : (
-              <>
-                <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.hintKeeperMove}</span>
-                <span className="text-white/20">•</span>
-                <span><kbd>Spazio</kbd> {t.hintDive}</span>
-              </>
-            )}
-            <span className="text-white/20">•</span>
-            <span><kbd>Esc</kbd> {t.kPause}</span>
+          playerCount === 2 ? (
+            <div className="flex max-w-[96vw] flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-2xl border border-amber-300/25 bg-black/50 px-5 py-2 text-[10px] font-medium tracking-wide text-amber-100/80 backdrop-blur-md">
+              <span className="text-sky-300">P1 · {t.teamBlue}</span>
+              <span><kbd>WASD</kbd> {t.hintAimUpDown} / {t.hintKeeperMove} · <kbd>Space</kbd> {t.hintKickPen} / {t.hintDive}</span>
+              <span className="text-rose-300">P2 · {t.teamRed}</span>
+              <span><kbd>↑ ↓ ← →</kbd> {t.hintAimUpDown} / {t.hintKeeperMove} · <kbd>Enter</kbd> {t.hintKickPen} / {t.hintDive}</span>
+              <span><kbd>Esc</kbd> {t.kPause}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-4 rounded-full border border-amber-300/25 bg-black/50 px-6 py-2 text-[11px] font-medium tracking-wide text-amber-100/80 backdrop-blur-md">
+              {snap.pens!.turn === 0 ? (
+                <>
+                  <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.hintAimUpDown}</span>
+                  <span className="text-white/20">•</span>
+                  <span><kbd>Spazio</kbd> {t.hintKickPen}</span>
+                </>
+              ) : (
+                <>
+                  <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.hintKeeperMove}</span>
+                  <span className="text-white/20">•</span>
+                  <span><kbd>Spazio</kbd> {t.hintDive}</span>
+                </>
+              )}
+              <span className="text-white/20">•</span>
+              <span><kbd>Esc</kbd> {t.kPause}</span>
+            </div>
+          )
+        ) : playerCount === 2 ? (
+          <div className="grid w-full max-w-4xl grid-cols-1 gap-1.5 px-2 text-[10px] font-medium tracking-wide md:grid-cols-2">
+            <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-xl border border-sky-300/20 bg-black/50 px-3 py-2 text-white/65 backdrop-blur-md">
+              <span className="font-display text-sky-300">P1 · {t.teamBlue}</span>
+              <span><kbd>WASD</kbd> {t.kMove}</span>
+              <span><kbd>Shift</kbd> {t.kSprint}</span>
+              <span><kbd>Space</kbd> {t.kShoot}</span>
+              <span><kbd>C</kbd> {t.kPass}</span>
+              <span><kbd>Q</kbd> {t.kSwitch}</span>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-xl border border-rose-300/20 bg-black/50 px-3 py-2 text-white/65 backdrop-blur-md">
+              <span className="font-display text-rose-300">P2 · {t.teamRed}</span>
+              <span><kbd>↑ ↓ ← →</kbd> {t.kMove}</span>
+              <span><kbd>RShift</kbd> {t.kSprint}</span>
+              <span><kbd>Enter</kbd> {t.kShoot}</span>
+              <span><kbd>/</kbd> {t.kPass}</span>
+              <span><kbd>.</kbd> {t.kSwitch}</span>
+              <span><kbd>Esc</kbd> {t.kPause}</span>
+            </div>
           </div>
         ) : (
           <div className="flex items-center gap-4 rounded-full border border-white/10 bg-black/40 px-6 py-2 text-[11px] font-medium tracking-wide text-white/55 backdrop-blur-md">

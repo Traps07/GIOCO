@@ -2,6 +2,7 @@ import { SFX } from './sound';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type GameMode = 'match' | 'pens';
+export type PlayerCount = 1 | 2;
 export type Phase = 'demo' | 'countdown' | 'play' | 'goal' | 'pens' | 'over';
 export type Period = 'regular' | 'extra' | 'pens';
 export type PenKickResult = 'goal' | 'save' | 'miss' | 'post';
@@ -27,7 +28,8 @@ export interface Snapshot {
   lastGoalTeam: number;
   winner: number; // -2 = non finita, -1 = pareggio
   muted: boolean;
-  controlled: number;
+  playerCount: PlayerCount;
+  controlled: [number, number];
   pens: PensSnap | null;
 }
 
@@ -194,7 +196,8 @@ export class GameEngine {
 
   phase: Phase = 'demo';
   private players: Player[] = [];
-  private controlledIdx = 1;
+  private playerCount: PlayerCount = 1;
+  private controlledIdx: [number, number] = [1, 1];
   private ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, lastTouch: -1 };
   private trail: { x: number; y: number }[] = [];
   private particles: Particle[] = [];
@@ -219,9 +222,9 @@ export class GameEngine {
 
   private keys = new Set<string>();
   private stick = { x: 0, y: 0, active: false };
-  private shootQ = false;
-  private passQ = false;
-  private switchQ = false;
+  private shootQ: [boolean, boolean] = [false, false];
+  private passQ: [boolean, boolean] = [false, false];
+  private switchQ: [boolean, boolean] = [false, false];
 
   private sfx = new SFX();
   private demo = true;
@@ -269,13 +272,26 @@ export class GameEngine {
 
   // ---------- input ----------
   private onKeyDown = (e: KeyboardEvent) => {
+    const preventCodes = [
+      'Space',
+      'Tab',
+      'Enter',
+      'NumpadEnter',
+      'Slash',
+      'Numpad0',
+      'Period',
+      'NumpadDecimal',
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight',
+    ];
     if (e.repeat) {
-      if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code))
-        e.preventDefault();
+      if (preventCodes.includes(e.code)) e.preventDefault();
       return;
     }
     if (e.code === 'Escape' || e.code === 'KeyP') {
-      if (this.phase === 'play' || this.phase === 'countdown' || this.phase === 'goal') {
+      if (this.phase === 'play' || this.phase === 'countdown' || this.phase === 'goal' || this.phase === 'pens') {
         if (this.paused) {
           this.setPaused(false);
           this.emit({ type: 'resume' });
@@ -287,13 +303,18 @@ export class GameEngine {
       return;
     }
     if (!this.inputEnabled || this.paused) return;
-    if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
-      e.preventDefault();
-    }
+    if (preventCodes.includes(e.code)) e.preventDefault();
     this.keys.add(e.code);
-    if (e.code === 'Space') this.shootQ = true;
-    if (e.code === 'KeyC' || e.code === 'KeyJ' || e.code === 'KeyX') this.passQ = true;
-    if (e.code === 'KeyQ' || e.code === 'Tab') this.switchQ = true;
+
+    const localMatch = this.playerCount === 2;
+    if (e.code === 'Space') this.shootQ[0] = true;
+    if (localMatch && (e.code === 'Enter' || e.code === 'NumpadEnter')) this.shootQ[1] = true;
+
+    if (e.code === 'KeyC' || e.code === 'KeyJ' || e.code === 'KeyX') this.passQ[0] = true;
+    if (localMatch && (e.code === 'Slash' || e.code === 'Numpad0')) this.passQ[1] = true;
+
+    if (e.code === 'KeyQ' || e.code === 'Tab') this.switchQ[0] = true;
+    if (localMatch && (e.code === 'Period' || e.code === 'NumpadDecimal')) this.switchQ[1] = true;
   };
 
   private onKeyUp = (e: KeyboardEvent) => {
@@ -305,17 +326,28 @@ export class GameEngine {
   }
 
   touchShoot() {
-    if (this.inputEnabled && !this.paused) this.shootQ = true;
+    if (this.inputEnabled && !this.paused) this.shootQ[0] = true;
   }
   touchPass() {
-    if (this.inputEnabled && !this.paused) this.passQ = true;
+    if (this.inputEnabled && !this.paused) this.passQ[0] = true;
   }
   touchSwitch() {
-    if (this.inputEnabled && !this.paused) this.switchQ = true;
+    if (this.inputEnabled && !this.paused) this.switchQ[0] = true;
   }
 
   setPaused(p: boolean) {
     this.paused = p;
+    if (p) {
+      this.keys.clear();
+      this.stick = { x: 0, y: 0, active: false };
+      this.clearInputQueues();
+    }
+  }
+
+  private clearInputQueues() {
+    this.shootQ = [false, false];
+    this.passQ = [false, false];
+    this.switchQ = [false, false];
   }
   setMuted(m: boolean) {
     this.sfx.setMuted(m);
@@ -331,6 +363,10 @@ export class GameEngine {
   startDemo() {
     this.phase = 'demo';
     this.demo = true;
+    this.playerCount = 1;
+    this.controlledIdx = [1, 1];
+    this.keys.clear();
+    this.clearInputQueues();
     this.score = [0, 0];
     this.shots = [0, 0];
     this.timeLeft = MATCH_TIME;
@@ -343,16 +379,19 @@ export class GameEngine {
     this.newBall();
   }
 
-  startMatch(diff: Difficulty, mode: GameMode = 'match') {
+  startMatch(diff: Difficulty, mode: GameMode = 'match', playerCount: PlayerCount = 1) {
     this.diff = diff;
+    this.playerCount = playerCount;
     this.demo = false;
+    this.keys.clear();
+    this.clearInputQueues();
     this.sfx.ensure();
     this.score = [0, 0];
     this.shots = [0, 0];
     this.timeLeft = MATCH_TIME;
     this.winner = -2;
     this.lastGoalTeam = -1;
-    this.controlledIdx = 1;
+    this.controlledIdx = [1, 1];
     this.period = 'regular';
     this.pens = null;
     this.fpFx = [];
@@ -368,11 +407,12 @@ export class GameEngine {
   private kickoff() {
     this.players.forEach((p) => p.reset());
     this.newBall();
-    this.controlledIdx = 1;
+    this.controlledIdx = [1, 1];
     this.countdown = 3.4;
     this.countdownShown = 4;
     this.phase = 'countdown';
     this.keys.clear();
+    this.clearInputQueues();
   }
 
   private newBall() {
@@ -414,7 +454,7 @@ export class GameEngine {
     this.timeLeft = 0;
     this.pens = null;
     this.sfx.whistle(true);
-    if (this.winner === 0) setTimeout(() => this.sfx.cheer(), 400);
+    if (this.winner >= 0) setTimeout(() => this.sfx.cheer(), 400);
     this.emit({
       type: 'end',
       winner: this.winner,
@@ -469,6 +509,8 @@ export class GameEngine {
     this.fpTrail = [];
     this.players.forEach((p) => p.reset());
     this.newBall();
+    this.keys.clear();
+    this.clearInputQueues();
     this.sfx.whistle(true);
     this.emit({ type: 'pensstart' });
   }
@@ -495,6 +537,14 @@ export class GameEngine {
     this.fpTrail = [];
   }
 
+  private penShooterIsHuman() {
+    return this.playerCount === 2 || this.pens?.turn === 0;
+  }
+
+  private penKeeperIsHuman() {
+    return this.playerCount === 2 || this.pens?.turn === 1;
+  }
+
   // imprecisione della mira: cresce se temporeggi
   private penWobble(ps: PensState) {
     const mul = this.diff === 'easy' ? 0.85 : this.diff === 'hard' ? 1.15 : 1;
@@ -509,24 +559,27 @@ export class GameEngine {
     ps.outcomeDone = false;
     this.fpTrail = [];
 
-    if (ps.turn === 0) {
-      // tira il giocatore: destinazione = mirino + imprecisione
+    if (this.penShooterIsHuman()) {
+      // tiro umano: mira con imprecisione crescente se si aspetta troppo
       const w = this.penWobble(ps);
       ps.toX = clamp(ps.aimX + (Math.random() * 2 - 1) * w, -1.25, 1.25);
       ps.toY = clamp(ps.aimY + (Math.random() * 2 - 1) * w * 0.8, 0.02, 1.15);
       ps.kickDur = 0.62;
-      // il portiere IA sceglie dove tuffarsi (a volte legge la mira)
-      const readChance = this.diff === 'easy' ? 0.2 : this.diff === 'normal' ? 0.32 : 0.45;
-      if (Math.random() < readChance) {
-        ps.aiDiveX = clamp(ps.toX + (Math.random() - 0.5) * 0.34, -1, 1);
-        ps.aiDiveY = clamp(ps.toY + (Math.random() - 0.5) * 0.3, 0.1, 0.95);
-      } else {
-        const side = Math.random() < 0.5 ? -1 : 1;
-        ps.aiDiveX = side * (0.45 + Math.random() * 0.5);
-        ps.aiDiveY = Math.random() < 0.55 ? 0.25 + Math.random() * 0.25 : 0.68 + Math.random() * 0.3;
+
+      if (!this.penKeeperIsHuman()) {
+        // Il portiere IA sceglie dove tuffarsi (a volte legge la mira).
+        const readChance = this.diff === 'easy' ? 0.2 : this.diff === 'normal' ? 0.32 : 0.45;
+        if (Math.random() < readChance) {
+          ps.aiDiveX = clamp(ps.toX + (Math.random() - 0.5) * 0.34, -1, 1);
+          ps.aiDiveY = clamp(ps.toY + (Math.random() - 0.5) * 0.3, 0.1, 0.95);
+        } else {
+          const side = Math.random() < 0.5 ? -1 : 1;
+          ps.aiDiveX = side * (0.45 + Math.random() * 0.5);
+          ps.aiDiveY = Math.random() < 0.55 ? 0.25 + Math.random() * 0.25 : 0.68 + Math.random() * 0.3;
+        }
       }
     } else {
-      // tira l'IA: angolo segreto, ma la postura in rincorsa suggerisce il lato
+      // Rigore dell'IA: angolo segreto, ma la postura in rincorsa suggerisce il lato.
       const side = Math.random() < 0.5 ? -1 : 1;
       ps.toX = side * (0.35 + Math.random() * 0.6);
       ps.toY = 0.16 + Math.random() * 0.76;
@@ -546,14 +599,14 @@ export class GameEngine {
     // geometria del tiro: fuori o legno
     if (Math.abs(ps.toX) > 1.04 || ps.toY > 1.02) return 'miss';
     if (Math.abs(ps.toX) > 0.95 || ps.toY > 0.93) return 'post';
-    if (ps.turn === 0) {
-      // portiere IA: posizione raggiunta all'impatto
+    if (!this.penKeeperIsHuman()) {
+      // Portiere IA: posizione raggiunta all'impatto.
       const prog = clamp((ps.kickT - 0.03) / 0.4, 0, 1);
       const kx = ps.aiDiveX * prog;
       const ky = 0.45 + (ps.aiDiveY - 0.45) * prog;
       return dist(kx, ky, ps.toX, ps.toY) < 0.44 ? 'save' : 'goal';
     }
-    // guantone del giocatore
+    // Il guantone del portiere umano.
     const r = ps.diveT > 0 ? 0.5 : 0.32;
     return dist(ps.gloveX, ps.gloveY, ps.toX, ps.toY) <= r ? 'save' : 'goal';
   }
@@ -567,8 +620,10 @@ export class GameEngine {
 
     // traiettoria di uscita della palla dopo l'impatto
     if (result === 'save') {
-      const dx = ps.toX - (ps.turn === 0 ? ps.aiDiveX : ps.gloveX);
-      const dy = ps.toY - (ps.turn === 0 ? ps.aiDiveY : ps.gloveY);
+      const keeperX = this.penKeeperIsHuman() ? ps.gloveX : ps.aiDiveX;
+      const keeperY = this.penKeeperIsHuman() ? ps.gloveY : ps.aiDiveY;
+      const dx = ps.toX - keeperX;
+      const dy = ps.toY - keeperY;
       ps.outX = clamp(ps.toX + dx * 1.6 + (Math.random() - 0.5) * 0.4, -1.4, 1.4);
       ps.outY = clamp(ps.toY + dy * 1.2 + 0.25, 0.05, 1.2);
     } else if (result === 'post') {
@@ -586,7 +641,7 @@ export class GameEngine {
     ps.stageT = ps.resolveDur;
 
     // effetti particellari nel punto d'impatto
-    const attack = ps.turn === 0;
+    const attack = this.penShooterIsHuman();
     const L = attack ? this.fpLayoutA(this.vw, this.vh) : this.fpLayoutD(this.vw, this.vh);
     const pt = this.fpMap(L, ps.toX, ps.toY);
     if (result === 'goal') {
@@ -636,14 +691,20 @@ export class GameEngine {
     const ps = this.pens!;
     ps.stageT -= dt;
     this.updateFpFx(dt);
-    const attack = ps.turn === 0;
-    const dir = this.inputDir();
 
-    // il giocatore muove il guantone (quando difende), sempre tranne che a risultato mostrato
-    if (!attack && ps.stage !== 'resolve') {
-      const gx = dir.x;
-      const gy = -dir.y;
-      if (this.shootQ && ps.diveT <= 0 && (Math.abs(gx) > 0.15 || Math.abs(gy) > 0.15)) {
+    const shooterTeam = ps.turn;
+    const keeperTeam = 1 - shooterTeam;
+    const humanShooter = this.penShooterIsHuman();
+    const humanKeeper = this.penKeeperIsHuman();
+    const neutralDir = { x: 0, y: 0, len: 0 };
+    const shooterDir = humanShooter ? this.inputDir(shooterTeam) : neutralDir;
+    const keeperDir = humanKeeper ? this.inputDir(keeperTeam) : neutralDir;
+
+    // In locale si possono preparare insieme: uno mira e l'altro muove il guantone.
+    if (humanKeeper && ps.stage !== 'resolve') {
+      const gx = keeperDir.x;
+      const gy = -keeperDir.y;
+      if (this.shootQ[keeperTeam] && ps.diveT <= 0 && (Math.abs(gx) > 0.15 || Math.abs(gy) > 0.15)) {
         ps.diveT = 0.38;
         ps.diveDx = gx;
         ps.diveDy = gy;
@@ -665,20 +726,20 @@ export class GameEngine {
       if (ps.stageT <= 0) {
         ps.stage = 'aim';
         ps.aimT = 0;
-        ps.stageT = attack
+        ps.stageT = humanShooter
           ? 8 // tempo massimo per mirare
           : (this.diff === 'hard' ? 1.0 : this.diff === 'normal' ? 1.3 : 1.6) + Math.random() * 0.4;
-        if (attack) this.sfx.whistle(false);
+        if (humanShooter) this.sfx.whistle(false);
       }
       return;
     }
 
     if (ps.stage === 'aim') {
-      if (attack) {
+      if (humanShooter) {
         ps.aimT += dt;
-        ps.aimX = clamp(ps.aimX + dir.x * 1.5 * dt, -0.96, 0.96);
-        ps.aimY = clamp(ps.aimY - dir.y * 1.35 * dt, 0.05, 0.96);
-        if (this.shootQ) {
+        ps.aimX = clamp(ps.aimX + shooterDir.x * 1.5 * dt, -0.96, 0.96);
+        ps.aimY = clamp(ps.aimY - shooterDir.y * 1.35 * dt, 0.05, 0.96);
+        if (this.shootQ[shooterTeam]) {
           this.penRelease();
           return;
         }
@@ -696,9 +757,7 @@ export class GameEngine {
       return;
     }
 
-    if (ps.stage === 'resolve') {
-      if (ps.stageT <= 0) this.penAdvance();
-    }
+    if (ps.stage === 'resolve' && ps.stageT <= 0) this.penAdvance();
   }
 
   // ---------- update ----------
@@ -719,9 +778,7 @@ export class GameEngine {
     this.players.forEach((p) => (p.kickCd = Math.max(0, p.kickCd - dt)));
 
     if (this.phase === 'countdown') {
-      this.shootQ = false;
-      this.passQ = false;
-      this.switchQ = false;
+      this.clearInputQueues();
       this.countdown -= dt;
       const c = Math.ceil(this.countdown);
       if (c !== this.countdownShown && c > 0) {
@@ -736,9 +793,7 @@ export class GameEngine {
     }
 
     if (this.phase === 'goal') {
-      this.shootQ = false;
-      this.passQ = false;
-      this.switchQ = false;
+      this.clearInputQueues();
       this.goalT -= dt;
       // palla che si assesta in rete
       this.ball.vx *= Math.exp(-4 * dt);
@@ -763,9 +818,7 @@ export class GameEngine {
 
     if (this.phase === 'pens') {
       this.updatePens(dt);
-      this.shootQ = false;
-      this.passQ = false;
-      this.switchQ = false;
+      this.clearInputQueues();
       return;
     }
 
@@ -793,11 +846,18 @@ export class GameEngine {
     // ---------- controlli ----------
     for (const p of this.players) {
       p.hasBall = false;
-      const isHuman = !isDemo && p.team === 0 && p.idx === this.controlledIdx;
+      const hasHumanTeam = p.team === 0 || this.playerCount === 2;
+      const isHuman = !isDemo && hasHumanTeam && p.idx === this.controlledIdx[p.team];
       if (isHuman && this.phase === 'play') {
         this.humanControl(p, dt);
       } else {
-        const cfg = isDemo ? DEMO_CFG : p.team === 1 ? DIFFS[this.diff] : { ...DIFFS.normal, speed: 262 };
+        const cfg = isDemo
+          ? DEMO_CFG
+          : this.playerCount === 2
+            ? DIFFS[this.diff]
+            : p.team === 1
+              ? DIFFS[this.diff]
+              : { ...DIFFS.normal, speed: 262 };
         this.aiControl(p, dt, cfg);
       }
       this.integratePlayer(p, dt);
@@ -829,37 +889,53 @@ export class GameEngine {
       this.trail.shift();
     }
 
-    // queue input uomini
+    // Elaborazione degli input: ogni persona gestisce una squadra e può cambiare giocatore.
     if (this.phase === 'play' && !isDemo) {
-      const me = this.getControlled();
-      if (this.switchQ) {
-        this.controlledIdx = (this.controlledIdx + 1) % 3;
-        this.sfx.swap();
+      const teams = this.playerCount === 2 ? [0, 1] : [0];
+      for (const team of teams) {
+        if (this.switchQ[team]) {
+          this.controlledIdx[team] = (this.controlledIdx[team] + 1) % 3;
+          this.sfx.swap();
+        }
       }
-      if (this.shootQ && me.kickCd <= 0 && dist(me.x, me.y, this.ball.x, this.ball.y) < KICK_RANGE) {
-        this.shoot(me, 0.05);
-      }
-      if (this.passQ && me.kickCd <= 0 && dist(me.x, me.y, this.ball.x, this.ball.y) < KICK_RANGE) {
-        this.pass(me, 0.05, true);
+      for (const team of teams) {
+        const me = this.getControlled(team);
+        if (this.shootQ[team] && me.kickCd <= 0 && dist(me.x, me.y, this.ball.x, this.ball.y) < KICK_RANGE) {
+          this.shoot(me, 0.05);
+        }
+        if (this.passQ[team] && me.kickCd <= 0 && dist(me.x, me.y, this.ball.x, this.ball.y) < KICK_RANGE) {
+          this.pass(me, 0.05, true);
+        }
       }
     }
-    this.shootQ = false;
-    this.passQ = false;
-    this.switchQ = false;
+    this.clearInputQueues();
   }
 
-  private getControlled() {
-    return this.players[this.controlledIdx];
+  private getControlled(team = 0) {
+    return this.players[team * 3 + this.controlledIdx[team]];
   }
 
-  private inputDir() {
+  private inputDir(team = 0) {
     let x = 0;
     let y = 0;
-    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) y -= 1;
-    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) y += 1;
-    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) x -= 1;
-    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) x += 1;
-    if (this.stick.active && (Math.abs(this.stick.x) > 0.12 || Math.abs(this.stick.y) > 0.12)) {
+    if (team === 0) {
+      if (this.keys.has('KeyW')) y -= 1;
+      if (this.keys.has('KeyS')) y += 1;
+      if (this.keys.has('KeyA')) x -= 1;
+      if (this.keys.has('KeyD')) x += 1;
+      if (this.playerCount === 1) {
+        if (this.keys.has('ArrowUp')) y -= 1;
+        if (this.keys.has('ArrowDown')) y += 1;
+        if (this.keys.has('ArrowLeft')) x -= 1;
+        if (this.keys.has('ArrowRight')) x += 1;
+      }
+    } else if (this.playerCount === 2) {
+      if (this.keys.has('ArrowUp')) y -= 1;
+      if (this.keys.has('ArrowDown')) y += 1;
+      if (this.keys.has('ArrowLeft')) x -= 1;
+      if (this.keys.has('ArrowRight')) x += 1;
+    }
+    if (team === 0 && this.stick.active && (Math.abs(this.stick.x) > 0.12 || Math.abs(this.stick.y) > 0.12)) {
       x = this.stick.x;
       y = this.stick.y;
     }
@@ -872,8 +948,10 @@ export class GameEngine {
   }
 
   private humanControl(p: Player, dt: number) {
-    const dir = this.inputDir();
-    const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+    const dir = this.inputDir(p.team);
+    const sprint = this.playerCount === 2
+      ? this.keys.has(p.team === 0 ? 'ShiftLeft' : 'ShiftRight')
+      : this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
     const maxS = (sprint ? 352 : 296) * (dir.len || 0);
     const dvx = dir.x * maxS - p.vx;
     const dvy = dir.y * maxS - p.vy;
@@ -1184,7 +1262,9 @@ export class GameEngine {
   // ---------- calci ----------
   private shoot(p: Player, errRange: number) {
     const oppX = this.oppGoalX(p.team);
-    const dir = p.team === 0 ? this.inputDir() : { x: 0, y: 0, len: 0 };
+    const dir = p.team === 0 || this.playerCount === 2
+      ? this.inputDir(p.team)
+      : { x: 0, y: 0, len: 0 };
     const aimY = H / 2 + (dir.len > 0.2 ? dir.y * 80 : (Math.random() - 0.5) * 130) + (Math.random() - 0.5) * errRange * 300;
     const dx = oppX - p.x;
     const dy = aimY - p.y;
@@ -1204,7 +1284,9 @@ export class GameEngine {
 
   private pass(p: Player, errRange: number, humanSwitch: boolean) {
     const mates = this.players.filter((q) => q.team === p.team && q !== p);
-    const dir = p.team === 0 ? this.inputDir() : { x: p.faceX, y: p.faceY, len: 1 };
+    const dir = p.team === 0 || this.playerCount === 2
+      ? this.inputDir(p.team)
+      : { x: p.faceX, y: p.faceY, len: 1 };
     const useDir = dir.len > 0.2 ? dir : { x: p.faceX, y: p.faceY, len: 1 };
 
     let best: Player | null = null;
@@ -1241,8 +1323,8 @@ export class GameEngine {
     p.holdT = 0;
     this.sfx.pass();
     this.spawnKick(this.ball.x, this.ball.y, dx / dl, dy / dl, '#ffffff');
-    if (humanSwitch && p.team === 0) {
-      this.controlledIdx = best.idx;
+    if (humanSwitch) {
+      this.controlledIdx[p.team] = best.idx;
       this.sfx.swap();
     }
     void tx;
@@ -1354,7 +1436,7 @@ export class GameEngine {
   }
 
   private fpBall(ps: PensState, vw: number, vh: number) {
-    const attack = ps.turn === 0;
+    const attack = this.penShooterIsHuman();
     const L = attack ? this.fpLayoutA(vw, vh) : this.fpLayoutD(vw, vh);
     const end = this.fpMap(L, ps.toX, ps.toY);
     const start = attack
@@ -1404,7 +1486,7 @@ export class GameEngine {
     const shx = (Math.random() - 0.5) * this.shake;
     const shy = (Math.random() - 0.5) * this.shake;
     ctx.translate(shx, shy);
-    if (ps.turn === 0) this.drawFPAttack(ctx, vw, vh, ps);
+    if (this.penShooterIsHuman()) this.drawFPAttack(ctx, vw, vh, ps);
     else this.drawFPDefend(ctx, vw, vh, ps);
     this.drawFpFx(ctx);
     ctx.restore();
@@ -1597,18 +1679,22 @@ export class GameEngine {
     this.drawPitchFP(ctx, vw, vh, L.horizon, L.bottom - L.gh * 0.16, L.gw * 0.78);
     this.drawGoalBackFP(ctx, L);
 
-    // portiere IA
-    const prog =
-      ps.stage === 'kick' || ps.stage === 'resolve'
+    // Portiere IA oppure secondo giocatore, con guantone nella posizione scelta.
+    const humanKeeper = this.penKeeperIsHuman();
+    const diveX = humanKeeper ? ps.gloveX : ps.aiDiveX;
+    const diveY = humanKeeper ? ps.gloveY : ps.aiDiveY;
+    const prog = humanKeeper
+      ? ps.stage === 'kick' || ps.stage === 'resolve' ? 1 : 0.55
+      : ps.stage === 'kick' || ps.stage === 'resolve'
         ? 1 - Math.pow(1 - clamp(ps.kickT / 0.42, 0, 1), 3)
         : 0;
     const kh = L.gh * 0.98;
-    const tgt = this.fpMap(L, ps.aiDiveX, ps.aiDiveY);
+    const tgt = this.fpMap(L, diveX, diveY);
     const hipX0 = L.cx;
     const hipY0 = L.bottom - kh * 0.52;
     const hipX = hipX0 + (tgt.x - hipX0) * 0.82 * prog;
     const hipY = hipY0 + (tgt.y - hipY0 - L.gh * 0.08) * 0.82 * prog + (prog === 0 ? Math.sin(this.time * 2.2) * 2 : 0);
-    const lean = (ps.aiDiveX !== 0 ? Math.sign(ps.aiDiveX) : 0) * prog * 0.7;
+    const lean = (diveX !== 0 ? Math.sign(diveX) : 0) * prog * 0.7;
     // ombra
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
@@ -1620,7 +1706,7 @@ export class GameEngine {
     const rl = Math.hypot(rdx, rdy) || 1;
     const rmax = kh * 0.52;
     const reach = { x: (rdx / rl) * Math.min(rl, rmax), y: (rdy / rl) * Math.min(rl, rmax) };
-    this.drawFigure(ctx, hipX, hipY, kh, TEAM_COLORS[1], lean, 0, reach);
+    this.drawFigure(ctx, hipX, hipY, kh, TEAM_COLORS[1 - ps.turn], lean, 0, reach);
 
     // palla
     const b = this.fpBall(ps, vw, vh);
@@ -2066,7 +2152,10 @@ export class GameEngine {
 
   private drawPlayer(ctx: CanvasRenderingContext2D, p: Player) {
     const color = TEAM_COLORS[p.team];
-    const isHuman = this.phase !== 'demo' && p.team === 0 && p.idx === this.controlledIdx;
+    const isHuman =
+      this.phase !== 'demo' &&
+      (p.team === 0 || this.playerCount === 2) &&
+      p.idx === this.controlledIdx[p.team];
 
     if (isHuman) {
       const pulse = 1 + Math.sin(this.time * 6) * 0.08;
@@ -2173,7 +2262,8 @@ export class GameEngine {
       lastGoalTeam: this.lastGoalTeam,
       winner: this.winner,
       muted: this.sfx.muted,
-      controlled: this.controlledIdx,
+      playerCount: this.playerCount,
+      controlled: [...this.controlledIdx],
       pens: ps
         ? {
             score: [...ps.score],

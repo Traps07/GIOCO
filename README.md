@@ -19,18 +19,31 @@ Funziona anche offline e su smartphone/tablet: serve internet solo per caricare 
 
 - **PARTITA 90s** — partita completa; in caso di parità: tempi supplementari (golden goal) e poi rigori
 - **SOLO RIGORI** — direttamente alla serie dal dischetto (meglio di 5 + morte subita)
+- **1 GIOCATORE** — squadra BLU contro l’IA (selezione predefinita)
+- **2 GIOCATORI IN LOCALE** — BLU contro ROSSO sullo stesso schermo e con una tastiera condivisa; disponibili sia partita completa sia solo rigori
 - Difficoltà: FACILE / NORMALE / DIFFICILE · Selettore lingua nel menu
+
+In modalità **1 giocatore**:
 
 | Tasto | Azione |
 | --- | --- |
-| `WASD` / Frecce | Movimento (nei rigori: mirino / guantone) |
+| `WASD` / Frecce | Movimento (nei rigori: mira / guantone) |
 | `Shift` | Scatto |
 | `Spazio` | Tiro (rigori: calcia / tuffo) |
 | `C` | Passaggio |
 | `Q` / `Tab` | Cambia giocatore |
 | `Esc` / `P` | Pausa |
 
-Su mobile: joystick a sinistra, pulsanti a destra.
+In modalità **2 giocatori** (anche durante i rigori):
+
+| Giocatore | Movimento | Scatto | Tiro / tuffo | Passaggio | Cambia giocatore |
+| --- | --- | --- | --- | --- | --- |
+| **P1 · BLU** | `W A S D` | `Shift` sinistro | `Spazio` | `C` | `Q` (o `Tab`) |
+| **P2 · ROSSO** | `↑ ↓ ← →` | `Shift` destro | `Invio` | `/` (o `Numpad 0`) | `.` (o `Numpad .`) |
+
+Durante i rigori, il giocatore che tira usa i propri tasti di movimento per mirare e quello che para per spostare il guantone; tiro e tuffo usano il tasto azione della rispettiva squadra.
+
+Su mobile: joystick a sinistra, pulsanti a destra per il giocatore singolo. In due si gioca con la tastiera condivisa.
 
 ## 🛠️ Per sviluppatori (modificare il gioco)
 

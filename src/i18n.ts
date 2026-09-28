@@ -20,6 +20,7 @@ export interface Strings {
   // menu
   badgeMatch: string;
   badgePens: string;
+  tagLocal: string;
   tagA: string;
   tagBlu: string;
   tagB: string;
@@ -27,6 +28,11 @@ export interface Strings {
   tagC: string;
   featGolden: string;
   featPens: string;
+  playerCountTitle: string;
+  playerSolo: string;
+  playerSoloDesc: string;
+  playerDuo: string;
+  playerDuoDesc: string;
   modeMatch: string;
   modeMatchDesc: string;
   modePens: string;
@@ -108,6 +114,7 @@ const it: Strings = {
   language: 'LINGUA',
   badgeMatch: 'PARTITA LAMPO · 90 SECONDI',
   badgePens: 'SERIE DI RIGORI · MORTE SUBITA',
+  tagLocal: 'Sfida un amico sullo stesso schermo: BLU contro ROSSO, in locale.',
   tagA: 'Tre contro tre, ritmo altissimo. Guida la squadra ',
   tagBlu: 'BLU',
   tagB: ', dribbla, passa e trafigli la ',
@@ -115,6 +122,11 @@ const it: Strings = {
   tagC: ' prima che scada il tempo.',
   featGolden: 'Pareggio? Supplementari con golden goal',
   featPens: 'Ancora pari? Calci di rigore!',
+  playerCountTitle: 'GIOCATORI',
+  playerSolo: '1 GIOCATORE',
+  playerSoloDesc: 'contro la CPU',
+  playerDuo: '2 GIOCATORI',
+  playerDuoDesc: 'stessa tastiera',
   modeMatch: 'PARTITA 90s',
   modeMatchDesc: 'poi supplementari e rigori',
   modePens: 'SOLO RIGORI',
@@ -189,6 +201,7 @@ const en: Strings = {
   language: 'LANGUAGE',
   badgeMatch: 'LIGHTNING MATCH · 90 SECONDS',
   badgePens: 'PENALTY SHOOTOUT · SUDDEN DEATH',
+  tagLocal: 'Challenge a friend on the same screen: BLUE vs RED, locally.',
   tagA: 'Three against three, full throttle. Lead the ',
   tagBlu: 'BLUE',
   tagB: ' team — dribble, pass and put it past the ',
@@ -196,6 +209,11 @@ const en: Strings = {
   tagC: ' before time runs out.',
   featGolden: 'Draw? Extra time, golden goal',
   featPens: 'Still level? Penalties!',
+  playerCountTitle: 'PLAYERS',
+  playerSolo: '1 PLAYER',
+  playerSoloDesc: 'vs the CPU',
+  playerDuo: '2 PLAYERS',
+  playerDuoDesc: 'shared keyboard',
   modeMatch: 'MATCH 90s',
   modeMatchDesc: 'then extra time & pens',
   modePens: 'PENS ONLY',
@@ -270,6 +288,7 @@ const de: Strings = {
   language: 'SPRACHE',
   badgeMatch: 'BLITZSPIEL · 90 SEKUNDEN',
   badgePens: 'ELFMETERSCHIESSEN · SUDDEN DEATH',
+  tagLocal: 'Fordere einen Freund auf demselben Bildschirm heraus: BLAU gegen ROT.',
   tagA: 'Drei gegen drei, rasantes Tempo. Führe Team ',
   tagBlu: 'BLAU',
   tagB: ' – drbble, passe und überliste Team ',
@@ -277,6 +296,11 @@ const de: Strings = {
   tagC: ', bevor die Zeit abläuft.',
   featGolden: 'Unentschieden? Verlängerung mit Golden Goal',
   featPens: 'Immer noch Gleichstand? Elfmeterschießen!',
+  playerCountTitle: 'SPIELER',
+  playerSolo: '1 SPIELER',
+  playerSoloDesc: 'gegen die KI',
+  playerDuo: '2 SPIELER',
+  playerDuoDesc: 'eine gemeinsame Tastatur',
   modeMatch: 'SPIEL 90s',
   modeMatchDesc: 'dann Verlängerung & Elfmeter',
   modePens: 'NUR ELFMETER',
@@ -351,6 +375,7 @@ const fr: Strings = {
   language: 'LANGUE',
   badgeMatch: 'MATCH ÉCLAIR · 90 SECONDES',
   badgePens: 'TIRS AU BUT · MORT SUBITE',
+  tagLocal: 'Défie un ami sur le même écran : BLEU contre ROUGE, en local.',
   tagA: 'Trois contre trois, rythme effréné. Mène l’équipe ',
   tagBlu: 'BLEUE',
   tagB: ' : dribble, passe et trompe l’équipe ',
@@ -358,6 +383,11 @@ const fr: Strings = {
   tagC: ' avant la fin du temps réglementaire.',
   featGolden: 'Égalité ? Prolongations, but en or',
   featPens: 'Toujours à égalité ? Tirs au but !',
+  playerCountTitle: 'JOUEURS',
+  playerSolo: '1 JOUEUR',
+  playerSoloDesc: 'contre l’IA',
+  playerDuo: '2 JOUEURS',
+  playerDuoDesc: 'clavier partagé',
   modeMatch: 'MATCH 90s',
   modeMatchDesc: 'puis prolongations et TAB',
   modePens: 'TIRS AU BUT',
@@ -432,6 +462,7 @@ const es: Strings = {
   language: 'IDIOMA',
   badgeMatch: 'PARTIDO RELÁMPAGO · 90 SEGUNDOS',
   badgePens: 'TANDA DE PENALES · MUERTE SÚBITA',
+  tagLocal: 'Desafía a un amigo en la misma pantalla: AZUL contra ROJO.',
   tagA: 'Tres contra tres, ritmo altísimo. Lleva al equipo ',
   tagBlu: 'AZUL',
   tagB: ', regatea, pasa y supera al equipo ',
@@ -439,6 +470,11 @@ const es: Strings = {
   tagC: ' antes de que se acabe el tiempo.',
   featGolden: '¿Empate? Prórroga con gol de oro',
   featPens: '¿Siguen empatados? ¡Tiros penales!',
+  playerCountTitle: 'JUGADORES',
+  playerSolo: '1 JUGADOR',
+  playerSoloDesc: 'contra la CPU',
+  playerDuo: '2 JUGADORES',
+  playerDuoDesc: 'teclado compartido',
   modeMatch: 'PARTIDO 90s',
   modeMatchDesc: 'luego prórroga y penales',
   modePens: 'SOLO PENALES',
@@ -513,6 +549,7 @@ const ar: Strings = {
   language: 'اللغة',
   badgeMatch: 'مباراة خاطفة · ٩٠ ثانية',
   badgePens: 'ركلات الجزاء · الموت المفاجئ',
+  tagLocal: 'تحدَّ صديقاً على الشاشة نفسها: الأزرق ضد الأحمر.',
   tagA: 'ثلاثة ضد ثلاثة، إيقاع سريع جداً. قُد فريق ',
   tagBlu: 'الأزرق',
   tagB: '، مراوغ ومرر وسجّل في مرمى فريق ',
@@ -520,6 +557,11 @@ const ar: Strings = {
   tagC: ' قبل انتهاء الوقت.',
   featGolden: 'تعادل؟ وقت إضافي بهدف ذهبي',
   featPens: 'ما زال التعادل قائماً؟ ركلات جزاء!',
+  playerCountTitle: 'اللاعبون',
+  playerSolo: 'لاعب واحد',
+  playerSoloDesc: 'ضد الذكاء الاصطناعي',
+  playerDuo: 'لاعبان',
+  playerDuoDesc: 'لوحة مفاتيح مشتركة',
   modeMatch: 'مباراة ٩٠ ث',
   modeMatchDesc: 'ثم وقت إضافي وركلات جزاء',
   modePens: 'ركلات جزاء فقط',

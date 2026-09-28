@@ -1,5 +1,5 @@
-import { Play, RotateCcw, Home, Trophy, Frown, Handshake, ChevronRight, Zap, Target, Timer, Languages } from 'lucide-react';
-import type { Difficulty, DecidedBy, GameMode } from '../game/engine';
+import { Play, RotateCcw, Home, Trophy, Frown, Handshake, ChevronRight, Zap, Target, Timer, Languages, User, Users } from 'lucide-react';
+import type { Difficulty, DecidedBy, GameMode, PlayerCount } from '../game/engine';
 import { LANGUAGES, type Language, type Strings } from '../i18n';
 
 interface ScreenProps {
@@ -11,6 +11,8 @@ export function MenuScreen({
   setDifficulty,
   mode,
   setMode,
+  playerCount,
+  setPlayerCount,
   lang,
   setLang,
   onStart,
@@ -20,6 +22,8 @@ export function MenuScreen({
   setDifficulty: (d: Difficulty) => void;
   mode: GameMode;
   setMode: (m: GameMode) => void;
+  playerCount: PlayerCount;
+  setPlayerCount: (count: PlayerCount) => void;
   lang: Language;
   setLang: (l: Language) => void;
   onStart: () => void;
@@ -54,13 +58,54 @@ export function MenuScreen({
         </h1>
 
         <p className="mt-4 max-w-md text-sm sm:text-base text-white/60">
-          {t.tagA}<span className="text-sky-300 font-semibold">{t.tagBlu}</span>{t.tagB}
-          <span className="text-rose-300 font-semibold">{t.tagRossa}</span>{t.tagC}
+          {playerCount === 2 ? (
+            t.tagLocal
+          ) : (
+            <>
+              {t.tagA}<span className="text-sky-300 font-semibold">{t.tagBlu}</span>{t.tagB}
+              <span className="text-rose-300 font-semibold">{t.tagRossa}</span>{t.tagC}
+            </>
+          )}
         </p>
         <div className="mt-3 flex items-center gap-3 text-[11px] text-amber-200/80">
           <span className="flex items-center gap-1.5"><Zap size={12} /> {t.featGolden}</span>
           <span className="text-white/20">•</span>
           <span className="flex items-center gap-1.5"><Target size={12} /> {t.featPens}</span>
+        </div>
+
+        {/* giocatori */}
+        <div className="mt-5 flex flex-col items-center gap-2">
+          <span className="font-display text-[10px] tracking-[0.3em] text-white/40">{t.playerCountTitle}</span>
+          <div className="flex gap-2 sm:gap-3">
+            {[
+              { id: 1 as const, label: t.playerSolo, desc: t.playerSoloDesc, Icon: User },
+              { id: 2 as const, label: t.playerDuo, desc: t.playerDuoDesc, Icon: Users },
+            ].map(({ id, label, desc, Icon }) => {
+              const active = playerCount === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setPlayerCount(id)}
+                  className={`group flex min-w-36 flex-col items-center rounded-2xl border px-5 sm:px-8 py-2.5 transition-all duration-200 ${
+                    active
+                      ? id === 2
+                        ? 'border-rose-300/70 bg-rose-400/15 shadow-[0_0_30px_rgba(251,113,133,0.2)]'
+                        : 'border-sky-300/70 bg-sky-400/15 shadow-[0_0_30px_rgba(56,189,248,0.2)]'
+                      : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10'
+                  }`}
+                >
+                  <span className={`flex items-center gap-2 font-display text-xs tracking-[0.15em] ${
+                    active ? (id === 2 ? 'text-rose-200' : 'text-sky-200') : 'text-white/75'
+                  }`}>
+                    <Icon size={14} /> {label}
+                  </span>
+                  <span className="mt-1 text-[10px] text-white/40">{desc}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* modalità */}
@@ -115,20 +160,35 @@ export function MenuScreen({
           {mode === 'pens' ? t.btnPlayPens : t.btnPlay}
         </button>
 
-        <div className="mt-7 hidden grid-cols-5 gap-2 sm:grid">
-          {[
-            ['WASD · Frecce', t.menuMove],
-            ['Shift', t.menuSprint],
-            ['Spazio', t.menuShoot],
-            ['C', t.menuPass],
-            ['Q · Tab', t.menuSwitch],
-          ].map(([k, v]) => (
-            <div key={k} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-black/35 px-3 py-2.5">
-              <span className="font-display text-[11px] text-sky-200 tracking-wide">{k}</span>
-              <span className="text-[10px] text-white/45">{v}</span>
+        {playerCount === 2 ? (
+          <div className="mt-5 grid w-full max-w-3xl grid-cols-1 gap-2 text-left sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5 rounded-xl border border-sky-300/20 bg-sky-400/5 px-4 py-3 text-[10px] text-white/60">
+              <span className="font-display text-[11px] tracking-widest text-sky-200">P1 · {t.teamBlue}</span>
+              <span><kbd>WASD</kbd> {t.kMove} · <kbd>Shift</kbd> {t.kSprint}</span>
+              <span><kbd>Space</kbd> {t.kShoot} · <kbd>C</kbd> {t.kPass} · <kbd>Q</kbd> {t.kSwitch}</span>
             </div>
-          ))}
-        </div>
+            <div className="flex flex-col gap-1.5 rounded-xl border border-rose-300/20 bg-rose-400/5 px-4 py-3 text-[10px] text-white/60">
+              <span className="font-display text-[11px] tracking-widest text-rose-200">P2 · {t.teamRed}</span>
+              <span><kbd>↑ ↓ ← →</kbd> {t.kMove} · <kbd>RShift</kbd> {t.kSprint}</span>
+              <span><kbd>Enter</kbd> {t.kShoot} · <kbd>/</kbd> {t.kPass} · <kbd>.</kbd> {t.kSwitch}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-7 hidden grid-cols-5 gap-2 sm:grid">
+            {[
+              ['WASD · Frecce', t.menuMove],
+              ['Shift', t.menuSprint],
+              ['Spazio', t.menuShoot],
+              ['C', t.menuPass],
+              ['Q · Tab', t.menuSwitch],
+            ].map(([k, v]) => (
+              <div key={k} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-black/35 px-3 py-2.5">
+                <span className="font-display text-[11px] text-sky-200 tracking-wide">{k}</span>
+                <span className="text-[10px] text-white/45">{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* selezione lingua */}
         <div className="mt-6 flex flex-col items-center gap-2">
@@ -156,7 +216,9 @@ export function MenuScreen({
             })}
           </div>
         </div>
-        <p className="mt-5 text-[11px] text-white/35 sm:hidden">{t.mobileHint}</p>
+        <p className="mt-5 text-[11px] text-white/35 sm:hidden">
+          {playerCount === 2 ? t.playerDuoDesc : t.mobileHint}
+        </p>
       </div>
     </div>
   );
@@ -209,6 +271,7 @@ export function EndScreen({
   pens,
   decidedBy,
   pensOnly,
+  playerCount,
   onRematch,
   onMenu,
   t,
@@ -219,23 +282,31 @@ export function EndScreen({
   pens: [number, number] | null;
   decidedBy: DecidedBy;
   pensOnly: boolean;
+  playerCount: PlayerCount;
   onRematch: () => void;
   onMenu: () => void;
 }) {
-  const win = winner === 0;
+  const blueWinner = winner === 0;
   const draw = winner === -1;
+  const headline = draw
+    ? t.draw
+    : playerCount === 2
+      ? `${blueWinner ? t.teamBlue : t.teamRed} · ${t.win}`
+      : blueWinner
+        ? t.win
+        : t.lose;
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#02040ab8] backdrop-blur-md">
       <div className="menu-stagger flex flex-col items-center text-center px-6">
-        <div className={`mb-4 rounded-full p-4 ${win ? 'bg-sky-400/15 text-sky-300' : draw ? 'bg-white/10 text-white/70' : 'bg-rose-400/15 text-rose-300'}`}>
-          {win ? <Trophy size={40} /> : draw ? <Handshake size={40} /> : <Frown size={40} />}
+        <div className={`mb-4 rounded-full p-4 ${draw ? 'bg-white/10 text-white/70' : blueWinner ? 'bg-sky-400/15 text-sky-300' : 'bg-rose-400/15 text-rose-300'}`}>
+          {draw ? <Handshake size={40} /> : playerCount === 2 || blueWinner ? <Trophy size={40} /> : <Frown size={40} />}
         </div>
         <h2
           className={`font-display text-[clamp(2.6rem,9vw,5.5rem)] leading-none ${
-            win ? 'text-sky-300 glow-sky-strong' : draw ? 'text-white' : 'text-rose-300 glow-rose-strong'
+            draw ? 'text-white' : blueWinner ? 'text-sky-300 glow-sky-strong' : 'text-rose-300 glow-rose-strong'
           }`}
         >
-          {win ? t.win : draw ? t.draw : t.lose}
+          {headline}
         </h2>
         {decidedBy === 'golden' && (
           <p className="mt-2 flex items-center gap-1.5 font-display text-xs tracking-[0.3em] text-amber-300">
