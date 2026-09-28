@@ -1,6 +1,6 @@
 # ⚽ Street Soccer 3v3
 
-Calcio 3 contro 3 che gira interamente nel browser: partite lampo da 90 secondi, **supplementari con golden goal**, **calci di rigore in prima persona** e **6 lingue** (Italiano, English, Deutsch, Français, Español, العربية).
+Calcio con **3 giocatori di movimento più un portiere fisso per squadra**, interamente nel browser: partite lampo da 90 secondi, **supplementari con golden goal**, **calci di rigore in prima persona** e **6 lingue** (Italiano, English, Deutsch, Français, Español, العربية).
 
 ## ▶️ Per giocare SUBITO (senza installare niente)
 
@@ -17,7 +17,7 @@ Funziona anche offline e su smartphone/tablet: serve internet solo per caricare 
 
 ## 🎮 Modalità e comandi
 
-- **PARTITA 90s** — partita completa; in caso di parità: tempi supplementari (golden goal) e poi rigori
+- **PARTITA 90s** — 3 giocatori di movimento per squadra più un portiere fisso; in caso di parità: tempi supplementari (golden goal) e poi rigori
 - **SOLO RIGORI** — direttamente alla serie dal dischetto (meglio di 5 + morte subita)
 - **TORNEO NAZIONALE** — competizione per un giocatore con le 12 nazionali: 4 gruppi da 3, le prime due passano ai quarti, poi semifinali e finale. Le partite della CPU vengono simulate; nella fase a gironi sono ammessi i pareggi, mentre a eliminazione diretta il pareggio porta a supplementari e rigori.
 - **1 GIOCATORE** — una nazionale scelta dal giocatore contro l’IA

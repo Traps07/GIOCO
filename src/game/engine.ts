@@ -53,17 +53,21 @@ const MATCH_TIME = 90;
 const EXTRA_TIME = 30;
 const PEN_ROUNDS = 5;
 const KICK_RANGE = P_R + B_R + 22;
+const GK_R = 23;
+const GK_X = 38;
+const GK_SPEED = 300;
+const FIELD_EDGE_X = GK_X + GK_R + P_R + B_R * 2 + 2;
 
 const FORMATION: { x: number; y: number }[][] = [
   [
-    { x: 80, y: 350 },
-    { x: 330, y: 235 },
-    { x: 330, y: 465 },
+    { x: 205, y: 350 },
+    { x: 380, y: 250 },
+    { x: 380, y: 450 },
   ],
   [
-    { x: W - 80, y: 350 },
-    { x: W - 330, y: 235 },
-    { x: W - 330, y: 465 },
+    { x: W - 205, y: 350 },
+    { x: W - 380, y: 250 },
+    { x: W - 380, y: 450 },
   ],
 ];
 
@@ -105,7 +109,7 @@ class Player {
     this.y = f.y;
     this.tx = f.x;
     this.ty = f.y;
-    this.number = team === 0 ? [1, 7, 10][idx] : [1, 9, 11][idx];
+    this.number = team === 0 ? [4, 7, 10][idx] : [4, 9, 11][idx];
     this.faceX = team === 0 ? 1 : -1;
   }
   reset() {
@@ -119,6 +123,21 @@ class Player {
     this.kickCd = 0;
     this.faceX = this.team === 0 ? 1 : -1;
     this.faceY = 0;
+  }
+}
+
+class FixedGoalkeeper {
+  readonly x: number;
+  y = H / 2;
+  vy = 0;
+
+  constructor(public team: number) {
+    this.x = team === 0 ? GK_X : W - GK_X;
+  }
+
+  reset() {
+    this.y = H / 2;
+    this.vy = 0;
   }
 }
 
@@ -194,6 +213,7 @@ export class GameEngine {
 
   phase: Phase = 'demo';
   private players: Player[] = [];
+  private goalkeepers: FixedGoalkeeper[] = [new FixedGoalkeeper(0), new FixedGoalkeeper(1)];
   private playerCount: PlayerCount = 1;
   private selectedTeams: TeamSelection = [...DEFAULT_TEAMS];
   private controlledIdx: [number, number] = [1, 1];
@@ -385,6 +405,7 @@ export class GameEngine {
     this.fpFx = [];
     this.fpTrail = [];
     this.players.forEach((p) => p.reset());
+    this.goalkeepers.forEach((keeper) => keeper.reset());
     this.newBall();
   }
 
@@ -422,6 +443,7 @@ export class GameEngine {
 
   private kickoff() {
     this.players.forEach((p) => p.reset());
+    this.goalkeepers.forEach((keeper) => keeper.reset());
     this.newBall();
     this.controlledIdx = [1, 1];
     this.countdown = 3.4;
@@ -524,6 +546,7 @@ export class GameEngine {
     this.fpFx = [];
     this.fpTrail = [];
     this.players.forEach((p) => p.reset());
+    this.goalkeepers.forEach((keeper) => keeper.reset());
     this.newBall();
     this.keys.clear();
     this.clearInputQueues();
@@ -821,6 +844,7 @@ export class GameEngine {
       if (this.goalT <= 0) {
         if (this.demo) {
           this.players.forEach((p) => p.reset());
+          this.goalkeepers.forEach((keeper) => keeper.reset());
           this.newBall();
           this.phase = 'demo';
         } else if (this.period === 'extra') {
@@ -885,6 +909,7 @@ export class GameEngine {
 
     for (const p of this.players) this.contactBall(p, dt);
 
+    this.updateGoalkeepers(dt);
     this.updateBall(dt, isDemo);
 
     // dribble magnet
@@ -1003,7 +1028,6 @@ export class GameEngine {
     const ball = this.ball;
     const ownX = this.ownGoalX(p.team);
     const oppX = this.oppGoalX(p.team);
-    const isKeeper = p.idx === 0;
     const opps = this.players.filter((q) => q.team !== p.team);
     const myTeamPossession = ball.lastTouch === p.team;
     const meHas = dist(p.x, p.y, ball.x, ball.y) < P_R + B_R + 3;
@@ -1011,8 +1035,8 @@ export class GameEngine {
     let ty = p.ty;
     let maxS = cfg.speed;
 
-    // chi è il più vicino al pallone nella mia squadra (escluso portiere salvo emergenze)
-    const field = this.players.filter((q) => q.team === p.team && q.idx !== 0);
+    // Tutti e tre i giocatori di movimento partecipano all'azione.
+    const field = this.players.filter((q) => q.team === p.team);
     const sorted = [...field].sort(
       (a, b) => dist(a.x, a.y, ball.x, ball.y) - dist(b.x, b.y, ball.x, ball.y),
     );
@@ -1028,9 +1052,9 @@ export class GameEngine {
       const pressure = Math.min(...opps.map((o) => dist(o.x, o.y, p.x, p.y)));
       const dOwn = dist(p.x, p.y, ownX, H / 2);
 
-      if (p.kickCd <= 0 && p.holdT > cfg.minHold * (isKeeper ? 1.6 : 1)) {
-        if (isKeeper || dOwn < 240) {
-          // rinvio
+      if (p.kickCd <= 0 && p.holdT > cfg.minHold) {
+        if (dOwn < 240) {
+          // spazza via il pallone se riceve pressione vicino alla propria porta
           if (pressure < 120 || p.holdT > 1.6) this.clear(p);
         } else if (dGoal < cfg.shootRange) {
           this.aiShoot(p, cfg);
@@ -1056,20 +1080,6 @@ export class GameEngine {
       tx = ball.x + (dx / dl) * 70 + sideX;
       ty = ball.y + (dy / dl) * 70 + sideY;
       maxS = cfg.speed * 0.92;
-    } else if (isKeeper) {
-      // ---- portiere ----
-      const gx = ownX;
-      const dx = ball.x - gx;
-      const dy = ball.y - H / 2;
-      const d = Math.hypot(dx, dy) || 1;
-      const ballComing =
-        Math.sign(ball.vx) === (p.team === 0 ? -1 : 1) && Math.abs(ball.vx) > 220;
-      let hold = clamp(d * (ballComing ? 0.55 : 0.34), 42, 250);
-      if (d < 170) hold = d; // uscita
-      tx = gx + (dx / d) * hold;
-      tx = p.team === 0 ? clamp(tx, 46, 270) : clamp(tx, W - 270, W - 46);
-      ty = clamp(H / 2 + (dy / d) * hold, H / 2 - 190, H / 2 + 190);
-      maxS = cfg.speed * 1.05;
     } else if (p === chaser && (!myTeamPossession || loose)) {
       // ---- presso il pallone ----
       tx = ball.x + ball.vx * 0.22;
@@ -1080,7 +1090,7 @@ export class GameEngine {
       const gx = ownX;
       const dx = ball.x - gx;
       const dy = ball.y - H / 2;
-      const wob = p.idx === 1 ? -120 : 120;
+      const wob = p.idx === 0 ? 0 : p.idx === 1 ? -120 : 120;
       tx = gx + dx * 0.38;
       ty = H / 2 + dy * 0.55 + wob * 0.4;
       tx = p.team === 0 ? clamp(tx, 90, W * 0.62) : clamp(tx, W * 0.38, W - 90);
@@ -1089,7 +1099,7 @@ export class GameEngine {
       // ---- supporto in attacco ----
       const form = FORMATION[p.team][p.idx];
       const dir = p.team === 0 ? 1 : -1;
-      const spread = p.idx === 1 ? -1 : 1;
+      const spread = p.idx === 0 ? 0 : p.idx === 1 ? -1 : 1;
       const adv = clamp(p.team === 0 ? ball.x - form.x : form.x - ball.x, 0, 260);
       tx = form.x + dir * (60 + adv * 0.5);
       ty = clamp(ball.y + spread * 190, 90, H - 90);
@@ -1098,7 +1108,8 @@ export class GameEngine {
         (q) => q.team === p.team && q !== p && dist(q.x, q.y, ball.x, ball.y) < P_R + B_R + 4,
       );
       if (carrier && dist(tx, ty, carrier.x, carrier.y) < 150) {
-        ty = carrier.y + spread * 220;
+        const supportSide = spread || (carrier.y < H / 2 ? 1 : -1);
+        ty = carrier.y + supportSide * 220;
       }
       ty = clamp(ty, 80, H - 80);
     }
@@ -1131,12 +1142,33 @@ export class GameEngine {
     }
   }
 
+  private updateGoalkeepers(dt: number) {
+    if (dt <= 0) return;
+
+    for (const keeper of this.goalkeepers) {
+      const ballComing = keeper.team === 0 ? this.ball.vx < -80 : this.ball.vx > 80;
+      const crossingTime = ballComing ? (keeper.x - this.ball.x) / this.ball.vx : -1;
+      let targetY = H / 2 + (this.ball.y - H / 2) * 0.18;
+
+      if (crossingTime >= 0 && crossingTime < 1.1) {
+        // Anticipa il tiro solo quando arriva verso la porta, lasciando un breve tempo di reazione.
+        const leadTime = Math.max(0, crossingTime - 0.1);
+        targetY = this.ball.y + this.ball.vy * leadTime;
+      }
+
+      targetY = clamp(targetY, H / 2 - GOAL_HALF + GK_R * 0.55, H / 2 + GOAL_HALF - GK_R * 0.55);
+      const step = clamp(targetY - keeper.y, -GK_SPEED * dt, GK_SPEED * dt);
+      keeper.y += step;
+      keeper.vy = step / dt;
+    }
+  }
+
   private integratePlayer(p: Player, dt: number) {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     p.vx *= Math.exp(-0.4 * dt);
     p.vy *= Math.exp(-0.4 * dt);
-    p.x = clamp(p.x, P_R, W - P_R);
+    p.x = clamp(p.x, FIELD_EDGE_X, W - FIELD_EDGE_X);
     p.y = clamp(p.y, P_R, H - P_R);
   }
 
@@ -1168,6 +1200,10 @@ export class GameEngine {
         }
       }
     }
+    for (const p of this.players) {
+      p.x = clamp(p.x, FIELD_EDGE_X, W - FIELD_EDGE_X);
+      p.y = clamp(p.y, P_R, H - P_R);
+    }
   }
 
   private contactBall(p: Player, dt: number) {
@@ -1196,6 +1232,46 @@ export class GameEngine {
     }
   }
 
+  private contactGoalkeeper(keeper: FixedGoalkeeper, isDemo: boolean) {
+    const ball = this.ball;
+    const dx = ball.x - keeper.x;
+    const dy = ball.y - keeper.y;
+    const d = Math.hypot(dx, dy);
+    const min = GK_R + B_R;
+    if (d >= min) return;
+
+    const faceX = keeper.team === 0 ? 1 : -1;
+    const incoming = keeper.team === 0 ? ball.vx < -20 : ball.vx > 20;
+    const impact = clamp(dy / GK_R, -1, 1);
+    let nx = d > 0.01 ? dx / d : faceX;
+    let ny = d > 0.01 ? dy / d : 0;
+
+    if (incoming) {
+      // La parata respinge sempre il pallone verso il campo, senza poter attraversare il portiere.
+      nx = faceX;
+      ny = impact * 0.45;
+      ball.x = keeper.x + faceX * (min + 0.5);
+      ball.y = keeper.y + dy;
+      ball.vx = faceX * Math.max(190, Math.abs(ball.vx) * 0.58);
+      ball.vy = ball.vy * 0.38 + keeper.vy * 0.35 + impact * 180;
+    } else {
+      ball.x = keeper.x + nx * (min + 0.5);
+      ball.y = keeper.y + ny * (min + 0.5);
+      const relativeVx = ball.vx;
+      const relativeVy = ball.vy - keeper.vy;
+      const approach = relativeVx * nx + relativeVy * ny;
+      if (approach < 0) {
+        ball.vx -= nx * approach * 1.65;
+        ball.vy = keeper.vy + relativeVy - ny * approach * 1.65;
+      }
+    }
+
+    ball.lastTouch = keeper.team;
+    if (!isDemo) this.sfx.block();
+    this.shake = Math.min(this.shake + 2.5, 10);
+    this.spawnKick(ball.x, ball.y, nx, ny, this.teamKit(keeper.team).primary);
+  }
+
   private updateBall(dt: number, isDemo: boolean) {
     const ball = this.ball;
     ball.x += ball.vx * dt;
@@ -1216,6 +1292,8 @@ export class GameEngine {
       ball.y = H - B_R;
       ball.vy = -Math.abs(ball.vy) * 0.62;
     }
+
+    for (const keeper of this.goalkeepers) this.contactGoalkeeper(keeper, isDemo);
 
     const inMouth = Math.abs(ball.y - H / 2) < GOAL_HALF - 4;
 
@@ -2036,6 +2114,12 @@ export class GameEngine {
       ctx.ellipse(p.x + 3, p.y + 7, P_R * 0.95, P_R * 0.5, 0, 0, Math.PI * 2);
       ctx.fill();
     }
+    for (const keeper of this.goalkeepers) {
+      ctx.fillStyle = 'rgba(0,0,0,0.42)';
+      ctx.beginPath();
+      ctx.ellipse(keeper.x + 4, keeper.y + 9, GK_R * 1.05, GK_R * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.beginPath();
     ctx.ellipse(this.ball.x + 2, this.ball.y + 6, B_R, B_R * 0.5, 0, 0, Math.PI * 2);
@@ -2053,6 +2137,7 @@ export class GameEngine {
     }
 
     for (const p of this.players) this.drawPlayer(ctx, p);
+    for (const keeper of this.goalkeepers) this.drawGoalkeeper(ctx, keeper);
     this.drawBall(ctx);
     this.drawParticles(ctx);
 
@@ -2371,6 +2456,56 @@ export class GameEngine {
     ctx.strokeText(String(p.number), p.x, p.y + 0.5);
     ctx.fillStyle = kit.secondary;
     ctx.fillText(String(p.number), p.x, p.y + 0.5);
+    ctx.restore();
+  }
+
+  private drawGoalkeeper(ctx: CanvasRenderingContext2D, keeper: FixedGoalkeeper) {
+    const kit = this.teamKit(keeper.team);
+    const { x, y } = keeper;
+
+    ctx.save();
+    ctx.shadowColor = kit.glow;
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(x, y, GK_R + 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    const grad = ctx.createRadialGradient(x - 6, y - 8, 2, x, y, GK_R + 1);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.28, kit.primary);
+    grad.addColorStop(1, kit.primary);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, GK_R, 0, Math.PI * 2);
+    ctx.fill();
+    this.drawKitPattern(ctx, x, y, GK_R, kit);
+
+    ctx.strokeStyle = 'rgba(2,8,20,0.85)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(x, y, GK_R, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Guanti e numero 1 distinguono il portiere dai tre giocatori di movimento.
+    ctx.fillStyle = '#f8fafc';
+    ctx.strokeStyle = 'rgba(15,23,42,0.85)';
+    ctx.lineWidth = 1.5;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(x + side * GK_R * 0.68, y + 5, 4.5, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.font = '900 14px "Archivo Black", "Arial Black", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    ctx.strokeText('1', x, y + 0.5);
+    ctx.fillStyle = kit.secondary;
+    ctx.fillText('1', x, y + 0.5);
     ctx.restore();
   }
 
