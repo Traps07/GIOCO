@@ -210,6 +210,7 @@ export class GameEngine {
   private goalSide: -1 | 1 = 1;
   private winner = -2;
   private period: Period = 'regular';
+  private allowDraw = false;
   private pens: PensState | null = null;
   private fpFx: FPParticle[] = [];
   private fpTrail: { x: number; y: number; r: number }[] = [];
@@ -379,6 +380,7 @@ export class GameEngine {
     this.timeLeft = MATCH_TIME;
     this.winner = -2;
     this.period = 'regular';
+    this.allowDraw = false;
     this.pens = null;
     this.fpFx = [];
     this.fpTrail = [];
@@ -388,7 +390,7 @@ export class GameEngine {
 
   startMatch(
     diff: Difficulty,
-    mode: GameMode = 'match',
+    mode: GameMode | 'group' = 'match',
     playerCount: PlayerCount = 1,
     teams: TeamSelection = DEFAULT_TEAMS,
   ) {
@@ -406,6 +408,7 @@ export class GameEngine {
     this.lastGoalTeam = -1;
     this.controlledIdx = [1, 1];
     this.period = 'regular';
+    this.allowDraw = mode === 'group';
     this.pens = null;
     this.fpFx = [];
     this.fpTrail = [];
@@ -844,7 +847,7 @@ export class GameEngine {
         this.lastWholeSec = whole;
         if (whole <= 5 && whole > 0) this.sfx.count(false);
         if (whole <= 0) {
-          if (this.period === 'regular' && this.score[0] === this.score[1]) {
+          if (this.period === 'regular' && this.score[0] === this.score[1] && !this.allowDraw) {
             this.startExtraTime();
           } else if (this.period === 'extra') {
             this.startPens();
@@ -2177,6 +2180,13 @@ export class GameEngine {
       ctx.fillStyle = kit.secondary;
       ctx.fillRect(x - r * 0.48, y - r, r * 0.32, r * 2);
       ctx.fillRect(x + r * 0.16, y - r, r * 0.32, r * 2);
+      if (kit.trim) {
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = kit.trim;
+        ctx.fillRect(x - r * 0.7, y - r, r * 0.06, r * 2);
+        ctx.fillRect(x + r * 0.64, y - r, r * 0.06, r * 2);
+        ctx.globalAlpha = 1;
+      }
     } else if (kit.pattern === 'horizontal') {
       ctx.fillStyle = kit.secondary;
       ctx.fillRect(x - r, y - r * 0.28, r * 2, r * 0.56);
@@ -2191,6 +2201,81 @@ export class GameEngine {
       ctx.fillStyle = kit.accent;
       ctx.fillRect(-r * 1.7, r * 0.18, r * 3.4, r * 0.12);
       ctx.restore();
+    } else if (kit.pattern === 'chevron') {
+      ctx.fillStyle = kit.secondary;
+      ctx.beginPath();
+      ctx.moveTo(x - r, y - r * 0.2);
+      ctx.lineTo(x, y + r * 0.2);
+      ctx.lineTo(x + r, y - r * 0.2);
+      ctx.lineTo(x + r, y + r * 0.14);
+      ctx.lineTo(x, y + r * 0.54);
+      ctx.lineTo(x - r, y + r * 0.14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = kit.accent;
+      ctx.beginPath();
+      ctx.moveTo(x - r, y + r * 0.18);
+      ctx.lineTo(x, y + r * 0.54);
+      ctx.lineTo(x + r, y + r * 0.18);
+      ctx.lineTo(x + r, y + r * 0.31);
+      ctx.lineTo(x, y + r * 0.68);
+      ctx.lineTo(x - r, y + r * 0.31);
+      ctx.closePath();
+      ctx.fill();
+      if (kit.trim) {
+        ctx.fillStyle = kit.trim;
+        ctx.beginPath();
+        ctx.moveTo(x - r, y + r * 0.35);
+        ctx.lineTo(x, y + r * 0.69);
+        ctx.lineTo(x + r, y + r * 0.35);
+        ctx.lineTo(x + r, y + r * 0.47);
+        ctx.lineTo(x, y + r * 0.82);
+        ctx.lineTo(x - r, y + r * 0.47);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (kit.pattern === 'pinstripe') {
+      ctx.globalAlpha = 0.42;
+      ctx.fillStyle = kit.secondary;
+      const stripe = Math.max(1.5, r * 0.12);
+      for (let offset = -3; offset <= 3; offset++) {
+        ctx.fillRect(x + offset * r * 0.3, y - r, stripe, r * 2);
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x + r * 0.62, y - r, r * 0.38, r * 2);
+    } else if (kit.pattern === 'waves') {
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = kit.secondary;
+      ctx.lineWidth = Math.max(1.2, r * 0.1);
+      for (let row = -1; row <= 2; row++) {
+        ctx.beginPath();
+        for (let step = 0; step <= 8; step++) {
+          const px = x - r + (step / 8) * r * 2;
+          const py = y + row * r * 0.42 + Math.sin((step / 8) * Math.PI * 2) * r * 0.1;
+          if (step === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    } else if (kit.pattern === 'panels') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r, y - r, r * 0.28, r * 2);
+      ctx.fillRect(x + r * 0.72, y - r, r * 0.28, r * 2);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r * 0.18, y + r * 0.48, r * 0.36, r * 0.13);
+    } else if (kit.pattern === 'tonal') {
+      ctx.globalAlpha = 0.28;
+      ctx.strokeStyle = kit.secondary;
+      ctx.lineWidth = Math.max(1, r * 0.08);
+      for (let offset = -2; offset <= 2; offset++) {
+        ctx.beginPath();
+        ctx.moveTo(x - r, y + offset * r * 0.38);
+        ctx.lineTo(x + r, y + offset * r * 0.38 - r * 0.48);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
     } else if (kit.pattern === 'checks') {
       const cell = Math.max(5, r * 0.42);
       ctx.fillStyle = kit.secondary;

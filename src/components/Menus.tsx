@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Play, RotateCcw, Home, Trophy, Frown, Handshake, ChevronRight, ChevronLeft, Zap, Target, Timer, Languages, User, Users } from 'lucide-react';
 import type { Difficulty, DecidedBy, GameMode, PlayerCount } from '../game/engine';
 import { getNationalTeam, NATIONAL_TEAMS, type NationalTeam, type NationalTeamId, type TeamKit, type TeamSelection } from '../game/teams';
+import { getActiveTournamentMatch, getGroupStandings, type TournamentGroup, type TournamentMatch, type TournamentState } from '../game/tournament';
 import { fmt, LANGUAGES, type Language, type Strings } from '../i18n';
 
 interface ScreenProps {
@@ -11,7 +12,7 @@ interface ScreenProps {
 function kitPatternBackground(kit: TeamKit) {
   switch (kit.pattern) {
     case 'vertical':
-      return `linear-gradient(90deg, ${kit.primary} 0 25%, ${kit.secondary} 25% 42%, ${kit.primary} 42% 58%, ${kit.secondary} 58% 75%, ${kit.primary} 75%)`;
+      return `${kit.trim ? `linear-gradient(90deg, transparent 0 15%, ${kit.trim} 15% 18%, transparent 18% 82%, ${kit.trim} 82% 85%, transparent 85%), ` : ''}linear-gradient(90deg, ${kit.primary} 0 25%, ${kit.secondary} 25% 42%, ${kit.primary} 42% 58%, ${kit.secondary} 58% 75%, ${kit.primary} 75%)`;
     case 'horizontal':
       return `linear-gradient(180deg, ${kit.primary} 0 34%, ${kit.secondary} 34% 58%, ${kit.accent} 58% 66%, ${kit.primary} 66%)`;
     case 'sash':
@@ -22,6 +23,16 @@ function kitPatternBackground(kit: TeamKit) {
       return `linear-gradient(90deg, transparent 0 43%, ${kit.secondary} 43% 57%, transparent 57%), linear-gradient(0deg, transparent 0 41%, ${kit.secondary} 41% 59%, transparent 59%)`;
     case 'center':
       return `linear-gradient(90deg, transparent 0 43%, ${kit.secondary} 43% 57%, transparent 57%), radial-gradient(circle at 50% 50%, ${kit.accent} 0 15%, transparent 16%)`;
+    case 'chevron':
+      return `linear-gradient(135deg, transparent 0 39%, ${kit.secondary} 40% 47%, transparent 48%), linear-gradient(45deg, transparent 0 39%, ${kit.secondary} 40% 47%, transparent 48%), linear-gradient(135deg, transparent 0 54%, ${kit.accent} 55% 59%, transparent 60%), linear-gradient(135deg, transparent 0 63%, ${kit.trim ?? kit.accent} 64% 67%, transparent 68%)`;
+    case 'pinstripe':
+      return `repeating-linear-gradient(90deg, transparent 0 7px, ${kit.secondary} 7px 9px), linear-gradient(90deg, ${kit.primary} 0 80%, ${kit.accent} 80% 100%)`;
+    case 'waves':
+      return `repeating-radial-gradient(ellipse at 50% 130%, transparent 0 7px, ${kit.secondary} 8px 10px, transparent 11px 16px), linear-gradient(180deg, ${kit.primary}, ${kit.primary})`;
+    case 'panels':
+      return `linear-gradient(90deg, ${kit.secondary} 0 15%, transparent 15% 85%, ${kit.secondary} 85%), linear-gradient(0deg, transparent 0 82%, ${kit.accent} 82% 100%)`;
+    case 'tonal':
+      return `repeating-linear-gradient(135deg, ${kit.secondary}44 0 2px, transparent 2px 9px), linear-gradient(${kit.primary}, ${kit.primary})`;
   }
 }
 
@@ -52,6 +63,7 @@ export function MenuScreen({
   lang,
   setLang,
   onStart,
+  onTournament,
   t,
 }: ScreenProps & {
   difficulty: Difficulty;
@@ -64,6 +76,7 @@ export function MenuScreen({
   lang: Language;
   setLang: (l: Language) => void;
   onStart: () => void;
+  onTournament: () => void;
 }) {
   const DIFF_INFO: { id: Difficulty; label: string; desc: string }[] = [
     { id: 'easy', label: t.diffEasy, desc: t.diffEasyDesc },
@@ -204,6 +217,16 @@ export function MenuScreen({
         >
           <Play size={22} className="fill-current" />
           {mode === 'pens' ? t.btnPlayPens : t.btnPlay}
+        </button>
+        <button
+          onClick={onTournament}
+          className="mt-2 flex w-full max-w-xs items-center justify-center gap-3 rounded-2xl border border-amber-300/35 bg-amber-300/10 px-5 py-2.5 text-left text-amber-100 transition hover:border-amber-200/70 hover:bg-amber-300/15"
+        >
+          <Trophy size={18} className="shrink-0 text-amber-300" />
+          <span className="flex flex-col">
+            <span className="font-display text-xs tracking-[0.16em]">{t.tournamentButton}</span>
+            <span className="mt-0.5 text-[9px] text-white/45">{t.tournamentButtonDesc}</span>
+          </span>
         </button>
 
         {playerCount === 2 ? (
@@ -405,6 +428,284 @@ export function TeamSelectScreen({
   );
 }
 
+export function TournamentSetupScreen({ initialTeam, lang, onBack, onStart, t }: ScreenProps & {
+  initialTeam: NationalTeamId;
+  lang: Language;
+  onBack: () => void;
+  onStart: (team: NationalTeamId) => void;
+}) {
+  const [selectedTeam, setSelectedTeam] = useState<NationalTeamId>(initialTeam);
+
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col items-center overflow-y-auto bg-gradient-to-b from-[#02040ae8] via-[#02040acb] to-[#02040af2] px-4 py-6 backdrop-blur-md sm:px-6">
+      <div className="my-auto flex w-full max-w-5xl flex-col items-center text-center">
+        <div className="mb-5 flex w-full items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white/75 transition hover:bg-white/10 hover:text-white"
+          >
+            <ChevronLeft size={16} /> {t.btnBack}
+          </button>
+          <div className="flex-1 text-center">
+            <h2 className="font-display text-[clamp(1.7rem,5vw,3.2rem)] leading-tight text-white">{t.tournamentTitle}</h2>
+            <p className="mx-auto mt-1 max-w-2xl text-[11px] text-white/55 sm:text-sm">{t.tournamentSubtitle}</p>
+          </div>
+          <div className="w-[84px] shrink-0" />
+        </div>
+
+        <div className="mb-5 flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-300/10 px-4 py-2 text-[10px] text-amber-100/80 sm:text-xs">
+          <Trophy size={15} className="shrink-0 text-amber-300" />
+          <span>{t.tournamentFormat}</span>
+        </div>
+        <p className="mb-3 font-display text-[10px] tracking-[0.3em] text-white/45">{t.tournamentSelectTeam}</p>
+        <div className="grid w-full grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+          {NATIONAL_TEAMS.map((team) => {
+            const active = selectedTeam === team.id;
+            return (
+              <button
+                key={team.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setSelectedTeam(team.id)}
+                className="flex min-h-[112px] flex-col items-center justify-between rounded-2xl border bg-black/45 p-2.5 transition hover:-translate-y-0.5 hover:bg-white/10 sm:min-h-[126px] sm:p-3"
+                style={{
+                  borderColor: active ? `${team.kit.primary}dd` : 'rgba(255,255,255,0.10)',
+                  backgroundColor: active ? `${team.kit.primary}26` : undefined,
+                  boxShadow: active ? `0 0 24px ${team.kit.glow}` : 'none',
+                }}
+              >
+                <span className="flex w-full items-center justify-between">
+                  <span className="text-xl leading-none">{team.flag}</span>
+                  <KitPreview team={team} className="h-10 w-8" />
+                </span>
+                <span className="mt-1 line-clamp-2 w-full text-center text-[10px] font-semibold text-white/85 sm:text-xs">{team.names[lang]}</span>
+                {active && <span className="font-display text-[8px] tracking-widest text-amber-200">P1</span>}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-5 flex w-full flex-col-reverse justify-center gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-7 py-3 font-display text-xs tracking-[0.15em] text-white/80 transition hover:bg-white/10"
+          >
+            <ChevronLeft size={16} /> {t.btnBack}
+          </button>
+          <button
+            type="button"
+            onClick={() => onStart(selectedTeam)}
+            className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-300 to-yellow-200 px-8 py-3 font-display text-sm tracking-[0.15em] text-[#251805] transition hover:scale-[1.03] active:scale-95"
+          >
+            <Play size={18} className="fill-current" /> {t.tournamentStart}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TournamentMatchCard({ match, activeMatchId, playerTeam, lang, t }: {
+  match: TournamentMatch | null;
+  activeMatchId: string | null;
+  playerTeam: NationalTeamId;
+  lang: Language;
+  t: Strings;
+}) {
+  if (!match) {
+    return (
+      <div className="flex min-h-16 items-center justify-center rounded-xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-[10px] text-white/35">
+        {t.tournamentPending}
+      </div>
+    );
+  }
+  const home = getNationalTeam(match.home);
+  const away = getNationalTeam(match.away);
+  const active = match.id === activeMatchId;
+  const homeWon = match.winner === match.home;
+  const awayWon = match.winner === match.away;
+  return (
+    <div className={`rounded-xl border px-3 py-2 ${active ? 'border-amber-300/55 bg-amber-300/10 shadow-[0_0_18px_rgba(251,191,36,0.14)]' : 'border-white/8 bg-black/30'}`}>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className={`min-w-0 flex-1 truncate text-left text-[10px] ${homeWon ? 'font-bold text-white' : homeWon === false && match.winner ? 'text-white/45' : 'text-white/75'}`} dir="auto">
+          {home.flag} {home.names[lang]}
+        </span>
+        <span className={`shrink-0 font-display text-xs tabular-nums ${match.score ? 'text-white' : 'text-white/30'}`}>
+          {match.score ? `${match.score[0]}–${match.score[1]}` : 'VS'}
+        </span>
+        <span className={`min-w-0 flex-1 truncate text-right text-[10px] ${awayWon ? 'font-bold text-white' : awayWon === false && match.winner ? 'text-white/45' : 'text-white/75'}`} dir="auto">
+          {away.flag} {away.names[lang]}
+        </span>
+      </div>
+      {match.pens && (
+        <div className="mt-1 text-center font-display text-[8px] tracking-wider text-amber-200/70">
+          PK {match.pens[0]}–{match.pens[1]}
+        </div>
+      )}
+      {active && (
+        <div className="mt-1 text-center font-display text-[8px] tracking-[0.18em] text-amber-200">
+          {getNationalTeam(playerTeam).flag} P1
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TournamentBracket({ tournament, lang, t }: { tournament: TournamentState; lang: Language; t: Strings }) {
+  const rounds: { title: string; matches: (TournamentMatch | null)[] }[] = [
+    { title: t.tournamentStageQuarterfinals, matches: tournament.quarterfinals.length ? tournament.quarterfinals : [null, null, null, null] },
+    { title: t.tournamentStageSemifinals, matches: tournament.semifinals.length ? tournament.semifinals : [null, null] },
+    { title: t.tournamentStageFinal, matches: [tournament.final] },
+  ];
+  return (
+    <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-3">
+      {rounds.map((round) => (
+        <section key={round.title} className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/30 p-3">
+          <h3 className="text-center font-display text-[9px] tracking-[0.22em] text-amber-200/80">{round.title}</h3>
+          <div className="flex flex-col gap-2">
+            {round.matches.map((match, index) => (
+              <TournamentMatchCard
+                key={match?.id ?? `${round.title}-${index}`}
+                match={match}
+                activeMatchId={tournament.activeMatchId}
+                playerTeam={tournament.playerTeam}
+                lang={lang}
+                t={t}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+export function TournamentScreen({ tournament, lang, onPlayNext, onNewTournament, onMenu, t }: ScreenProps & {
+  tournament: TournamentState;
+  lang: Language;
+  onPlayNext: () => void;
+  onNewTournament: () => void;
+  onMenu: () => void;
+}) {
+  const activeMatch = getActiveTournamentMatch(tournament);
+  const opponentId = activeMatch
+    ? activeMatch.home === tournament.playerTeam ? activeMatch.away : activeMatch.home
+    : null;
+  const opponent = opponentId ? getNationalTeam(opponentId) : null;
+  const playerTeam = getNationalTeam(tournament.playerTeam);
+  const stageLabel = tournament.stage === 'groups'
+    ? t.tournamentStageGroups
+    : tournament.stage === 'quarterfinals'
+      ? t.tournamentStageQuarterfinals
+      : tournament.stage === 'semifinals'
+        ? t.tournamentStageSemifinals
+        : tournament.stage === 'final'
+          ? t.tournamentStageFinal
+          : t.tournamentStageComplete;
+  const champion = tournament.champion ? getNationalTeam(tournament.champion) : null;
+
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col items-center overflow-y-auto bg-gradient-to-b from-[#02040ae8] via-[#02040acb] to-[#02040af2] px-4 py-5 backdrop-blur-md sm:px-6">
+      <div className="my-auto flex w-full max-w-6xl flex-col items-center text-center">
+        <div className="mb-4 flex w-full items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onMenu}
+            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white/75 transition hover:bg-white/10 hover:text-white"
+          >
+            <ChevronLeft size={16} /> {t.btnMenu}
+          </button>
+          <div className="flex-1 text-center">
+            <h2 className="font-display text-[clamp(1.6rem,5vw,3rem)] leading-tight text-white">{t.tournamentTitle}</h2>
+            <p className="mt-1 font-display text-[10px] tracking-[0.2em] text-amber-200/80">{stageLabel}</p>
+          </div>
+          <div className="flex w-[84px] shrink-0 justify-end text-xl">{playerTeam.flag}</div>
+        </div>
+
+        {tournament.stage === 'groups' ? (
+          <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {tournament.groups.map((group: TournamentGroup) => {
+              const standings = getGroupStandings(group);
+              return (
+                <section key={group.id} className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/30 p-3 text-left">
+                  <h3 className="font-display text-center text-[10px] tracking-[0.22em] text-amber-200/80">{fmt(t.tournamentGroupLabel, { group: group.id })}</h3>
+                  <div className="overflow-hidden rounded-xl border border-white/8 bg-black/25">
+                    <div className="grid grid-cols-[minmax(0,1fr)_26px_32px_32px] gap-1 border-b border-white/10 px-2 py-1.5 font-display text-[8px] text-white/35">
+                      <span>{t.tournamentTeam}</span><span className="text-center">{t.tournamentPlayed}</span><span className="text-center">{t.tournamentPoints}</span><span className="text-center">{t.tournamentGoalDiff}</span>
+                    </div>
+                    {standings.map((standing, index) => {
+                      const team = getNationalTeam(standing.team);
+                      const goalDiff = standing.goalsFor - standing.goalsAgainst;
+                      const isPlayer = standing.team === tournament.playerTeam;
+                      return (
+                        <div key={standing.team} className={`grid grid-cols-[minmax(0,1fr)_26px_32px_32px] items-center gap-1 px-2 py-1.5 text-[9px] ${index < 2 ? 'bg-emerald-300/[0.04]' : ''}`}>
+                          <span className={`min-w-0 truncate ${isPlayer ? 'font-bold text-amber-100' : 'text-white/75'}`} dir="auto">{team.flag} {team.names[lang]}</span>
+                          <span className="text-center tabular-nums text-white/45">{standing.played}</span>
+                          <span className="text-center tabular-nums font-bold text-white/85">{standing.points}</span>
+                          <span className="text-center tabular-nums text-white/45">{goalDiff > 0 ? `+${goalDiff}` : goalDiff}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    {group.matches.map((match) => (
+                      <TournamentMatchCard
+                        key={match.id}
+                        match={match}
+                        activeMatchId={tournament.activeMatchId}
+                        playerTeam={tournament.playerTeam}
+                        lang={lang}
+                        t={t}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-center text-[8px] text-white/35">{t.tournamentStandings}</span>
+                </section>
+              );
+            })}
+          </div>
+        ) : (
+          <TournamentBracket tournament={tournament} lang={lang} t={t} />
+        )}
+
+        {champion && (
+          <div className="mt-4 flex flex-col items-center gap-1 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-6 py-3 shadow-[0_0_26px_rgba(251,191,36,0.12)]">
+            <span className="flex items-center gap-2 font-display text-[10px] tracking-[0.25em] text-amber-200"><Trophy size={14} /> {tournament.eliminated ? t.tournamentStageComplete : t.tournamentChampion}</span>
+            <span className="font-display text-lg text-white" dir="auto">{champion.flag} {champion.names[lang]}</span>
+            {tournament.eliminated && <span className="max-w-xl text-[10px] text-white/50">{t.tournamentEliminated}</span>}
+          </div>
+        )}
+
+        <div className="mt-4 flex w-full flex-col items-center justify-center gap-2 sm:flex-row">
+          {activeMatch && opponent && (
+            <button
+              type="button"
+              onClick={onPlayNext}
+              className="flex w-full max-w-md items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-amber-300 to-yellow-200 px-7 py-3 font-display text-xs tracking-[0.15em] text-[#251805] transition hover:scale-[1.02] active:scale-95"
+            >
+              <Play size={16} className="fill-current" />
+              <span className="flex flex-col items-start">
+                <span>{t.tournamentPlayNext}</span>
+                <span className="mt-0.5 text-[10px] font-semibold tracking-normal">{playerTeam.flag} {playerTeam.names[lang]} · {opponent.flag} {opponent.names[lang]}</span>
+              </span>
+            </button>
+          )}
+          {tournament.stage === 'complete' && (
+            <button
+              type="button"
+              onClick={onNewTournament}
+              className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-300 to-yellow-200 px-7 py-3 font-display text-xs tracking-[0.15em] text-[#251805] transition hover:scale-[1.02] active:scale-95"
+            >
+              <RotateCcw size={16} /> {t.tournamentNew}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PauseScreen({
   onResume,
   onRestart,
@@ -456,6 +757,7 @@ export function EndScreen({
   teams,
   lang,
   onRematch,
+  rematchLabel,
   onMenu,
   t,
 }: ScreenProps & {
@@ -469,6 +771,7 @@ export function EndScreen({
   teams: TeamSelection;
   lang: Language;
   onRematch: () => void;
+  rematchLabel?: string;
   onMenu: () => void;
 }) {
   const homeWinner = winner === 0;
@@ -538,7 +841,7 @@ export function EndScreen({
             onClick={onRematch}
             className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-400 to-cyan-300 px-8 py-3.5 font-display text-sm tracking-[0.15em] text-[#031524] transition hover:scale-[1.03] active:scale-95"
           >
-            <RotateCcw size={17} /> {t.btnRematch}
+            <RotateCcw size={17} /> {rematchLabel ?? t.btnRematch}
           </button>
           <button
             onClick={onMenu}

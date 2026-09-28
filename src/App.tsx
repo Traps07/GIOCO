@@ -2,8 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameEngine, type Difficulty, type GameMode, type PlayerCount, type Snapshot } from './game/engine';
 import HUD from './components/HUD';
 import TouchControls from './components/TouchControls';
-import { MenuScreen, TeamSelectScreen, PauseScreen, EndScreen } from './components/Menus';
+import { MenuScreen, TeamSelectScreen, TournamentSetupScreen, TournamentScreen, PauseScreen, EndScreen } from './components/Menus';
 import { DEFAULT_TEAMS, type NationalTeamId, type TeamSelection } from './game/teams';
+import {
+  createTournament,
+  getActiveTournamentMatch,
+  recordTournamentResult,
+  type TournamentState,
+} from './game/tournament';
 import { STRINGS, isRTL, type Language } from './i18n';
 
 const LANG_KEY = 'ss3v3-lang';
@@ -19,7 +25,7 @@ function loadLang(): Language {
   return nav && nav in STRINGS ? (nav as Language) : 'it';
 }
 
-type Screen = 'menu' | 'teams' | 'playing' | 'paused' | 'over';
+type Screen = 'menu' | 'teams' | 'tournamentSetup' | 'tournament' | 'playing' | 'paused' | 'over';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -33,6 +39,8 @@ export default function App() {
   const [mode, setMode] = useState<GameMode>('match');
   const [playerCount, setPlayerCount] = useState<PlayerCount>(1);
   const [teams, setTeams] = useState<TeamSelection>([...DEFAULT_TEAMS]);
+  const [tournament, setTournament] = useState<TournamentState | null>(null);
+  const tournamentRef = useRef<TournamentState | null>(null);
   const [lang, setLangState] = useState<Language>(loadLang);
   const t = STRINGS[lang];
   const tRef = useRef(t);
@@ -108,6 +116,22 @@ export default function App() {
           pens: e.pens,
           decidedBy: e.decidedBy,
         };
+        const cup = tournamentRef.current;
+        const fixture = cup ? getActiveTournamentMatch(cup) : null;
+        if (cup && fixture) {
+          const playerIsHome = fixture.home === cup.playerTeam;
+          const opponent = playerIsHome ? fixture.away : fixture.home;
+          const fixtureScore: [number, number] = playerIsHome ? e.score : [e.score[1], e.score[0]];
+          const fixturePens: [number, number] | null = !e.pens
+            ? null
+            : playerIsHome
+              ? e.pens
+              : [e.pens[1], e.pens[0]];
+          const winnerTeam = e.winner < 0 ? null : e.winner === 0 ? cup.playerTeam : opponent;
+          const nextCup = recordTournamentResult(cup, fixtureScore, winnerTeam, fixturePens);
+          tournamentRef.current = nextCup;
+          setTournament(nextCup);
+        }
         endTimer.current = window.setTimeout(() => {
           setResult(res);
           setScreen('over');
@@ -160,6 +184,45 @@ export default function App() {
   }, [difficulty, mode, playerCount, teams]);
 
   const openTeamSelect = useCallback(() => setScreen('teams'), []);
+  const openTournamentSetup = useCallback(() => setScreen('tournamentSetup'), []);
+  const beginTournament = useCallback((playerTeam: NationalTeamId) => {
+    const nextCup = createTournament(playerTeam);
+    tournamentRef.current = nextCup;
+    setTournament(nextCup);
+    setResult(null);
+    setGoalBanner(null);
+    setEventBanner(null);
+    setScreen('tournament');
+  }, []);
+  const startTournamentMatch = useCallback(() => {
+    const cup = tournamentRef.current;
+    const fixture = cup ? getActiveTournamentMatch(cup) : null;
+    const engine = engineRef.current;
+    if (!cup || !fixture || !engine) return;
+    const opponent = fixture.home === cup.playerTeam ? fixture.away : fixture.home;
+    const matchTeams: TeamSelection = [cup.playerTeam, opponent];
+    const matchMode = fixture.round === 'group' ? 'group' : 'match';
+    setTeams(matchTeams);
+    setPlayerCount(1);
+    engine.unlockAudio();
+    engine.startMatch(difficulty, matchMode, 1, matchTeams);
+    engine.inputEnabled = true;
+    engine.setPaused(false);
+    setResult(null);
+    setGoalBanner(null);
+    setEventBanner(null);
+    setScreen('playing');
+  }, [difficulty]);
+  const continueTournament = useCallback(() => {
+    setResult(null);
+    setScreen('tournament');
+  }, []);
+  const newTournament = useCallback(() => {
+    tournamentRef.current = null;
+    setTournament(null);
+    setResult(null);
+    setScreen('tournamentSetup');
+  }, []);
   const backToMenu = useCallback(() => setScreen('menu'), []);
   const chooseTeam = useCallback((side: 0 | 1, teamId: NationalTeamId) => {
     setTeams((current) => {
@@ -192,6 +255,8 @@ export default function App() {
     engine.inputEnabled = false;
     engine.setPaused(false);
     engine.startDemo();
+    tournamentRef.current = null;
+    setTournament(null);
     setGoalBanner(null);
     setEventBanner(null);
     setResult(null);
@@ -249,6 +314,26 @@ export default function App() {
           lang={lang}
           setLang={setLang}
           onStart={openTeamSelect}
+          onTournament={openTournamentSetup}
+          t={t}
+        />
+      )}
+      {screen === 'tournamentSetup' && (
+        <TournamentSetupScreen
+          initialTeam={tournament?.playerTeam ?? teams[0]}
+          lang={lang}
+          onBack={backToMenu}
+          onStart={beginTournament}
+          t={t}
+        />
+      )}
+      {screen === 'tournament' && tournament && (
+        <TournamentScreen
+          tournament={tournament}
+          lang={lang}
+          onPlayNext={startTournamentMatch}
+          onNewTournament={newTournament}
+          onMenu={toMenu}
           t={t}
         />
       )}
@@ -265,7 +350,12 @@ export default function App() {
         />
       )}
       {screen === 'paused' && (
-        <PauseScreen onResume={resumeGame} onRestart={startGame} onMenu={toMenu} t={t} />
+        <PauseScreen
+          onResume={resumeGame}
+          onRestart={tournament ? startTournamentMatch : startGame}
+          onMenu={toMenu}
+          t={t}
+        />
       )}
       {screen === 'over' && result && (
         <EndScreen
@@ -274,11 +364,12 @@ export default function App() {
           shots={result.shots}
           pens={result.pens}
           decidedBy={result.decidedBy}
-          pensOnly={mode === 'pens'}
-          playerCount={playerCount}
+          pensOnly={!tournament && mode === 'pens'}
+          playerCount={tournament ? 1 : playerCount}
           teams={teams}
           lang={lang}
-          onRematch={startGame}
+          onRematch={tournament ? continueTournament : startGame}
+          rematchLabel={tournament ? t.tournamentBackToBracket : undefined}
           onMenu={toMenu}
           t={t}
         />

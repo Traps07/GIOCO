@@ -19,9 +19,10 @@ Funziona anche offline e su smartphone/tablet: serve internet solo per caricare 
 
 - **PARTITA 90s** — partita completa; in caso di parità: tempi supplementari (golden goal) e poi rigori
 - **SOLO RIGORI** — direttamente alla serie dal dischetto (meglio di 5 + morte subita)
+- **TORNEO NAZIONALE** — competizione per un giocatore con le 12 nazionali: 4 gruppi da 3, le prime due passano ai quarti, poi semifinali e finale. Le partite della CPU vengono simulate; nella fase a gironi sono ammessi i pareggi, mentre a eliminazione diretta il pareggio porta a supplementari e rigori.
 - **1 GIOCATORE** — una nazionale scelta dal giocatore contro l’IA
 - **2 GIOCATORI IN LOCALE** — due nazionali sullo stesso schermo e con una tastiera condivisa; disponibili sia partita completa sia solo rigori
-- Prima di giocare si apre la **selezione squadre**: scegli una nazionale per ciascun lato. Sono disponibili Italia, Francia, Inghilterra, Spagna, Germania, Portogallo, Paesi Bassi, Brasile, Argentina, Croazia, Giappone e Marocco. Divise, colori e nomi sul tabellone si aggiornano in base alla scelta (predefinite: Italia e Francia).
+- Prima di giocare si apre la **selezione squadre**: scegli una nazionale per ciascun lato. Sono disponibili Italia, Francia, Inghilterra, Spagna, Germania, Portogallo, Paesi Bassi, Brasile, Argentina, Croazia, Giappone e Marocco. Divise, colori e nomi sul tabellone si aggiornano in base alla scelta (predefinite: Italia e Francia); le maglie sono reinterpretazioni stilizzate ispirate alle palette e ai motivi dei kit del Mondiale 2026.
 - Difficoltà: FACILE / NORMALE / DIFFICILE · Selettore lingua nel menu
 
 In modalità **1 giocatore**:

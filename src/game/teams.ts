@@ -1,11 +1,23 @@
 import type { Language } from '../i18n';
 
-export type KitPattern = 'vertical' | 'horizontal' | 'sash' | 'checks' | 'cross' | 'center';
+export type KitPattern =
+  | 'vertical'
+  | 'horizontal'
+  | 'sash'
+  | 'checks'
+  | 'cross'
+  | 'center'
+  | 'chevron'
+  | 'pinstripe'
+  | 'waves'
+  | 'panels'
+  | 'tonal';
 
 export interface TeamKit {
   primary: string;
   secondary: string;
   accent: string;
+  trim?: string;
   glow: string;
   pattern: KitPattern;
 }
@@ -35,78 +47,80 @@ export type TeamSelection = [NationalTeamId, NationalTeamId];
 
 export const DEFAULT_TEAMS: TeamSelection = ['italy', 'france'];
 
+// Tavolozze e motivi reinterpretano in modo stilizzato le divise casalinghe del ciclo Mondiale 2026:
+// colori nazionali riconoscibili e dettagli ispirati, senza riprodurre stemmi o grafiche ufficiali.
 export const NATIONAL_TEAMS: readonly NationalTeam[] = [
   {
     id: 'italy',
     flag: '🇮🇹',
     names: { it: 'Italia', en: 'Italy', de: 'Italien', fr: 'Italie', es: 'Italia', ar: 'إيطاليا' },
-    kit: { primary: '#1261A8', secondary: '#F8FAFC', accent: '#159357', glow: 'rgba(18,97,168,0.78)', pattern: 'vertical' },
+    kit: { primary: '#145A96', secondary: '#DCE8F3', accent: '#D7B56D', glow: 'rgba(20,90,150,0.82)', pattern: 'chevron' },
   },
   {
     id: 'france',
     flag: '🇫🇷',
     names: { it: 'Francia', en: 'France', de: 'Frankreich', fr: 'France', es: 'Francia', ar: 'فرنسا' },
-    kit: { primary: '#182C50', secondary: '#F8FAFC', accent: '#E23D4B', glow: 'rgba(24,44,80,0.8)', pattern: 'horizontal' },
+    kit: { primary: '#17294F', secondary: '#52658B', accent: '#F0F2F6', glow: 'rgba(23,41,79,0.84)', pattern: 'tonal' },
   },
   {
     id: 'england',
     flag: '🇬🇧',
     names: { it: 'Inghilterra', en: 'England', de: 'England', fr: 'Angleterre', es: 'Inglaterra', ar: 'إنجلترا' },
-    kit: { primary: '#F5F7FA', secondary: '#15325B', accent: '#C92A3B', glow: 'rgba(210,225,244,0.9)', pattern: 'cross' },
+    kit: { primary: '#F7F8FA', secondary: '#D5DCE6', accent: '#C92C3D', glow: 'rgba(218,228,241,0.92)', pattern: 'tonal' },
   },
   {
     id: 'spain',
     flag: '🇪🇸',
     names: { it: 'Spagna', en: 'Spain', de: 'Spanien', fr: 'Espagne', es: 'España', ar: 'إسبانيا' },
-    kit: { primary: '#C92735', secondary: '#F5C744', accent: '#8E1B2A', glow: 'rgba(201,39,53,0.8)', pattern: 'horizontal' },
+    kit: { primary: '#B91F34', secondary: '#E9BC43', accent: '#1C3154', glow: 'rgba(185,31,52,0.84)', pattern: 'pinstripe' },
   },
   {
     id: 'germany',
     flag: '🇩🇪',
     names: { it: 'Germania', en: 'Germany', de: 'Deutschland', fr: 'Allemagne', es: 'Alemania', ar: 'ألمانيا' },
-    kit: { primary: '#F4F3EE', secondary: '#151515', accent: '#D52D3C', glow: 'rgba(235,235,225,0.9)', pattern: 'sash' },
+    kit: { primary: '#F5F5F1', secondary: '#191919', accent: '#D7B33F', trim: '#D3263D', glow: 'rgba(232,232,222,0.92)', pattern: 'chevron' },
   },
   {
     id: 'portugal',
     flag: '🇵🇹',
     names: { it: 'Portogallo', en: 'Portugal', de: 'Portugal', fr: 'Portugal', es: 'Portugal', ar: 'البرتغال' },
-    kit: { primary: '#B91836', secondary: '#087A4A', accent: '#F2C94C', glow: 'rgba(185,24,54,0.8)', pattern: 'sash' },
+    kit: { primary: '#B81736', secondary: '#08784B', accent: '#E9C348', glow: 'rgba(184,23,54,0.84)', pattern: 'waves' },
   },
   {
     id: 'netherlands',
     flag: '🇳🇱',
     names: { it: 'Paesi Bassi', en: 'Netherlands', de: 'Niederlande', fr: 'Pays-Bas', es: 'Países Bajos', ar: 'هولندا' },
-    kit: { primary: '#EF7628', secondary: '#16385F', accent: '#F7F7F5', glow: 'rgba(239,118,40,0.8)', pattern: 'horizontal' },
+    kit: { primary: '#EF741F', secondary: '#17191E', accent: '#F4F1E9', glow: 'rgba(239,116,31,0.84)', pattern: 'panels' },
   },
   {
     id: 'brazil',
     flag: '🇧🇷',
     names: { it: 'Brasile', en: 'Brazil', de: 'Brasilien', fr: 'Brésil', es: 'Brasil', ar: 'البرازيل' },
-    kit: { primary: '#F5D52D', secondary: '#13884D', accent: '#1D5C9C', glow: 'rgba(245,213,45,0.85)', pattern: 'cross' },
+    kit: { primary: '#F4D21C', secondary: '#12834A', accent: '#2054A2', glow: 'rgba(244,210,28,0.86)', pattern: 'tonal' },
   },
   {
     id: 'argentina',
     flag: '🇦🇷',
     names: { it: 'Argentina', en: 'Argentina', de: 'Argentinien', fr: 'Argentine', es: 'Argentina', ar: 'الأرجنتين' },
-    kit: { primary: '#73C9E8', secondary: '#F9FBFC', accent: '#244987', glow: 'rgba(115,201,232,0.82)', pattern: 'vertical' },
+    kit: { primary: '#71C3E2', secondary: '#F7FAFC', accent: '#D4B45B', trim: '#315487', glow: 'rgba(113,195,226,0.84)', pattern: 'vertical' },
   },
   {
     id: 'croatia',
     flag: '🇭🇷',
     names: { it: 'Croazia', en: 'Croatia', de: 'Kroatien', fr: 'Croatie', es: 'Croacia', ar: 'كرواتيا' },
-    kit: { primary: '#F5F6F8', secondary: '#D3263D', accent: '#174A82', glow: 'rgba(230,235,245,0.9)', pattern: 'checks' },
+    kit: { primary: '#F8F7F2', secondary: '#D3263D', accent: '#174A82', glow: 'rgba(230,235,245,0.92)', pattern: 'checks' },
   },
   {
     id: 'japan',
     flag: '🇯🇵',
     names: { it: 'Giappone', en: 'Japan', de: 'Japan', fr: 'Japon', es: 'Japón', ar: 'اليابان' },
-    kit: { primary: '#F5F6F8', secondary: '#173761', accent: '#BC1831', glow: 'rgba(225,232,242,0.9)', pattern: 'center' },
+    kit: { primary: '#162E62', secondary: '#75AED8', accent: '#F4F7FC', glow: 'rgba(22,46,98,0.86)', pattern: 'waves' },
   },
   {
     id: 'morocco',
     flag: '🇲🇦',
     names: { it: 'Marocco', en: 'Morocco', de: 'Marokko', fr: 'Maroc', es: 'Marruecos', ar: 'المغرب' },
-    kit: { primary: '#C52B3B', secondary: '#087A4A', accent: '#F4C647', glow: 'rgba(197,43,59,0.8)', pattern: 'horizontal' },
+    kit: { primary: '#C1263A', secondary: '#08794B', accent: '#DDBB53', glow: 'rgba(193,38,58,0.84)', pattern: 'panels' },
   },
 ];
 
