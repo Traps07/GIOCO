@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameEngine, type Difficulty, type GameMode, type PlayerCount, type Snapshot } from './game/engine';
 import HUD from './components/HUD';
 import TouchControls from './components/TouchControls';
-import { MenuScreen, PauseScreen, EndScreen } from './components/Menus';
+import { MenuScreen, TeamSelectScreen, PauseScreen, EndScreen } from './components/Menus';
+import { DEFAULT_TEAMS, type NationalTeamId, type TeamSelection } from './game/teams';
 import { STRINGS, isRTL, type Language } from './i18n';
 
 const LANG_KEY = 'ss3v3-lang';
@@ -18,7 +19,7 @@ function loadLang(): Language {
   return nav && nav in STRINGS ? (nav as Language) : 'it';
 }
 
-type Screen = 'menu' | 'playing' | 'paused' | 'over';
+type Screen = 'menu' | 'teams' | 'playing' | 'paused' | 'over';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -31,6 +32,7 @@ export default function App() {
   const [difficulty, setDifficulty] = useState<Difficulty>('normal');
   const [mode, setMode] = useState<GameMode>('match');
   const [playerCount, setPlayerCount] = useState<PlayerCount>(1);
+  const [teams, setTeams] = useState<TeamSelection>([...DEFAULT_TEAMS]);
   const [lang, setLangState] = useState<Language>(loadLang);
   const t = STRINGS[lang];
   const tRef = useRef(t);
@@ -140,18 +142,35 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    engineRef.current?.setTeams(teams);
+  }, [teams]);
+
   const startGame = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
     engine.unlockAudio();
-    engine.startMatch(difficulty, mode, playerCount);
+    engine.startMatch(difficulty, mode, playerCount, teams);
     engine.inputEnabled = true;
     engine.setPaused(false);
     setResult(null);
     setGoalBanner(null);
     setEventBanner(null);
     setScreen('playing');
-  }, [difficulty, mode, playerCount]);
+  }, [difficulty, mode, playerCount, teams]);
+
+  const openTeamSelect = useCallback(() => setScreen('teams'), []);
+  const backToMenu = useCallback(() => setScreen('menu'), []);
+  const chooseTeam = useCallback((side: 0 | 1, teamId: NationalTeamId) => {
+    setTeams((current) => {
+      if (current[side] === teamId) return current;
+      const otherSide = (side === 0 ? 1 : 0) as 0 | 1;
+      const next: TeamSelection = [...current];
+      if (current[otherSide] === teamId) next[otherSide] = current[side];
+      next[side] = teamId;
+      return next;
+    });
+  }, []);
 
   const pauseGame = useCallback(() => {
     const engine = engineRef.current;
@@ -201,13 +220,15 @@ export default function App() {
     <div dir={isRTL(lang) ? 'rtl' : 'ltr'} className="relative h-full w-full overflow-hidden bg-[#02040a]">
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
-      {screen !== 'menu' && (
+      {(screen === 'playing' || screen === 'paused' || screen === 'over') && (
         <HUD
           snap={snap}
           muted={muted}
           onToggleMute={toggleMute}
           onPause={pauseGame}
           playerCount={playerCount}
+          teams={teams}
+          lang={lang}
           goalBanner={goalBanner}
           eventBanner={eventBanner}
           t={t}
@@ -224,8 +245,21 @@ export default function App() {
           setMode={setMode}
           playerCount={playerCount}
           setPlayerCount={setPlayerCount}
+          teams={teams}
           lang={lang}
           setLang={setLang}
+          onStart={openTeamSelect}
+          t={t}
+        />
+      )}
+      {screen === 'teams' && (
+        <TeamSelectScreen
+          playerCount={playerCount}
+          mode={mode}
+          teams={teams}
+          lang={lang}
+          onChooseTeam={chooseTeam}
+          onBack={backToMenu}
           onStart={startGame}
           t={t}
         />
@@ -242,6 +276,8 @@ export default function App() {
           decidedBy={result.decidedBy}
           pensOnly={mode === 'pens'}
           playerCount={playerCount}
+          teams={teams}
+          lang={lang}
           onRematch={startGame}
           onMenu={toMenu}
           t={t}

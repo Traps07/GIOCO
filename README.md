@@ -19,8 +19,9 @@ Funziona anche offline e su smartphone/tablet: serve internet solo per caricare 
 
 - **PARTITA 90s** — partita completa; in caso di parità: tempi supplementari (golden goal) e poi rigori
 - **SOLO RIGORI** — direttamente alla serie dal dischetto (meglio di 5 + morte subita)
-- **1 GIOCATORE** — squadra BLU contro l’IA (selezione predefinita)
-- **2 GIOCATORI IN LOCALE** — BLU contro ROSSO sullo stesso schermo e con una tastiera condivisa; disponibili sia partita completa sia solo rigori
+- **1 GIOCATORE** — una nazionale scelta dal giocatore contro l’IA
+- **2 GIOCATORI IN LOCALE** — due nazionali sullo stesso schermo e con una tastiera condivisa; disponibili sia partita completa sia solo rigori
+- Prima di giocare si apre la **selezione squadre**: scegli una nazionale per ciascun lato. Sono disponibili Italia, Francia, Inghilterra, Spagna, Germania, Portogallo, Paesi Bassi, Brasile, Argentina, Croazia, Giappone e Marocco. Divise, colori e nomi sul tabellone si aggiornano in base alla scelta (predefinite: Italia e Francia).
 - Difficoltà: FACILE / NORMALE / DIFFICILE · Selettore lingua nel menu
 
 In modalità **1 giocatore**:
@@ -38,8 +39,8 @@ In modalità **2 giocatori** (anche durante i rigori):
 
 | Giocatore | Movimento | Scatto | Tiro / tuffo | Passaggio | Cambia giocatore |
 | --- | --- | --- | --- | --- | --- |
-| **P1 · BLU** | `W A S D` | `Shift` sinistro | `Spazio` | `C` | `Q` (o `Tab`) |
-| **P2 · ROSSO** | `↑ ↓ ← →` | `Shift` destro | `Invio` | `/` (o `Numpad 0`) | `.` (o `Numpad .`) |
+| **P1 · squadra di casa** | `W A S D` | `Shift` sinistro | `Spazio` | `C` | `Q` (o `Tab`) |
+| **P2 · squadra ospite** | `↑ ↓ ← →` | `Shift` destro | `Invio` | `/` (o `Numpad 0`) | `.` (o `Numpad .`) |
 
 Durante i rigori, il giocatore che tira usa i propri tasti di movimento per mirare e quello che para per spostare il guantone; tiro e tuffo usano il tasto azione della rispettiva squadra.
 

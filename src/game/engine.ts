@@ -1,4 +1,5 @@
 import { SFX } from './sound';
+import { DEFAULT_TEAMS, getNationalTeam, type TeamKit, type TeamSelection } from './teams';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type GameMode = 'match' | 'pens';
@@ -12,7 +13,7 @@ export type DecidedBy = 'regular' | 'golden' | 'pens';
 export interface PensSnap {
   score: [number, number];
   taken: [number, number];
-  turn: number; // 0 = tira il BLU, 1 = tira il ROSSO
+  turn: number; // 0 = squadra di casa, 1 = squadra ospite
   stage: PenStage;
   stageT: number;
   results: [Exclude<PenKickResult, 'post'>[], Exclude<PenKickResult, 'post'>[]];
@@ -52,9 +53,6 @@ const MATCH_TIME = 90;
 const EXTRA_TIME = 30;
 const PEN_ROUNDS = 5;
 const KICK_RANGE = P_R + B_R + 22;
-
-const TEAM_COLORS = ['#38bdf8', '#fb7185'];
-const TEAM_GLOW = ['rgba(56,189,248,', 'rgba(251,113,133,'];
 
 const FORMATION: { x: number; y: number }[][] = [
   [
@@ -197,6 +195,7 @@ export class GameEngine {
   phase: Phase = 'demo';
   private players: Player[] = [];
   private playerCount: PlayerCount = 1;
+  private selectedTeams: TeamSelection = [...DEFAULT_TEAMS];
   private controlledIdx: [number, number] = [1, 1];
   private ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, lastTouch: -1 };
   private trail: { x: number; y: number }[] = [];
@@ -359,6 +358,14 @@ export class GameEngine {
     return this.sfx.muted;
   }
 
+  private teamKit(team: number): TeamKit {
+    return getNationalTeam(this.selectedTeams[team]).kit;
+  }
+
+  setTeams(teams: TeamSelection) {
+    this.selectedTeams = [...teams];
+  }
+
   // ---------- flusso partita ----------
   startDemo() {
     this.phase = 'demo';
@@ -379,9 +386,15 @@ export class GameEngine {
     this.newBall();
   }
 
-  startMatch(diff: Difficulty, mode: GameMode = 'match', playerCount: PlayerCount = 1) {
+  startMatch(
+    diff: Difficulty,
+    mode: GameMode = 'match',
+    playerCount: PlayerCount = 1,
+    teams: TeamSelection = DEFAULT_TEAMS,
+  ) {
     this.diff = diff;
     this.playerCount = playerCount;
+    this.selectedTeams = [...teams];
     this.demo = false;
     this.keys.clear();
     this.clearInputQueues();
@@ -434,7 +447,7 @@ export class GameEngine {
     this.shake = 16;
     this.sfx.goal();
     const gx = team === 0 ? W : 0;
-    this.spawnConfetti(gx, H / 2, team === 0 ? -1 : 1, 130);
+    this.spawnConfetti(gx, H / 2, team === 0 ? -1 : 1, 130, team);
     this.emit({ type: 'goal', team, score: [...this.score] });
     if (this.demo) this.goalT = 1.6;
   }
@@ -647,11 +660,13 @@ export class GameEngine {
     if (result === 'goal') {
       this.sfx.goal();
       this.shake = 12;
-      this.fpBurst(pt.x, pt.y, ['#38bdf8', '#fb7185', '#fbbf24', '#ffffff', '#4ade80'], 70);
+      const scoringKit = this.teamKit(ps.turn);
+      this.fpBurst(pt.x, pt.y, [scoringKit.primary, scoringKit.secondary, scoringKit.accent, '#fbbf24', '#ffffff'], 70);
     } else if (result === 'save') {
       this.sfx.block();
       this.shake = Math.min(this.shake + 6, 12);
-      this.fpBurst(pt.x, pt.y, ['#ffffff', '#7dd3fc', '#bae6fd'], 30);
+      const goalkeeperKit = this.teamKit(1 - ps.turn);
+      this.fpBurst(pt.x, pt.y, [goalkeeperKit.primary, goalkeeperKit.secondary, '#ffffff'], 30);
     } else if (result === 'post') {
       this.sfx.block();
       this.shake = Math.min(this.shake + 7, 12);
@@ -664,15 +679,15 @@ export class GameEngine {
 
   private penDecided(): boolean {
     const ps = this.pens!;
-    const [b, r] = ps.score;
-    const [bt, rt] = ps.taken;
-    if (bt < PEN_ROUNDS || rt < PEN_ROUNDS) {
-      const bLeft = Math.max(0, PEN_ROUNDS - bt);
-      const rLeft = Math.max(0, PEN_ROUNDS - rt);
-      return b > r + rLeft || r > b + bLeft;
+    const [homeScore, awayScore] = ps.score;
+    const [homeTaken, awayTaken] = ps.taken;
+    if (homeTaken < PEN_ROUNDS || awayTaken < PEN_ROUNDS) {
+      const homeLeft = Math.max(0, PEN_ROUNDS - homeTaken);
+      const awayLeft = Math.max(0, PEN_ROUNDS - awayTaken);
+      return homeScore > awayScore + awayLeft || awayScore > homeScore + homeLeft;
     }
     // morte subita: a parità di tiri effettuati, chi è avanti vince
-    return bt === rt && b !== r;
+    return homeTaken === awayTaken && homeScore !== awayScore;
   }
 
   private penAdvance() {
@@ -1279,7 +1294,7 @@ export class GameEngine {
     this.shots[p.team]++;
     this.shake = Math.min(this.shake + 5, 14);
     this.sfx.kick(1);
-    this.spawnKick(p.x + (dx / dl) * 22, p.y + (dy / dl) * 22, dx / dl, dy / dl, TEAM_COLORS[p.team]);
+    this.spawnKick(p.x + (dx / dl) * 22, p.y + (dy / dl) * 22, dx / dl, dy / dl, this.teamKit(p.team).primary);
   }
 
   private pass(p: Player, errRange: number, humanSwitch: boolean) {
@@ -1351,7 +1366,7 @@ export class GameEngine {
     p.kickCd = 0.35;
     p.holdT = 0;
     this.sfx.kick(0.8);
-    this.spawnKick(this.ball.x, this.ball.y, dx / dl, dy / dl, TEAM_COLORS[p.team]);
+    this.spawnKick(this.ball.x, this.ball.y, dx / dl, dy / dl, this.teamKit(p.team).primary);
   }
 
   // ---------- particelle ----------
@@ -1374,8 +1389,9 @@ export class GameEngine {
     }
   }
 
-  private spawnConfetti(x: number, y: number, dirX: number, n: number) {
-    const colors = ['#38bdf8', '#fb7185', '#fbbf24', '#ffffff', '#4ade80', '#e879f9'];
+  private spawnConfetti(x: number, y: number, dirX: number, n: number, team: number) {
+    const kit = this.teamKit(team);
+    const colors = [kit.primary, kit.secondary, kit.accent, '#fbbf24', '#ffffff'];
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const s = 80 + Math.random() * 420;
@@ -1706,7 +1722,7 @@ export class GameEngine {
     const rl = Math.hypot(rdx, rdy) || 1;
     const rmax = kh * 0.52;
     const reach = { x: (rdx / rl) * Math.min(rl, rmax), y: (rdy / rl) * Math.min(rl, rmax) };
-    this.drawFigure(ctx, hipX, hipY, kh, TEAM_COLORS[1 - ps.turn], lean, 0, reach);
+    this.drawFigure(ctx, hipX, hipY, kh, this.teamKit(1 - ps.turn).primary, lean, 0, reach);
 
     // palla
     const b = this.fpBall(ps, vw, vh);
@@ -1812,6 +1828,7 @@ export class GameEngine {
 
     // rigorista IA: la postura in rincorsa suggerisce il lato del tiro
     const kh2 = vh * 0.145;
+    const goalkeeperKit = this.teamKit(1 - ps.turn);
     const kFeet = vh * 0.415;
     const leanP =
       ps.stage === 'aim'
@@ -1823,7 +1840,7 @@ export class GameEngine {
     const run = ps.stage === 'aim' || ps.stage === 'intro' ? this.time * 16 : 0;
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath(); ctx.ellipse(L.cx, kFeet + 4, 22, 5, 0, 0, Math.PI * 2); ctx.fill();
-    this.drawFigure(ctx, L.cx, kFeet - kh2 * 0.5, kh2, TEAM_COLORS[1], leanK, leanP > 0.15 ? run : 0, null);
+    this.drawFigure(ctx, L.cx, kFeet - kh2 * 0.5, kh2, this.teamKit(ps.turn).primary, leanK, leanP > 0.15 ? run : 0, null);
 
     // palla
     const b = this.fpBall(ps, vw, vh);
@@ -1845,7 +1862,7 @@ export class GameEngine {
       const sl = Math.hypot(sx, sy) || 1;
       for (let i = 1; i <= 3; i++) {
         ctx.globalAlpha = 0.16 / i;
-        ctx.fillStyle = '#7dd3fc';
+        ctx.fillStyle = goalkeeperKit.primary;
         ctx.beginPath();
         ctx.ellipse(g.x - (sx / sl) * i * 16, g.y - (sy / sl) * i * 16, gr * 0.9, gr * 0.7, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -1857,12 +1874,12 @@ export class GameEngine {
     ctx.translate(g.x, g.y);
     ctx.rotate(ps.diveDx * 0.3 * (ps.diveT > 0 ? 1 : 0));
     ctx.scale(divePulse, divePulse);
-    ctx.shadowColor = 'rgba(125,211,252,0.9)';
+    ctx.shadowColor = goalkeeperKit.glow;
     ctx.shadowBlur = 16;
     ctx.fillStyle = '#f8fafc';
     ctx.beginPath(); ctx.ellipse(0, 0, gr, gr * 0.74, 0, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = '#38bdf8';
+    ctx.fillStyle = goalkeeperKit.primary;
     ctx.beginPath(); ctx.ellipse(0, gr * 0.52, gr * 0.62, gr * 0.3, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = 'rgba(3,16,36,0.55)';
     ctx.lineWidth = 2;
@@ -2150,8 +2167,66 @@ export class GameEngine {
     }
   }
 
+  private drawKitPattern(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, kit: TeamKit) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    if (kit.pattern === 'vertical') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r * 0.48, y - r, r * 0.32, r * 2);
+      ctx.fillRect(x + r * 0.16, y - r, r * 0.32, r * 2);
+    } else if (kit.pattern === 'horizontal') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r, y - r * 0.28, r * 2, r * 0.56);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r, y + r * 0.28, r * 2, r * 0.16);
+    } else if (kit.pattern === 'sash') {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(-r * 1.7, -r * 0.28, r * 3.4, r * 0.56);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(-r * 1.7, r * 0.18, r * 3.4, r * 0.12);
+      ctx.restore();
+    } else if (kit.pattern === 'checks') {
+      const cell = Math.max(5, r * 0.42);
+      ctx.fillStyle = kit.secondary;
+      for (let row = -2; row <= 2; row++) {
+        for (let col = -2; col <= 2; col++) {
+          if ((row + col) % 2 === 0) {
+            ctx.fillRect(x + col * cell, y + row * cell, cell, cell);
+          }
+        }
+      }
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - 2, y - r, 4, r * 2);
+    } else if (kit.pattern === 'cross') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r * 0.18, y - r, r * 0.36, r * 2);
+      ctx.fillRect(x - r, y - r * 0.18, r * 2, r * 0.36);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r, y + r * 0.3, r * 2, r * 0.12);
+    } else {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r * 0.18, y - r, r * 0.36, r * 2);
+      ctx.fillStyle = kit.accent;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // piccolo colletto a contrasto, come dettaglio comune della divisa
+    ctx.fillStyle = kit.accent;
+    ctx.fillRect(x - r * 0.28, y - r * 0.78, r * 0.56, Math.max(2, r * 0.14));
+    ctx.restore();
+  }
+
   private drawPlayer(ctx: CanvasRenderingContext2D, p: Player) {
-    const color = TEAM_COLORS[p.team];
+    const kit = this.teamKit(p.team);
+    const color = kit.primary;
     const isHuman =
       this.phase !== 'demo' &&
       (p.team === 0 || this.playerCount === 2) &&
@@ -2177,7 +2252,7 @@ export class GameEngine {
     }
 
     ctx.save();
-    ctx.shadowColor = TEAM_GLOW[p.team] + '0.8)';
+    ctx.shadowColor = kit.glow;
     ctx.shadowBlur = isHuman ? 22 : 14;
     const grad = ctx.createRadialGradient(p.x - 5, p.y - 7, 2, p.x, p.y, P_R + 2);
     grad.addColorStop(0, '#ffffff');
@@ -2187,13 +2262,14 @@ export class GameEngine {
     ctx.beginPath();
     ctx.arc(p.x, p.y, P_R, 0, Math.PI * 2);
     ctx.fill();
+    this.drawKitPattern(ctx, p.x, p.y, P_R, kit);
     ctx.shadowBlur = 0;
     ctx.strokeStyle = 'rgba(2,8,20,0.65)';
     ctx.lineWidth = 3;
     ctx.stroke();
 
     // indicatore direzione
-    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ctx.strokeStyle = kit.secondary;
     ctx.lineWidth = 3;
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -2201,11 +2277,14 @@ export class GameEngine {
     ctx.lineTo(p.x + p.faceX * (P_R + 1), p.y + p.faceY * (P_R + 1));
     ctx.stroke();
 
-    // numero
-    ctx.fillStyle = 'rgba(3,10,25,0.85)';
+    // numero in contrasto con la maglia
     ctx.font = '800 13px "Archivo Black", "Arial Black", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+    ctx.strokeText(String(p.number), p.x, p.y + 0.5);
+    ctx.fillStyle = kit.secondary;
     ctx.fillText(String(p.number), p.x, p.y + 0.5);
     ctx.restore();
   }

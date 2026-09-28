@@ -22,9 +22,7 @@ export interface Strings {
   badgePens: string;
   tagLocal: string;
   tagA: string;
-  tagBlu: string;
   tagB: string;
-  tagRossa: string;
   tagC: string;
   featGolden: string;
   featPens: string;
@@ -33,6 +31,13 @@ export interface Strings {
   playerSoloDesc: string;
   playerDuo: string;
   playerDuoDesc: string;
+  teamSelectTitle: string;
+  teamSelectSubtitle: string;
+  teamSelectPick: string;
+  teamHome: string;
+  teamAway: string;
+  teamCpu: string;
+  btnBack: string;
   modeMatch: string;
   modeMatchDesc: string;
   modePens: string;
@@ -52,13 +57,9 @@ export interface Strings {
   menuSwitch: string;
   mobileHint: string;
   // HUD
-  teamBlue: string;
-  teamRed: string;
   kickOff: string;
   badgeGolden: string;
   goal: string;
-  goalBlue: string;
-  goalRed: string;
   // pannello rigori
   psSeries: string; // contiene {n}
   psSuddenDeath: string;
@@ -114,11 +115,9 @@ const it: Strings = {
   language: 'LINGUA',
   badgeMatch: 'PARTITA LAMPO · 90 SECONDI',
   badgePens: 'SERIE DI RIGORI · MORTE SUBITA',
-  tagLocal: 'Sfida un amico sullo stesso schermo: BLU contro ROSSO, in locale.',
+  tagLocal: 'Sfida un amico sullo stesso schermo: {home} contro {away}, in locale.',
   tagA: 'Tre contro tre, ritmo altissimo. Guida la squadra ',
-  tagBlu: 'BLU',
   tagB: ', dribbla, passa e trafigli la ',
-  tagRossa: 'ROSSA',
   tagC: ' prima che scada il tempo.',
   featGolden: 'Pareggio? Supplementari con golden goal',
   featPens: 'Ancora pari? Calci di rigore!',
@@ -127,6 +126,13 @@ const it: Strings = {
   playerSoloDesc: 'contro la CPU',
   playerDuo: '2 GIOCATORI',
   playerDuoDesc: 'stessa tastiera',
+  teamSelectTitle: 'SCEGLI LE NAZIONALI',
+  teamSelectSubtitle: 'Seleziona una squadra per ogni lato: le divise e i nomi appariranno durante la partita.',
+  teamSelectPick: 'SELEZIONA LA NAZIONALE PER',
+  teamHome: 'P1 · CASA',
+  teamAway: 'P2 · OSPITI',
+  teamCpu: 'AVVERSARIA IA',
+  btnBack: 'INDIETRO',
   modeMatch: 'PARTITA 90s',
   modeMatchDesc: 'poi supplementari e rigori',
   modePens: 'SOLO RIGORI',
@@ -145,13 +151,9 @@ const it: Strings = {
   menuPass: 'passaggio',
   menuSwitch: 'cambia giocatore',
   mobileHint: 'Su mobile: joystick a sinistra, pulsanti a destra',
-  teamBlue: 'BLU',
-  teamRed: 'ROS',
   kickOff: "CALCIO D'INIZIO",
   badgeGolden: 'SUPPLEMENTARI · GOLDEN GOAL',
   goal: 'GOOOL!',
-  goalBlue: 'RETE DELLA SQUADRA BLU',
-  goalRed: 'RETE DELLA SQUADRA ROSSA',
   psSeries: 'RIGORI · SERIE {n}',
   psSuddenDeath: 'RIGORI · MORTE SUBITA',
   psGetReadyShoot: 'PREPARATI A TIRARE...',
@@ -201,11 +203,9 @@ const en: Strings = {
   language: 'LANGUAGE',
   badgeMatch: 'LIGHTNING MATCH · 90 SECONDS',
   badgePens: 'PENALTY SHOOTOUT · SUDDEN DEATH',
-  tagLocal: 'Challenge a friend on the same screen: BLUE vs RED, locally.',
+  tagLocal: 'Challenge a friend on the same screen: {home} vs {away}, locally.',
   tagA: 'Three against three, full throttle. Lead the ',
-  tagBlu: 'BLUE',
   tagB: ' team — dribble, pass and put it past the ',
-  tagRossa: 'REDS',
   tagC: ' before time runs out.',
   featGolden: 'Draw? Extra time, golden goal',
   featPens: 'Still level? Penalties!',
@@ -214,6 +214,13 @@ const en: Strings = {
   playerSoloDesc: 'vs the CPU',
   playerDuo: '2 PLAYERS',
   playerDuoDesc: 'shared keyboard',
+  teamSelectTitle: 'PICK YOUR NATIONAL TEAMS',
+  teamSelectSubtitle: 'Choose a country for each side. Their names and kits will appear in the match.',
+  teamSelectPick: 'SELECT A COUNTRY FOR',
+  teamHome: 'P1 · HOME',
+  teamAway: 'P2 · AWAY',
+  teamCpu: 'CPU OPPONENT',
+  btnBack: 'BACK',
   modeMatch: 'MATCH 90s',
   modeMatchDesc: 'then extra time & pens',
   modePens: 'PENS ONLY',
@@ -232,13 +239,9 @@ const en: Strings = {
   menuPass: 'pass',
   menuSwitch: 'switch player',
   mobileHint: 'On mobile: joystick on the left, buttons on the right',
-  teamBlue: 'BLU',
-  teamRed: 'RED',
   kickOff: 'KICK-OFF',
   badgeGolden: 'EXTRA TIME · GOLDEN GOAL',
   goal: 'GOOOAL!',
-  goalBlue: 'SCORED BY THE BLUE TEAM',
-  goalRed: 'SCORED BY THE RED TEAM',
   psSeries: 'PENS · ROUND {n}',
   psSuddenDeath: 'PENS · SUDDEN DEATH',
   psGetReadyShoot: 'GET READY TO SHOOT...',
@@ -288,11 +291,9 @@ const de: Strings = {
   language: 'SPRACHE',
   badgeMatch: 'BLITZSPIEL · 90 SEKUNDEN',
   badgePens: 'ELFMETERSCHIESSEN · SUDDEN DEATH',
-  tagLocal: 'Fordere einen Freund auf demselben Bildschirm heraus: BLAU gegen ROT.',
+  tagLocal: 'Fordere einen Freund auf demselben Bildschirm heraus: {home} gegen {away}.',
   tagA: 'Drei gegen drei, rasantes Tempo. Führe Team ',
-  tagBlu: 'BLAU',
   tagB: ' – drbble, passe und überliste Team ',
-  tagRossa: 'ROT',
   tagC: ', bevor die Zeit abläuft.',
   featGolden: 'Unentschieden? Verlängerung mit Golden Goal',
   featPens: 'Immer noch Gleichstand? Elfmeterschießen!',
@@ -301,6 +302,13 @@ const de: Strings = {
   playerSoloDesc: 'gegen die KI',
   playerDuo: '2 SPIELER',
   playerDuoDesc: 'eine gemeinsame Tastatur',
+  teamSelectTitle: 'NATIONALTEAMS WÄHLEN',
+  teamSelectSubtitle: 'Wähle ein Land pro Team. Namen und Trikots erscheinen im Spiel.',
+  teamSelectPick: 'LAND AUSWÄHLEN FÜR',
+  teamHome: 'P1 · HEIM',
+  teamAway: 'P2 · GAST',
+  teamCpu: 'KI-GEGNER',
+  btnBack: 'ZURÜCK',
   modeMatch: 'SPIEL 90s',
   modeMatchDesc: 'dann Verlängerung & Elfmeter',
   modePens: 'NUR ELFMETER',
@@ -319,13 +327,9 @@ const de: Strings = {
   menuPass: 'passen',
   menuSwitch: 'spieler wechseln',
   mobileHint: 'Auf dem Handy: Joystick links, Buttons rechts',
-  teamBlue: 'BLA',
-  teamRed: 'ROT',
   kickOff: 'ANSTOSS',
   badgeGolden: 'VERLÄNGERUNG · GOLDEN GOAL',
   goal: 'TOOOR!',
-  goalBlue: 'TOR FÜR TEAM BLAU',
-  goalRed: 'TOR FÜR TEAM ROT',
   psSeries: 'ELFMETER · SERIE {n}',
   psSuddenDeath: 'ELFMETER · SUDDEN DEATH',
   psGetReadyShoot: 'MACH DICH BEREIT...',
@@ -375,11 +379,9 @@ const fr: Strings = {
   language: 'LANGUE',
   badgeMatch: 'MATCH ÉCLAIR · 90 SECONDES',
   badgePens: 'TIRS AU BUT · MORT SUBITE',
-  tagLocal: 'Défie un ami sur le même écran : BLEU contre ROUGE, en local.',
+  tagLocal: 'Défie un ami sur le même écran : {home} contre {away}, en local.',
   tagA: 'Trois contre trois, rythme effréné. Mène l’équipe ',
-  tagBlu: 'BLEUE',
   tagB: ' : dribble, passe et trompe l’équipe ',
-  tagRossa: 'ROUGE',
   tagC: ' avant la fin du temps réglementaire.',
   featGolden: 'Égalité ? Prolongations, but en or',
   featPens: 'Toujours à égalité ? Tirs au but !',
@@ -388,6 +390,13 @@ const fr: Strings = {
   playerSoloDesc: 'contre l’IA',
   playerDuo: '2 JOUEURS',
   playerDuoDesc: 'clavier partagé',
+  teamSelectTitle: 'CHOISIS LES ÉQUIPES NATIONALES',
+  teamSelectSubtitle: 'Choisis un pays pour chaque équipe. Noms et maillots seront visibles pendant le match.',
+  teamSelectPick: 'CHOISIR UN PAYS POUR',
+  teamHome: 'P1 · DOMICILE',
+  teamAway: 'P2 · EXTÉRIEUR',
+  teamCpu: 'ADVERSAIRE IA',
+  btnBack: 'RETOUR',
   modeMatch: 'MATCH 90s',
   modeMatchDesc: 'puis prolongations et TAB',
   modePens: 'TIRS AU BUT',
@@ -406,13 +415,9 @@ const fr: Strings = {
   menuPass: 'passe',
   menuSwitch: 'changer de joueur',
   mobileHint: 'Sur mobile : joystick à gauche, boutons à droite',
-  teamBlue: 'BLE',
-  teamRed: 'ROU',
   kickOff: 'COUP D’ENVOI',
   badgeGolden: 'PROLONGATIONS · BUT EN OR',
   goal: 'BUUUT !',
-  goalBlue: 'BUT DE L’ÉQUIPE BLEUE',
-  goalRed: 'BUT DE L’ÉQUIPE ROUGE',
   psSeries: 'TAB · SÉRIE {n}',
   psSuddenDeath: 'TAB · MORT SUBITE',
   psGetReadyShoot: 'PRÊT À TIRER...',
@@ -462,11 +467,9 @@ const es: Strings = {
   language: 'IDIOMA',
   badgeMatch: 'PARTIDO RELÁMPAGO · 90 SEGUNDOS',
   badgePens: 'TANDA DE PENALES · MUERTE SÚBITA',
-  tagLocal: 'Desafía a un amigo en la misma pantalla: AZUL contra ROJO.',
+  tagLocal: 'Desafía a un amigo en la misma pantalla: {home} contra {away}.',
   tagA: 'Tres contra tres, ritmo altísimo. Lleva al equipo ',
-  tagBlu: 'AZUL',
   tagB: ', regatea, pasa y supera al equipo ',
-  tagRossa: 'ROJO',
   tagC: ' antes de que se acabe el tiempo.',
   featGolden: '¿Empate? Prórroga con gol de oro',
   featPens: '¿Siguen empatados? ¡Tiros penales!',
@@ -475,6 +478,13 @@ const es: Strings = {
   playerSoloDesc: 'contra la CPU',
   playerDuo: '2 JUGADORES',
   playerDuoDesc: 'teclado compartido',
+  teamSelectTitle: 'ELIGE LAS SELECCIONES',
+  teamSelectSubtitle: 'Elige un país para cada equipo. Sus nombres y uniformes aparecerán durante el partido.',
+  teamSelectPick: 'ELIGE UN PAÍS PARA',
+  teamHome: 'P1 · LOCAL',
+  teamAway: 'P2 · VISITANTE',
+  teamCpu: 'RIVAL CPU',
+  btnBack: 'VOLVER',
   modeMatch: 'PARTIDO 90s',
   modeMatchDesc: 'luego prórroga y penales',
   modePens: 'SOLO PENALES',
@@ -493,13 +503,9 @@ const es: Strings = {
   menuPass: 'pase',
   menuSwitch: 'cambiar jugador',
   mobileHint: 'En móvil: joystick a la izquierda, botones a la derecha',
-  teamBlue: 'AZU',
-  teamRed: 'ROJ',
   kickOff: 'SAQUE INICIAL',
   badgeGolden: 'PRÓRROGA · GOL DE ORO',
   goal: '¡GOOOL!',
-  goalBlue: 'GOL DEL EQUIPO AZUL',
-  goalRed: 'GOL DEL EQUIPO ROJO',
   psSeries: 'PENALES · SERIE {n}',
   psSuddenDeath: 'PENALES · MUERTE SÚBITA',
   psGetReadyShoot: 'PREPÁRATE PARA TIRAR...',
@@ -549,11 +555,9 @@ const ar: Strings = {
   language: 'اللغة',
   badgeMatch: 'مباراة خاطفة · ٩٠ ثانية',
   badgePens: 'ركلات الجزاء · الموت المفاجئ',
-  tagLocal: 'تحدَّ صديقاً على الشاشة نفسها: الأزرق ضد الأحمر.',
+  tagLocal: 'تحدَّ صديقاً على الشاشة نفسها: {home} ضد {away}.',
   tagA: 'ثلاثة ضد ثلاثة، إيقاع سريع جداً. قُد فريق ',
-  tagBlu: 'الأزرق',
   tagB: '، مراوغ ومرر وسجّل في مرمى فريق ',
-  tagRossa: 'الأحمر',
   tagC: ' قبل انتهاء الوقت.',
   featGolden: 'تعادل؟ وقت إضافي بهدف ذهبي',
   featPens: 'ما زال التعادل قائماً؟ ركلات جزاء!',
@@ -562,6 +566,13 @@ const ar: Strings = {
   playerSoloDesc: 'ضد الذكاء الاصطناعي',
   playerDuo: 'لاعبان',
   playerDuoDesc: 'لوحة مفاتيح مشتركة',
+  teamSelectTitle: 'اختر المنتخبات الوطنية',
+  teamSelectSubtitle: 'اختر دولة لكل فريق. ستظهر الأسماء والأطقم أثناء المباراة.',
+  teamSelectPick: 'اختر دولة لصالح',
+  teamHome: 'اللاعب ١ · صاحب الأرض',
+  teamAway: 'اللاعب ٢ · الضيوف',
+  teamCpu: 'خصم الذكاء الاصطناعي',
+  btnBack: 'رجوع',
   modeMatch: 'مباراة ٩٠ ث',
   modeMatchDesc: 'ثم وقت إضافي وركلات جزاء',
   modePens: 'ركلات جزاء فقط',
@@ -580,13 +591,9 @@ const ar: Strings = {
   menuPass: 'تمرير',
   menuSwitch: 'تبديل اللاعب',
   mobileHint: 'على الجوال: عصا تحكم يساراً وأزرار يميناً',
-  teamBlue: 'أزرق',
-  teamRed: 'أحمر',
   kickOff: 'ركلة البداية',
   badgeGolden: 'وقت إضافي · هدف ذهبي',
   goal: 'هــدف!',
-  goalBlue: 'هدف للفريق الأزرق',
-  goalRed: 'هدف للفريق الأحمر',
   psSeries: 'ركلات الجزاء · الجولة {n}',
   psSuddenDeath: 'ركلات الجزاء · الموت المفاجئ',
   psGetReadyShoot: 'استعد للتسديد...',
