@@ -4,3 +4,4 @@ dist/
 *.log
 .test-bundle.mjs
 .soak-bundle.mjs
+.ui-bundle.cjs
