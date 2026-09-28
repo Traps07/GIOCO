@@ -65,7 +65,7 @@ function PenDots({ results, taken }: { results: PensSnap['results'][0]; taken: n
   );
 }
 
-function PensPanel({ pens, t }: { pens: PensSnap; t: Strings }) {
+function PensPanel({ pens, t, twoPlayer }: { pens: PensSnap; t: Strings; twoPlayer: boolean }) {
   const round = Math.min(pens.taken[0], pens.taken[1]) + 1;
   const suddenDeath = round > 5;
   const yourShot = pens.turn === 0;
@@ -79,9 +79,13 @@ function PensPanel({ pens, t }: { pens: PensSnap; t: Strings }) {
           ? `${t.psAimShoot} · ${Math.ceil(pens.stageT)}`
           : t.psSaveNow
         : pens.stage === 'kick'
-          ? yourShot
-            ? t.psYourShot
-            : t.psTheirShot
+          ? twoPlayer
+            ? yourShot
+              ? t.player1
+              : t.player2
+            : yourShot
+              ? t.psYourShot
+              : t.psTheirShot
           : '';
   return (
     <div className="mt-2 flex flex-col items-center gap-1.5 rounded-2xl border border-amber-300/30 bg-black/55 px-4 py-2 backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
@@ -89,12 +93,16 @@ function PensPanel({ pens, t }: { pens: PensSnap; t: Strings }) {
         {suddenDeath ? t.psSuddenDeath : fmt(t.psSeries, { n: round })}
       </span>
       <div className="flex items-center gap-3">
-        <span className="font-display text-[9px] tracking-widest text-sky-300">{t.teamBlue}</span>
+        <span className="font-display text-[9px] tracking-widest text-sky-300">
+          {twoPlayer ? 'P1' : t.teamBlue}
+        </span>
         <PenDots results={pens.results[0]} taken={pens.taken[0]} />
         <span className="font-display text-lg tabular-nums text-sky-300 leading-none">{pens.score[0]}</span>
       </div>
       <div className="flex items-center gap-3">
-        <span className="font-display text-[9px] tracking-widest text-rose-300">{t.teamRed}</span>
+        <span className="font-display text-[9px] tracking-widest text-rose-300">
+          {twoPlayer ? 'P2' : t.teamRed}
+        </span>
         <PenDots results={pens.results[1]} taken={pens.taken[1]} />
         <span className="font-display text-lg tabular-nums text-rose-300 leading-none">{pens.score[1]}</span>
       </div>
@@ -107,6 +115,7 @@ function PensPanel({ pens, t }: { pens: PensSnap; t: Strings }) {
 
 export default function HUD({ snap, muted, onToggleMute, onPause, goalBanner, eventBanner, t }: Props) {
   if (!snap) return null;
+  const twoPlayer = snap.opponent === 'human';
   const inPens = snap.period === 'pens' && snap.pens;
   const inExtra = snap.period === 'extra';
   const urgent = snap.timeLeft <= 10 && snap.phase === 'play';
@@ -128,7 +137,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, goalBanner, ev
             <span className="hidden sm:block font-display text-[11px] tracking-[0.25em] text-rose-300">{t.teamRed}</span>
           </div>
           {inPens ? (
-            <PensPanel pens={snap.pens!} t={t} />
+            <PensPanel pens={snap.pens!} t={t} twoPlayer={twoPlayer} />
           ) : (
             <>
               <div className={`mt-2 flex w-56 items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 backdrop-blur-md`}>
@@ -215,7 +224,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, goalBanner, ev
       )}
 
       {/* controlli a fondo pagina (desktop) */}
-      <div className="mt-auto hidden justify-center pb-4 md:flex">
+      <div className="mt-auto hidden flex-col items-center gap-1.5 pb-4 md:flex">
         {inPens ? (
           <div className="flex items-center gap-4 rounded-full border border-amber-300/25 bg-black/50 px-6 py-2 text-[11px] font-medium tracking-wide text-amber-100/80 backdrop-blur-md">
             {snap.pens!.turn === 0 ? (
@@ -223,6 +232,12 @@ export default function HUD({ snap, muted, onToggleMute, onPause, goalBanner, ev
                 <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.hintAimUpDown}</span>
                 <span className="text-white/20">•</span>
                 <span><kbd>Spazio</kbd> {t.hintKickPen}</span>
+              </>
+            ) : twoPlayer ? (
+              <>
+                <span><kbd>IJKL</kbd> {t.hintKeeperMove2}</span>
+                <span className="text-white/20">•</span>
+                <span><kbd>Invio</kbd> {t.hintDive2}</span>
               </>
             ) : (
               <>
@@ -234,6 +249,33 @@ export default function HUD({ snap, muted, onToggleMute, onPause, goalBanner, ev
             <span className="text-white/20">•</span>
             <span><kbd>Esc</kbd> {t.kPause}</span>
           </div>
+        ) : twoPlayer ? (
+          <>
+            <div className="flex items-center gap-3 rounded-full border border-sky-300/20 bg-black/40 px-5 py-2 text-[11px] font-medium tracking-wide text-white/55 backdrop-blur-md">
+              <span className="font-display text-[10px] tracking-[0.2em] text-sky-300">P1</span>
+              <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.kMove}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>Shift</kbd> {t.kSprint}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>Spazio</kbd> {t.kShoot}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>C</kbd> {t.kPass}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>Q</kbd> {t.kSwitch}</span>
+            </div>
+            <div className="flex items-center gap-3 rounded-full border border-rose-300/20 bg-black/40 px-5 py-2 text-[11px] font-medium tracking-wide text-white/55 backdrop-blur-md">
+              <span className="font-display text-[10px] tracking-[0.2em] text-rose-300">P2</span>
+              <span><kbd>IJKL</kbd> {t.menuMove2}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>Shift dx</kbd> {t.menuSprint2}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>Invio</kbd> {t.menuShoot2}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>M</kbd> {t.menuPass2}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>,</kbd> {t.menuSwitch2}</span>
+            </div>
+          </>
         ) : (
           <div className="flex items-center gap-4 rounded-full border border-white/10 bg-black/40 px-6 py-2 text-[11px] font-medium tracking-wide text-white/55 backdrop-blur-md">
             <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.kMove}</span>

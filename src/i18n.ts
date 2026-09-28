@@ -45,6 +45,27 @@ export interface Strings {
   menuPass: string;
   menuSwitch: string;
   mobileHint: string;
+  // modalità giocatori (1 vs IA / 2 locali)
+  playersLabel: string;
+  opp1P: string;
+  opp1PDesc: string;
+  opp2P: string;
+  opp2PDesc: string;
+  player1: string;
+  player2: string;
+  noDiff2p: string;
+  // comandi del secondo giocatore
+  menuMove2: string;
+  menuSprint2: string;
+  menuShoot2: string;
+  menuPass2: string;
+  menuSwitch2: string;
+  mobileHint2p: string;
+  // suggerimenti rigori per il secondo giocatore
+  hintAimUpDown2: string;
+  hintKickPen2: string;
+  hintKeeperMove2: string;
+  hintDive2: string;
   // HUD
   teamBlue: string;
   teamRed: string;
@@ -133,6 +154,25 @@ const it: Strings = {
   menuPass: 'passaggio',
   menuSwitch: 'cambia giocatore',
   mobileHint: 'Su mobile: joystick a sinistra, pulsanti a destra',
+  playersLabel: 'GIOCATORI',
+  opp1P: '1 GIOCATORE',
+  opp1PDesc: 'contro la IA',
+  opp2P: '2 GIOCATORI',
+  opp2PDesc: 'locale, stesso campo',
+  player1: 'GIOCATORE 1',
+  player2: 'GIOCATORE 2',
+  noDiff2p: 'In 2 giocatori la difficoltà non si applica.',
+  menuMove2: 'movimento (I J K L)',
+  menuSprint2: 'scatto (Shift dx)',
+  menuShoot2: 'tiro (Invio)',
+  menuPass2: 'passaggio (M)',
+  menuSwitch2: 'cambia giocatore (,)',
+  mobileHint2p: 'Su mobile: metà sinistra P1, metà destra P2',
+  hintAimUpDown2: 'mira dentro la porta',
+  hintKickPen2: 'calcia il rigore',
+  hintKeeperMove2: 'muovi il guantone',
+  hintDive2: 'tuffati in quella direzione',
+
   teamBlue: 'BLU',
   teamRed: 'ROS',
   kickOff: "CALCIO D'INIZIO",
@@ -214,6 +254,25 @@ const en: Strings = {
   menuPass: 'pass',
   menuSwitch: 'switch player',
   mobileHint: 'On mobile: joystick on the left, buttons on the right',
+  playersLabel: 'PLAYERS',
+  opp1P: '1 PLAYER',
+  opp1PDesc: 'vs the AI',
+  opp2P: '2 PLAYERS',
+  opp2PDesc: 'local, same pitch',
+  player1: 'PLAYER 1',
+  player2: 'PLAYER 2',
+  noDiff2p: 'Difficulty does not apply in 2-player mode.',
+  menuMove2: 'move (I J K L)',
+  menuSprint2: 'sprint (RShift)',
+  menuShoot2: 'shoot (Enter)',
+  menuPass2: 'pass (M)',
+  menuSwitch2: 'switch player (,)',
+  mobileHint2p: 'On mobile: left half P1, right half P2',
+  hintAimUpDown2: 'aim inside the goal',
+  hintKickPen2: 'take the penalty',
+  hintKeeperMove2: 'move the gloves',
+  hintDive2: 'dive that way',
+
   teamBlue: 'BLU',
   teamRed: 'RED',
   kickOff: 'KICK-OFF',
@@ -295,6 +354,25 @@ const de: Strings = {
   menuPass: 'passen',
   menuSwitch: 'spieler wechseln',
   mobileHint: 'Auf dem Handy: Joystick links, Buttons rechts',
+  playersLabel: 'SPIELER',
+  opp1P: '1 SPIELER',
+  opp1PDesc: 'gegen die KI',
+  opp2P: '2 SPIELER',
+  opp2PDesc: 'lokal, gleicher Platz',
+  player1: 'SPIELER 1',
+  player2: 'SPIELER 2',
+  noDiff2p: 'Im 2-Spieler-Modus gilt keine Schwierigkeit.',
+  menuMove2: 'Bewegen (I J K L)',
+  menuSprint2: 'Sprint (RShift)',
+  menuShoot2: 'Schuss (Enter)',
+  menuPass2: 'Pass (M)',
+  menuSwitch2: 'Spieler wechseln (,)',
+  mobileHint2p: 'Am Handy: linke Hälfte P1, rechte Hälfte P2',
+  hintAimUpDown2: 'ins Tor zielen',
+  hintKickPen2: 'Elfmeter schießen',
+  hintKeeperMove2: 'Handschuhe bewegen',
+  hintDive2: 'in diese Richtung tauchen',
+
   teamBlue: 'BLA',
   teamRed: 'ROT',
   kickOff: 'ANSTOSS',
@@ -376,6 +454,25 @@ const fr: Strings = {
   menuPass: 'passe',
   menuSwitch: 'changer de joueur',
   mobileHint: 'Sur mobile : joystick à gauche, boutons à droite',
+  playersLabel: 'JOUEURS',
+  opp1P: '1 JOUEUR',
+  opp1PDesc: 'contre l’IA',
+  opp2P: '2 JOUEURS',
+  opp2PDesc: 'local, même terrain',
+  player1: 'JOUEUR 1',
+  player2: 'JOUEUR 2',
+  noDiff2p: 'La difficulté ne s’applique pas en mode 2 joueurs.',
+  menuMove2: 'mouvement (I J K L)',
+  menuSprint2: 'accélération (Maj droite)',
+  menuShoot2: 'tir (Entrée)',
+  menuPass2: 'passe (M)',
+  menuSwitch2: 'changer de joueur (,)',
+  mobileHint2p: 'Sur mobile : moitié gauche P1, moitié droite P2',
+  hintAimUpDown2: 'viser dans les buts',
+  hintKickPen2: 'tirer le penalty',
+  hintKeeperMove2: 'bouger les gants',
+  hintDive2: 'plonger de ce côté',
+
   teamBlue: 'BLE',
   teamRed: 'ROU',
   kickOff: 'COUP D’ENVOI',
@@ -457,6 +554,25 @@ const es: Strings = {
   menuPass: 'pase',
   menuSwitch: 'cambiar jugador',
   mobileHint: 'En móvil: joystick a la izquierda, botones a la derecha',
+  playersLabel: 'JUGADORES',
+  opp1P: '1 JUGADOR',
+  opp1PDesc: 'contra la IA',
+  opp2P: '2 JUGADORES',
+  opp2PDesc: 'local, mismo campo',
+  player1: 'JUGADOR 1',
+  player2: 'JUGADOR 2',
+  noDiff2p: 'La dificultad no se aplica en modo 2 jugadores.',
+  menuMove2: 'mover (I J K L)',
+  menuSprint2: 'esprint (Mayús der)',
+  menuShoot2: 'disparo (Intro)',
+  menuPass2: 'pase (M)',
+  menuSwitch2: 'cambiar jugador (,)',
+  mobileHint2p: 'En móvil: mitad izquierda P1, mitad derecha P2',
+  hintAimUpDown2: 'apunta dentro de la portería',
+  hintKickPen2: 'lanza el penal',
+  hintKeeperMove2: 'mueve los guantes',
+  hintDive2: 'te lanza en esa dirección',
+
   teamBlue: 'AZU',
   teamRed: 'ROJ',
   kickOff: 'SAQUE INICIAL',
@@ -538,6 +654,25 @@ const ar: Strings = {
   menuPass: 'تمرير',
   menuSwitch: 'تبديل اللاعب',
   mobileHint: 'على الجوال: عصا تحكم يساراً وأزرار يميناً',
+  playersLabel: 'اللاعبون',
+  opp1P: 'لاعب واحد',
+  opp1PDesc: 'ضد الحاسوب',
+  opp2P: 'لاعبان',
+  opp2PDesc: 'محليًا، نفس الملعب',
+  player1: 'اللاعب 1',
+  player2: 'اللاعب 2',
+  noDiff2p: 'الصعوبة لا تُطبَّق في وضع اللاعبين.',
+  menuMove2: 'الحركة (I J K L)',
+  menuSprint2: 'الانطلاقة (Shift الأيمن)',
+  menuShoot2: 'التسديد (Enter)',
+  menuPass2: 'التمرير (M)',
+  menuSwitch2: 'تبديل اللاعب (,)',
+  mobileHint2p: 'على الهاتف: النصف الأيسر للاعب 1، النصف الأيمن للاعب 2',
+  hintAimUpDown2: 'صوّب داخل المرمى',
+  hintKickPen2: 'ركّل ركلة الجزاء',
+  hintKeeperMove2: 'حرّك القفازين',
+  hintDive2: 'اغطس في ذلك الاتجاه',
+
   teamBlue: 'أزرق',
   teamRed: 'أحمر',
   kickOff: 'ركلة البداية',
