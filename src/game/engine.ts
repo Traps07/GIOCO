@@ -56,7 +56,6 @@ const KICK_RANGE = P_R + B_R + 22;
 const GK_R = 23;
 const GK_X = 38;
 const GK_SPEED = 300;
-const FIELD_EDGE_X = GK_X + GK_R + P_R + B_R * 2 + 2;
 
 const FORMATION: { x: number; y: number }[][] = [
   [
@@ -1168,7 +1167,7 @@ export class GameEngine {
     p.y += p.vy * dt;
     p.vx *= Math.exp(-0.4 * dt);
     p.vy *= Math.exp(-0.4 * dt);
-    p.x = clamp(p.x, FIELD_EDGE_X, W - FIELD_EDGE_X);
+    p.x = clamp(p.x, P_R, W - P_R);
     p.y = clamp(p.y, P_R, H - P_R);
   }
 
@@ -1201,7 +1200,7 @@ export class GameEngine {
       }
     }
     for (const p of this.players) {
-      p.x = clamp(p.x, FIELD_EDGE_X, W - FIELD_EDGE_X);
+      p.x = clamp(p.x, P_R, W - P_R);
       p.y = clamp(p.y, P_R, H - P_R);
     }
   }
