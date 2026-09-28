@@ -1,6 +1,6 @@
 # ⚽ Street Soccer 3v3
 
-Calcio con **3 giocatori di movimento più un portiere fisso per squadra**, interamente nel browser: partite lampo da 90 secondi, **supplementari con golden goal**, **calci di rigore in prima persona** e **6 lingue** (Italiano, English, Deutsch, Français, Español, العربية).
+Calcio arcade con **1–5 giocatori di movimento più un portiere fisso per squadra**, interamente nel browser: partite lampo da 90 secondi, **supplementari con golden goal**, **calci di rigore in prima persona** e **6 lingue** (Italiano, English, Deutsch, Français, Español, العربية).
 
 ## ▶️ Per giocare SUBITO (senza installare niente)
 
@@ -17,9 +17,9 @@ Funziona anche offline e su smartphone/tablet: serve internet solo per caricare 
 
 ## 🎮 Modalità e comandi
 
-- **PARTITA 90s** — 3 giocatori di movimento per squadra più un portiere fisso; in caso di parità: tempi supplementari (golden goal) e poi rigori
+- **PARTITA 90s** — scegli il formato **1v1, 2v2, 3v3, 4v4 o 5v5** di giocatori di movimento; ogni squadra ha anche un portiere fisso. In caso di parità: tempi supplementari (golden goal) e poi rigori.
 - **SOLO RIGORI** — direttamente alla serie dal dischetto (meglio di 5 + morte subita)
-- **TORNEO NAZIONALE** — competizione per un giocatore con le 12 nazionali: 4 gruppi da 3, le prime due passano ai quarti, poi semifinali e finale. Le partite della CPU vengono simulate; nella fase a gironi sono ammessi i pareggi, mentre a eliminazione diretta il pareggio porta a supplementari e rigori.
+- **TORNEO NAZIONALE** — competizione per un giocatore con le 12 nazionali: 4 gruppi da 3, le prime due passano ai quarti, poi semifinali e finale. Le partite della CPU vengono simulate; gli incontri del giocatore usano il formato selezionato nel menu. Nella fase a gironi sono ammessi i pareggi, mentre a eliminazione diretta il pareggio porta a supplementari e rigori.
 - **1 GIOCATORE** — una nazionale scelta dal giocatore contro l’IA
 - **2 GIOCATORI IN LOCALE** — due nazionali sullo stesso schermo e con una tastiera condivisa; disponibili sia partita completa sia solo rigori
 - Prima di giocare si apre la **selezione squadre**: scegli una nazionale per ciascun lato. Sono disponibili Italia, Francia, Inghilterra, Spagna, Germania, Portogallo, Paesi Bassi, Brasile, Argentina, Croazia, Giappone e Marocco. Divise, colori e nomi sul tabellone si aggiornano in base alla scelta (predefinite: Italia e Francia); le maglie sono reinterpretazioni stilizzate ispirate alle palette e ai motivi dei kit del Mondiale 2026.
@@ -33,7 +33,7 @@ In modalità **1 giocatore**:
 | `Shift` | Scatto |
 | `Spazio` | Tiro (rigori: calcia / tuffo) |
 | `C` | Passaggio |
-| `Q` / `Tab` | Cambia giocatore |
+| `Q` / `Tab` | Cambia giocatore (solo con almeno 2 giocatori di movimento) |
 | `Esc` / `P` | Pausa |
 
 In modalità **2 giocatori** (anche durante i rigori):
@@ -42,6 +42,8 @@ In modalità **2 giocatori** (anche durante i rigori):
 | --- | --- | --- | --- | --- | --- |
 | **P1 · squadra di casa** | `W A S D` | `Shift` sinistro | `Spazio` | `C` | `Q` (o `Tab`) |
 | **P2 · squadra ospite** | `↑ ↓ ← →` | `Shift` destro | `Invio` | `/` (o `Numpad 0`) | `.` (o `Numpad .`) |
+
+Il cambio giocatore è attivo solo nei formati con più di un giocatore di movimento per squadra; nel formato 1v1 controlli direttamente l’unico giocatore.
 
 Durante i rigori, il giocatore che tira usa i propri tasti di movimento per mirare e quello che para per spostare il guantone; tiro e tuffo usano il tasto azione della rispettiva squadra.
 

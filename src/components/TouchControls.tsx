@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react';
 import { Zap, Send, RefreshCw } from 'lucide-react';
-import type { GameEngine } from '../game/engine';
+import type { GameEngine, TeamSize } from '../game/engine';
 import type { Strings } from '../i18n';
 
 const STICK_R = 60;
 
-export default function TouchControls({ engine, t }: { engine: GameEngine | null; t: Strings }) {
+export default function TouchControls({ engine, teamSize, t }: { engine: GameEngine | null; teamSize: TeamSize; t: Strings }) {
   const [stick, setStick] = useState<{ ox: number; oy: number; dx: number; dy: number; active: boolean }>({
     ox: 0,
     oy: 0,
@@ -84,16 +84,18 @@ export default function TouchControls({ engine, t }: { engine: GameEngine | null
 
       {/* pulsanti azione */}
       <div className="pointer-events-auto absolute right-4 bottom-8 flex items-end gap-3">
-        <button
-          className="flex h-14 w-14 flex-col items-center justify-center rounded-full border border-white/20 bg-white/10 text-white/85 backdrop-blur-md active:bg-white/25"
-          style={{ touchAction: 'none' }}
-          onPointerDown={(e) => {
-            e.preventDefault();
-            engine?.touchSwitch();
-          }}
-        >
-          <RefreshCw size={20} />
-        </button>
+        {teamSize > 1 && (
+          <button
+            className="flex h-14 w-14 flex-col items-center justify-center rounded-full border border-white/20 bg-white/10 text-white/85 backdrop-blur-md active:bg-white/25"
+            style={{ touchAction: 'none' }}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              engine?.touchSwitch();
+            }}
+          >
+            <RefreshCw size={20} />
+          </button>
+        )}
         <button
           className="flex h-16 w-16 flex-col items-center justify-center rounded-full border border-sky-200/40 bg-sky-400/25 text-sky-100 backdrop-blur-md active:bg-sky-400/50"
           style={{ touchAction: 'none' }}

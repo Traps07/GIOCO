@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GameEngine, type Difficulty, type GameMode, type PlayerCount, type Snapshot } from './game/engine';
+import { GameEngine, type Difficulty, type GameMode, type PlayerCount, type Snapshot, type TeamSize } from './game/engine';
 import HUD from './components/HUD';
 import TouchControls from './components/TouchControls';
 import { MenuScreen, TeamSelectScreen, TournamentSetupScreen, TournamentScreen, PauseScreen, EndScreen } from './components/Menus';
@@ -38,6 +38,7 @@ export default function App() {
   const [difficulty, setDifficulty] = useState<Difficulty>('normal');
   const [mode, setMode] = useState<GameMode>('match');
   const [playerCount, setPlayerCount] = useState<PlayerCount>(1);
+  const [teamSize, setTeamSize] = useState<TeamSize>(3);
   const [teams, setTeams] = useState<TeamSelection>([...DEFAULT_TEAMS]);
   const [tournament, setTournament] = useState<TournamentState | null>(null);
   const tournamentRef = useRef<TournamentState | null>(null);
@@ -170,18 +171,22 @@ export default function App() {
     engineRef.current?.setTeams(teams);
   }, [teams]);
 
+  useEffect(() => {
+    engineRef.current?.setDemoTeamSize(teamSize);
+  }, [teamSize]);
+
   const startGame = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
     engine.unlockAudio();
-    engine.startMatch(difficulty, mode, playerCount, teams);
+    engine.startMatch(difficulty, mode, playerCount, teams, teamSize);
     engine.inputEnabled = true;
     engine.setPaused(false);
     setResult(null);
     setGoalBanner(null);
     setEventBanner(null);
     setScreen('playing');
-  }, [difficulty, mode, playerCount, teams]);
+  }, [difficulty, mode, playerCount, teams, teamSize]);
 
   const openTeamSelect = useCallback(() => setScreen('teams'), []);
   const openTournamentSetup = useCallback(() => setScreen('tournamentSetup'), []);
@@ -205,14 +210,14 @@ export default function App() {
     setTeams(matchTeams);
     setPlayerCount(1);
     engine.unlockAudio();
-    engine.startMatch(difficulty, matchMode, 1, matchTeams);
+    engine.startMatch(difficulty, matchMode, 1, matchTeams, teamSize);
     engine.inputEnabled = true;
     engine.setPaused(false);
     setResult(null);
     setGoalBanner(null);
     setEventBanner(null);
     setScreen('playing');
-  }, [difficulty]);
+  }, [difficulty, teamSize]);
   const continueTournament = useCallback(() => {
     setResult(null);
     setScreen('tournament');
@@ -300,7 +305,7 @@ export default function App() {
         />
       )}
 
-      {screen === 'playing' && isTouch && <TouchControls engine={engineRef.current} t={t} />}
+      {screen === 'playing' && isTouch && <TouchControls engine={engineRef.current} teamSize={teamSize} t={t} />}
 
       {screen === 'menu' && (
         <MenuScreen
@@ -310,6 +315,8 @@ export default function App() {
           setMode={setMode}
           playerCount={playerCount}
           setPlayerCount={setPlayerCount}
+          teamSize={teamSize}
+          setTeamSize={setTeamSize}
           teams={teams}
           lang={lang}
           setLang={setLang}
@@ -320,6 +327,7 @@ export default function App() {
       )}
       {screen === 'tournamentSetup' && (
         <TournamentSetupScreen
+          teamSize={teamSize}
           initialTeam={tournament?.playerTeam ?? teams[0]}
           lang={lang}
           onBack={backToMenu}
@@ -340,6 +348,7 @@ export default function App() {
       {screen === 'teams' && (
         <TeamSelectScreen
           playerCount={playerCount}
+          teamSize={teamSize}
           mode={mode}
           teams={teams}
           lang={lang}

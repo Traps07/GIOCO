@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Play, RotateCcw, Home, Trophy, Frown, Handshake, ChevronRight, ChevronLeft, Zap, Target, Timer, Languages, User, Users } from 'lucide-react';
-import type { Difficulty, DecidedBy, GameMode, PlayerCount } from '../game/engine';
+import type { Difficulty, DecidedBy, GameMode, PlayerCount, TeamSize } from '../game/engine';
 import { getNationalTeam, NATIONAL_TEAMS, type NationalTeam, type NationalTeamId, type TeamKit, type TeamSelection } from '../game/teams';
 import { getActiveTournamentMatch, getGroupStandings, type TournamentGroup, type TournamentMatch, type TournamentState } from '../game/tournament';
 import { fmt, LANGUAGES, type Language, type Strings } from '../i18n';
@@ -8,6 +8,8 @@ import { fmt, LANGUAGES, type Language, type Strings } from '../i18n';
 interface ScreenProps {
   t: Strings;
 }
+
+const TEAM_SIZES: TeamSize[] = [1, 2, 3, 4, 5];
 
 function kitPatternBackground(kit: TeamKit) {
   switch (kit.pattern) {
@@ -59,6 +61,8 @@ export function MenuScreen({
   setMode,
   playerCount,
   setPlayerCount,
+  teamSize,
+  setTeamSize,
   teams,
   lang,
   setLang,
@@ -72,6 +76,8 @@ export function MenuScreen({
   setMode: (m: GameMode) => void;
   playerCount: PlayerCount;
   setPlayerCount: (count: PlayerCount) => void;
+  teamSize: TeamSize;
+  setTeamSize: (size: TeamSize) => void;
   teams: TeamSelection;
   lang: Language;
   setLang: (l: Language) => void;
@@ -105,7 +111,7 @@ export function MenuScreen({
         <h1 className="font-display leading-[0.9] tracking-tight">
           <span className="block text-[clamp(2.4rem,9vw,5.5rem)] text-white">STREET</span>
           <span className="block text-[clamp(2.4rem,9vw,5.5rem)] text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-cyan-200 to-rose-300 glow-soft">
-            SOCCER 3v3
+            SOCCER {mode === 'match' ? `${teamSize}v${teamSize}` : 'PENS'}
           </span>
         </h1>
 
@@ -166,6 +172,36 @@ export function MenuScreen({
             })}
           </div>
         </div>
+
+        {mode === 'match' && (
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <div className="flex flex-col items-center">
+              <span className="font-display text-[10px] tracking-[0.3em] text-white/50">{t.teamSizeTitle}</span>
+              <span className="mt-0.5 text-[9px] text-white/35">{t.teamSizeDesc}</span>
+            </div>
+            <div dir="ltr" className="flex gap-1.5 sm:gap-2">
+              {TEAM_SIZES.map((size) => {
+                const active = teamSize === size;
+                return (
+                  <button
+                    key={size}
+                    type="button"
+                    aria-pressed={active}
+                    aria-label={`${size}v${size} · ${t.teamSizeDesc}`}
+                    onClick={() => setTeamSize(size)}
+                    className={`flex h-10 w-12 items-center justify-center rounded-xl border font-display text-xs tracking-wide transition ${
+                      active
+                        ? 'border-emerald-300/70 bg-emerald-400/15 text-emerald-100 shadow-[0_0_20px_rgba(52,211,153,0.18)]'
+                        : 'border-white/10 bg-white/5 text-white/65 hover:border-white/25 hover:bg-white/10'
+                    }`}
+                  >
+                    {size}v{size}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* modalità */}
         <div className="mt-6 flex gap-2 sm:gap-3">
@@ -239,7 +275,7 @@ export function MenuScreen({
                 P1 · {homeTeam.flag} {homeTeam.names[lang]}
               </span>
               <span><kbd>WASD</kbd> {t.kMove} · <kbd>Shift</kbd> {t.kSprint}</span>
-              <span><kbd>Space</kbd> {t.kShoot} · <kbd>C</kbd> {t.kPass} · <kbd>Q</kbd> {t.kSwitch}</span>
+              <span><kbd>Space</kbd> {t.kShoot} · <kbd>C</kbd> {t.kPass}{teamSize > 1 && <> · <kbd>Q</kbd> {t.kSwitch}</>}</span>
             </div>
             <div
               className="flex flex-col gap-1.5 rounded-xl border px-4 py-3 text-[10px] text-white/60"
@@ -249,17 +285,17 @@ export function MenuScreen({
                 P2 · {awayTeam.flag} {awayTeam.names[lang]}
               </span>
               <span><kbd>↑ ↓ ← →</kbd> {t.kMove} · <kbd>RShift</kbd> {t.kSprint}</span>
-              <span><kbd>Enter</kbd> {t.kShoot} · <kbd>/</kbd> {t.kPass} · <kbd>.</kbd> {t.kSwitch}</span>
+              <span><kbd>Enter</kbd> {t.kShoot} · <kbd>/</kbd> {t.kPass}{teamSize > 1 && <> · <kbd>.</kbd> {t.kSwitch}</>}</span>
             </div>
           </div>
         ) : (
-          <div className="mt-7 hidden grid-cols-5 gap-2 sm:grid">
+          <div className={`mt-7 hidden gap-2 sm:grid ${teamSize > 1 ? 'grid-cols-5' : 'grid-cols-4'}`}>
             {[
               ['WASD · Frecce', t.menuMove],
               ['Shift', t.menuSprint],
               ['Spazio', t.menuShoot],
               ['C', t.menuPass],
-              ['Q · Tab', t.menuSwitch],
+              ...(teamSize > 1 ? [['Q · Tab', t.menuSwitch]] : []),
             ].map(([k, v]) => (
               <div key={k} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-black/35 px-3 py-2.5">
                 <span className="font-display text-[11px] text-sky-200 tracking-wide">{k}</span>
@@ -305,6 +341,7 @@ export function MenuScreen({
 
 export function TeamSelectScreen({
   playerCount,
+  teamSize,
   mode,
   teams,
   lang,
@@ -314,6 +351,7 @@ export function TeamSelectScreen({
   t,
 }: ScreenProps & {
   playerCount: PlayerCount;
+  teamSize: TeamSize;
   mode: GameMode;
   teams: TeamSelection;
   lang: Language;
@@ -343,6 +381,12 @@ export function TeamSelectScreen({
           </div>
           <div className="w-[84px] shrink-0" />
         </div>
+
+        {mode === 'match' && (
+          <div dir="ltr" className="mb-3 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-1 text-[10px] text-emerald-100/75">
+            {teamSize}v{teamSize} · {t.teamSizeDesc}
+          </div>
+        )}
 
         <div className="mb-3 grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
           {teams.map((teamId, side) => {
@@ -428,7 +472,8 @@ export function TeamSelectScreen({
   );
 }
 
-export function TournamentSetupScreen({ initialTeam, lang, onBack, onStart, t }: ScreenProps & {
+export function TournamentSetupScreen({ teamSize, initialTeam, lang, onBack, onStart, t }: ScreenProps & {
+  teamSize: TeamSize;
   initialTeam: NationalTeamId;
   lang: Language;
   onBack: () => void;
@@ -454,9 +499,12 @@ export function TournamentSetupScreen({ initialTeam, lang, onBack, onStart, t }:
           <div className="w-[84px] shrink-0" />
         </div>
 
-        <div className="mb-5 flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-300/10 px-4 py-2 text-[10px] text-amber-100/80 sm:text-xs">
+        <div className="mb-2 flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-300/10 px-4 py-2 text-[10px] text-amber-100/80 sm:text-xs">
           <Trophy size={15} className="shrink-0 text-amber-300" />
           <span>{t.tournamentFormat}</span>
+        </div>
+        <div dir="ltr" className="mb-4 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-1 text-[10px] text-emerald-100/75">
+          {teamSize}v{teamSize} · {t.teamSizeDesc}
         </div>
         <p className="mb-3 font-display text-[10px] tracking-[0.3em] text-white/45">{t.tournamentSelectTeam}</p>
         <div className="grid w-full grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">

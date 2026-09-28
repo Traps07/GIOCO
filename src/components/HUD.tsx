@@ -167,6 +167,9 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
           ) : (
             <>
               <div className={`mt-2 flex w-56 items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-1.5 backdrop-blur-md`}>
+                <span dir="ltr" title={t.teamSizeDesc} className="shrink-0 font-display text-[9px] tabular-nums text-emerald-200/75">
+                  {snap.teamSize}v{snap.teamSize}
+                </span>
                 <span className={`font-display text-sm tabular-nums leading-none ${urgent ? 'text-amber-300 animate-pulse' : 'text-white/85'}`}>
                   {fmtTime(snap.timeLeft)}
                 </span>
@@ -292,7 +295,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
               <span><kbd>Shift</kbd> {t.kSprint}</span>
               <span><kbd>Space</kbd> {t.kShoot}</span>
               <span><kbd>C</kbd> {t.kPass}</span>
-              <span><kbd>Q</kbd> {t.kSwitch}</span>
+              {snap.teamSize > 1 && <span><kbd>Q</kbd> {t.kSwitch}</span>}
             </div>
             <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-xl border bg-black/50 px-3 py-2 text-white/65 backdrop-blur-md" style={{ borderColor: `${awayTeam.kit.primary}55` }}>
               <span className="font-display" style={{ color: awayTeam.kit.primary }}>P2 · {awayTeam.flag} {awayTeam.names[lang]}</span>
@@ -300,7 +303,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
               <span><kbd>RShift</kbd> {t.kSprint}</span>
               <span><kbd>Enter</kbd> {t.kShoot}</span>
               <span><kbd>/</kbd> {t.kPass}</span>
-              <span><kbd>.</kbd> {t.kSwitch}</span>
+              {snap.teamSize > 1 && <span><kbd>.</kbd> {t.kSwitch}</span>}
               <span><kbd>Esc</kbd> {t.kPause}</span>
             </div>
           </div>
@@ -313,8 +316,12 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
             <span><kbd>Spazio</kbd> {t.kShoot}</span>
             <span className="text-white/20">•</span>
             <span><kbd>C</kbd> {t.kPass}</span>
-            <span className="text-white/20">•</span>
-            <span><kbd>Q</kbd> {t.kSwitch}</span>
+            {snap.teamSize > 1 && (
+              <>
+                <span className="text-white/20">•</span>
+                <span><kbd>Q</kbd> {t.kSwitch}</span>
+              </>
+            )}
             <span className="text-white/20">•</span>
             <span><kbd>Esc</kbd> {t.kPause}</span>
           </div>

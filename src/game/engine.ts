@@ -4,6 +4,7 @@ import { DEFAULT_TEAMS, getNationalTeam, type TeamKit, type TeamSelection } from
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type GameMode = 'match' | 'pens';
 export type PlayerCount = 1 | 2;
+export type TeamSize = 1 | 2 | 3 | 4 | 5;
 export type Phase = 'demo' | 'countdown' | 'play' | 'goal' | 'pens' | 'over';
 export type Period = 'regular' | 'extra' | 'pens';
 export type PenKickResult = 'goal' | 'save' | 'miss' | 'post';
@@ -30,6 +31,7 @@ export interface Snapshot {
   winner: number; // -2 = non finita, -1 = pareggio
   muted: boolean;
   playerCount: PlayerCount;
+  teamSize: TeamSize;
   controlled: [number, number];
   pens: PensSnap | null;
 }
@@ -57,18 +59,36 @@ const GK_R = 23;
 const GK_X = 38;
 const GK_SPEED = 300;
 
-const FORMATION: { x: number; y: number }[][] = [
-  [
+const FORMATIONS: Record<TeamSize, { x: number; y: number }[]> = {
+  1: [{ x: 360, y: 350 }],
+  2: [
+    { x: 250, y: 270 },
+    { x: 390, y: 430 },
+  ],
+  3: [
     { x: 205, y: 350 },
     { x: 380, y: 250 },
     { x: 380, y: 450 },
   ],
-  [
-    { x: W - 205, y: 350 },
-    { x: W - 380, y: 250 },
-    { x: W - 380, y: 450 },
+  4: [
+    { x: 175, y: 350 },
+    { x: 315, y: 230 },
+    { x: 315, y: 470 },
+    { x: 475, y: 350 },
   ],
-];
+  5: [
+    { x: 150, y: 350 },
+    { x: 275, y: 220 },
+    { x: 275, y: 480 },
+    { x: 435, y: 260 },
+    { x: 435, y: 440 },
+  ],
+};
+
+function formationFor(team: number, idx: number, teamSize: TeamSize) {
+  const position = FORMATIONS[teamSize][idx];
+  return { x: team === 0 ? position.x : W - position.x, y: position.y };
+}
 
 interface DiffCfg {
   speed: number;
@@ -102,17 +122,17 @@ class Player {
   kickCd = 0;
   holdT = 0;
   number: number;
-  constructor(public team: number, public idx: number) {
-    const f = FORMATION[team][idx];
+  constructor(public team: number, public idx: number, public teamSize: TeamSize) {
+    const f = formationFor(team, idx, teamSize);
     this.x = f.x;
     this.y = f.y;
     this.tx = f.x;
     this.ty = f.y;
-    this.number = team === 0 ? [4, 7, 10][idx] : [4, 9, 11][idx];
+    this.number = team === 0 ? [4, 7, 10, 8, 11][idx] : [4, 9, 11, 7, 10][idx];
     this.faceX = team === 0 ? 1 : -1;
   }
   reset() {
-    const f = FORMATION[this.team][this.idx];
+    const f = formationFor(this.team, this.idx, this.teamSize);
     this.x = f.x;
     this.y = f.y;
     this.vx = 0;
@@ -214,6 +234,7 @@ export class GameEngine {
   private players: Player[] = [];
   private goalkeepers: FixedGoalkeeper[] = [new FixedGoalkeeper(0), new FixedGoalkeeper(1)];
   private playerCount: PlayerCount = 1;
+  private teamSize: TeamSize = 3;
   private selectedTeams: TeamSelection = [...DEFAULT_TEAMS];
   private controlledIdx: [number, number] = [1, 1];
   private ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, lastTouch: -1 };
@@ -261,7 +282,7 @@ export class GameEngine {
     if (!ctx) throw new Error('no 2d context');
     this.ctx = ctx;
 
-    for (let t = 0; t < 2; t++) for (let i = 0; i < 3; i++) this.players.push(new Player(t, i));
+    this.configurePlayers(this.teamSize);
 
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
@@ -386,12 +407,34 @@ export class GameEngine {
     this.selectedTeams = [...teams];
   }
 
+  setDemoTeamSize(teamSize: TeamSize) {
+    if (this.phase !== 'demo' || this.teamSize === teamSize) return;
+    this.configurePlayers(teamSize);
+    this.players.forEach((p) => p.reset());
+    this.goalkeepers.forEach((keeper) => keeper.reset());
+    this.newBall();
+  }
+
+  private configurePlayers(teamSize: TeamSize) {
+    this.teamSize = teamSize;
+    this.players = [];
+    for (let team = 0; team < 2; team++) {
+      for (let idx = 0; idx < teamSize; idx++) this.players.push(new Player(team, idx, teamSize));
+    }
+    this.resetControlledPlayers();
+  }
+
+  private resetControlledPlayers() {
+    const initialPlayer = Math.min(1, this.teamSize - 1);
+    this.controlledIdx = [initialPlayer, initialPlayer];
+  }
+
   // ---------- flusso partita ----------
   startDemo() {
     this.phase = 'demo';
     this.demo = true;
     this.playerCount = 1;
-    this.controlledIdx = [1, 1];
+    this.resetControlledPlayers();
     this.keys.clear();
     this.clearInputQueues();
     this.score = [0, 0];
@@ -413,7 +456,9 @@ export class GameEngine {
     mode: GameMode | 'group' = 'match',
     playerCount: PlayerCount = 1,
     teams: TeamSelection = DEFAULT_TEAMS,
+    teamSize: TeamSize = 3,
   ) {
+    this.configurePlayers(teamSize);
     this.diff = diff;
     this.playerCount = playerCount;
     this.selectedTeams = [...teams];
@@ -426,7 +471,7 @@ export class GameEngine {
     this.timeLeft = MATCH_TIME;
     this.winner = -2;
     this.lastGoalTeam = -1;
-    this.controlledIdx = [1, 1];
+    this.resetControlledPlayers();
     this.period = 'regular';
     this.allowDraw = mode === 'group';
     this.pens = null;
@@ -444,7 +489,7 @@ export class GameEngine {
     this.players.forEach((p) => p.reset());
     this.goalkeepers.forEach((keeper) => keeper.reset());
     this.newBall();
-    this.controlledIdx = [1, 1];
+    this.resetControlledPlayers();
     this.countdown = 3.4;
     this.countdownShown = 4;
     this.phase = 'countdown';
@@ -935,8 +980,8 @@ export class GameEngine {
     if (this.phase === 'play' && !isDemo) {
       const teams = this.playerCount === 2 ? [0, 1] : [0];
       for (const team of teams) {
-        if (this.switchQ[team]) {
-          this.controlledIdx[team] = (this.controlledIdx[team] + 1) % 3;
+        if (this.switchQ[team] && this.teamSize > 1) {
+          this.controlledIdx[team] = (this.controlledIdx[team] + 1) % this.teamSize;
           this.sfx.swap();
         }
       }
@@ -954,7 +999,7 @@ export class GameEngine {
   }
 
   private getControlled(team = 0) {
-    return this.players[team * 3 + this.controlledIdx[team]];
+    return this.players[team * this.teamSize + this.controlledIdx[team]];
   }
 
   private inputDir(team = 0) {
@@ -1028,13 +1073,14 @@ export class GameEngine {
     const ownX = this.ownGoalX(p.team);
     const oppX = this.oppGoalX(p.team);
     const opps = this.players.filter((q) => q.team !== p.team);
+    const form = formationFor(p.team, p.idx, this.teamSize);
     const myTeamPossession = ball.lastTouch === p.team;
     const meHas = dist(p.x, p.y, ball.x, ball.y) < P_R + B_R + 3;
     let tx = p.tx;
     let ty = p.ty;
     let maxS = cfg.speed;
 
-    // Tutti e tre i giocatori di movimento partecipano all'azione.
+    // Tutti i giocatori di movimento selezionati partecipano all'azione.
     const field = this.players.filter((q) => q.team === p.team);
     const sorted = [...field].sort(
       (a, b) => dist(a.x, a.y, ball.x, ball.y) - dist(b.x, b.y, ball.x, ball.y),
@@ -1089,16 +1135,15 @@ export class GameEngine {
       const gx = ownX;
       const dx = ball.x - gx;
       const dy = ball.y - H / 2;
-      const wob = p.idx === 0 ? 0 : p.idx === 1 ? -120 : 120;
+      const wob = Math.sign(form.y - H / 2) * 120;
       tx = gx + dx * 0.38;
       ty = H / 2 + dy * 0.55 + wob * 0.4;
       tx = p.team === 0 ? clamp(tx, 90, W * 0.62) : clamp(tx, W * 0.38, W - 90);
       ty = clamp(ty, 70, H - 70);
     } else {
       // ---- supporto in attacco ----
-      const form = FORMATION[p.team][p.idx];
       const dir = p.team === 0 ? 1 : -1;
-      const spread = p.idx === 0 ? 0 : p.idx === 1 ? -1 : 1;
+      const spread = Math.sign(form.y - H / 2);
       const adv = clamp(p.team === 0 ? ball.x - form.x : form.x - ball.x, 0, 260);
       tx = form.x + dir * (60 + adv * 0.5);
       ty = clamp(ball.y + spread * 190, 90, H - 90);
@@ -1379,6 +1424,10 @@ export class GameEngine {
 
   private pass(p: Player, errRange: number, humanSwitch: boolean) {
     const mates = this.players.filter((q) => q.team === p.team && q !== p);
+    if (mates.length === 0) {
+      this.clear(p);
+      return;
+    }
     const dir = p.team === 0 || this.playerCount === 2
       ? this.inputDir(p.team)
       : { x: p.faceX, y: p.faceY, len: 1 };
@@ -2561,6 +2610,7 @@ export class GameEngine {
       winner: this.winner,
       muted: this.sfx.muted,
       playerCount: this.playerCount,
+      teamSize: this.teamSize,
       controlled: [...this.controlledIdx],
       pens: ps
         ? {
