@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GameEngine, type Difficulty, type GameMode, type Snapshot } from './game/engine';
+import { GameEngine, type Difficulty, type GameMode, type Opponent, type Snapshot } from './game/engine';
 import HUD from './components/HUD';
 import TouchControls from './components/TouchControls';
 import { MenuScreen, PauseScreen, EndScreen } from './components/Menus';
@@ -30,6 +30,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('menu');
   const [difficulty, setDifficulty] = useState<Difficulty>('normal');
   const [mode, setMode] = useState<GameMode>('match');
+  const [opponent, setOpponent] = useState<Opponent>('ai');
   const [lang, setLangState] = useState<Language>(loadLang);
   const t = STRINGS[lang];
   const tRef = useRef(t);
@@ -143,14 +144,14 @@ export default function App() {
     const engine = engineRef.current;
     if (!engine) return;
     engine.unlockAudio();
-    engine.startMatch(difficulty, mode);
+    engine.startMatch(difficulty, mode, opponent);
     engine.inputEnabled = true;
     engine.setPaused(false);
     setResult(null);
     setGoalBanner(null);
     setEventBanner(null);
     setScreen('playing');
-  }, [difficulty, mode]);
+  }, [difficulty, mode, opponent]);
 
   const pauseGame = useCallback(() => {
     const engine = engineRef.current;
@@ -212,7 +213,9 @@ export default function App() {
         />
       )}
 
-      {screen === 'playing' && isTouch && <TouchControls engine={engineRef.current} t={t} />}
+      {screen === 'playing' && isTouch && (
+        <TouchControls engine={engineRef.current} twoPlayer={opponent === 'human'} t={t} />
+      )}
 
       {screen === 'menu' && (
         <MenuScreen
@@ -220,6 +223,8 @@ export default function App() {
           setDifficulty={setDifficulty}
           mode={mode}
           setMode={setMode}
+          opponent={opponent}
+          setOpponent={setOpponent}
           lang={lang}
           setLang={setLang}
           onStart={startGame}

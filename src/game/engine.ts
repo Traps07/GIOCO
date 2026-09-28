@@ -2,6 +2,8 @@ import { SFX } from './sound';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type GameMode = 'match' | 'pens';
+/** 'ai' = 1 giocatore contro la IA (squadra ROSSA). 'human' = 2 giocatori in locale. */
+export type Opponent = 'ai' | 'human';
 export type Phase = 'demo' | 'countdown' | 'play' | 'goal' | 'pens' | 'over';
 export type Period = 'regular' | 'extra' | 'pens';
 export type PenKickResult = 'goal' | 'save' | 'miss' | 'post';
@@ -27,7 +29,8 @@ export interface Snapshot {
   lastGoalTeam: number;
   winner: number; // -2 = non finita, -1 = pareggio
   muted: boolean;
-  controlled: number;
+  controlled: [number, number];
+  opponent: Opponent;
   pens: PensSnap | null;
 }
 
@@ -53,6 +56,41 @@ const KICK_RANGE = P_R + B_R + 22;
 
 const TEAM_COLORS = ['#38bdf8', '#fb7185'];
 const TEAM_GLOW = ['rgba(56,189,248,', 'rgba(251,113,133,'];
+
+// ---------- tastiera: due giocatori locali sullo stesso ----------
+// P1 (mano sinistra): WASD + frecce. P2 (mano destra): IJKL.
+// Gli insiemi sono disgiunti, quindi i due non si pestano mai i piedi.
+const KEYMAP: {
+  up: string[];
+  down: string[];
+  left: string[];
+  right: string[];
+  sprint: string[];
+  shoot: string[];
+  pass: string[];
+  switch: string[];
+}[] = [
+  {
+    up: ['KeyW', 'ArrowUp'],
+    down: ['KeyS', 'ArrowDown'],
+    left: ['KeyA', 'ArrowLeft'],
+    right: ['KeyD', 'ArrowRight'],
+    sprint: ['ShiftLeft'],
+    shoot: ['Space'],
+    pass: ['KeyC', 'KeyX'],
+    switch: ['KeyQ', 'Tab'],
+  },
+  {
+    up: ['KeyI'],
+    down: ['KeyK'],
+    left: ['KeyJ'],
+    right: ['KeyL'],
+    sprint: ['ShiftRight'],
+    shoot: ['Enter', 'Numpad0', 'Period'],
+    pass: ['KeyM', 'Numpad2'],
+    switch: ['Comma', 'Numpad3'],
+  },
+];
 
 const FORMATION: { x: number; y: number }[][] = [
   [
@@ -194,7 +232,9 @@ export class GameEngine {
 
   phase: Phase = 'demo';
   private players: Player[] = [];
-  private controlledIdx = 1;
+  /** indice del giocatore controllato *dentro* ciascuna squadra: [squadra 0, squadra 1] */
+  private controlledIdx: [number, number] = [1, 1];
+  private opponent: Opponent = 'ai';
   private ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, lastTouch: -1 };
   private trail: { x: number; y: number }[] = [];
   private particles: Particle[] = [];
@@ -218,10 +258,13 @@ export class GameEngine {
   private goalFlash = 0;
 
   private keys = new Set<string>();
-  private stick = { x: 0, y: 0, active: false };
-  private shootQ = false;
-  private passQ = false;
-  private switchQ = false;
+  private sticks: { x: number; y: number; active: boolean }[] = [
+    { x: 0, y: 0, active: false },
+    { x: 0, y: 0, active: false },
+  ];
+  private shootQ: [boolean, boolean] = [false, false];
+  private passQ: [boolean, boolean] = [false, false];
+  private switchQ: [boolean, boolean] = [false, false];
 
   private sfx = new SFX();
   private demo = true;
@@ -291,27 +334,32 @@ export class GameEngine {
       e.preventDefault();
     }
     this.keys.add(e.code);
-    if (e.code === 'Space') this.shootQ = true;
-    if (e.code === 'KeyC' || e.code === 'KeyJ' || e.code === 'KeyX') this.passQ = true;
-    if (e.code === 'KeyQ' || e.code === 'Tab') this.switchQ = true;
+    // lo stesso tasto può valere per P1 o P2: si accoda a tutte le mani che lo mappano
+    for (let slot = 0; slot < 2; slot++) {
+      if (this.slotEnabled(slot) && !this.isDemo()) {
+        if (KEYMAP[slot].shoot.includes(e.code)) this.shootQ[slot] = true;
+        if (KEYMAP[slot].pass.includes(e.code)) this.passQ[slot] = true;
+        if (KEYMAP[slot].switch.includes(e.code)) this.switchQ[slot] = true;
+      }
+    }
   };
 
   private onKeyUp = (e: KeyboardEvent) => {
     this.keys.delete(e.code);
   };
 
-  setStick(x: number, y: number, active: boolean) {
-    this.stick = { x, y, active };
+  setStick(slot: number, x: number, y: number, active: boolean) {
+    this.sticks[slot] = { x, y, active };
   }
 
-  touchShoot() {
-    if (this.inputEnabled && !this.paused) this.shootQ = true;
+  touchShoot(slot = 0) {
+    if (this.inputEnabled && !this.paused) this.shootQ[slot] = true;
   }
-  touchPass() {
-    if (this.inputEnabled && !this.paused) this.passQ = true;
+  touchPass(slot = 0) {
+    if (this.inputEnabled && !this.paused) this.passQ[slot] = true;
   }
-  touchSwitch() {
-    if (this.inputEnabled && !this.paused) this.switchQ = true;
+  touchSwitch(slot = 0) {
+    if (this.inputEnabled && !this.paused) this.switchQ[slot] = true;
   }
 
   setPaused(p: boolean) {
@@ -343,8 +391,9 @@ export class GameEngine {
     this.newBall();
   }
 
-  startMatch(diff: Difficulty, mode: GameMode = 'match') {
+  startMatch(diff: Difficulty, mode: GameMode = 'match', opponent: Opponent = 'ai') {
     this.diff = diff;
+    this.opponent = opponent;
     this.demo = false;
     this.sfx.ensure();
     this.score = [0, 0];
@@ -352,7 +401,7 @@ export class GameEngine {
     this.timeLeft = MATCH_TIME;
     this.winner = -2;
     this.lastGoalTeam = -1;
-    this.controlledIdx = 1;
+    this.controlledIdx = [1, 1];
     this.period = 'regular';
     this.pens = null;
     this.fpFx = [];
@@ -368,7 +417,7 @@ export class GameEngine {
   private kickoff() {
     this.players.forEach((p) => p.reset());
     this.newBall();
-    this.controlledIdx = 1;
+    this.controlledIdx = [1, 1];
     this.countdown = 3.4;
     this.countdownShown = 4;
     this.phase = 'countdown';
@@ -637,13 +686,16 @@ export class GameEngine {
     ps.stageT -= dt;
     this.updateFpFx(dt);
     const attack = ps.turn === 0;
-    const dir = this.inputDir();
+    // chi è "umano" in questo momento: in 2 giocatori tocca al giocatore del turno,
+    // in 1 giocatore l'unico umano (squadra BLU) tira e para sempre
+    const activeSlot = this.opponent === 'human' ? ps.turn : 0;
+    const dir = this.inputDir(activeSlot);
 
     // il giocatore muove il guantone (quando difende), sempre tranne che a risultato mostrato
     if (!attack && ps.stage !== 'resolve') {
       const gx = dir.x;
       const gy = -dir.y;
-      if (this.shootQ && ps.diveT <= 0 && (Math.abs(gx) > 0.15 || Math.abs(gy) > 0.15)) {
+      if (this.shootQ[activeSlot] && ps.diveT <= 0 && (Math.abs(gx) > 0.15 || Math.abs(gy) > 0.15)) {
         ps.diveT = 0.38;
         ps.diveDx = gx;
         ps.diveDy = gy;
@@ -678,7 +730,7 @@ export class GameEngine {
         ps.aimT += dt;
         ps.aimX = clamp(ps.aimX + dir.x * 1.5 * dt, -0.96, 0.96);
         ps.aimY = clamp(ps.aimY - dir.y * 1.35 * dt, 0.05, 0.96);
-        if (this.shootQ) {
+        if (this.shootQ[activeSlot]) {
           this.penRelease();
           return;
         }
@@ -719,9 +771,7 @@ export class GameEngine {
     this.players.forEach((p) => (p.kickCd = Math.max(0, p.kickCd - dt)));
 
     if (this.phase === 'countdown') {
-      this.shootQ = false;
-      this.passQ = false;
-      this.switchQ = false;
+      this.clearQueues();
       this.countdown -= dt;
       const c = Math.ceil(this.countdown);
       if (c !== this.countdownShown && c > 0) {
@@ -736,9 +786,7 @@ export class GameEngine {
     }
 
     if (this.phase === 'goal') {
-      this.shootQ = false;
-      this.passQ = false;
-      this.switchQ = false;
+      this.clearQueues();
       this.goalT -= dt;
       // palla che si assesta in rete
       this.ball.vx *= Math.exp(-4 * dt);
@@ -763,9 +811,7 @@ export class GameEngine {
 
     if (this.phase === 'pens') {
       this.updatePens(dt);
-      this.shootQ = false;
-      this.passQ = false;
-      this.switchQ = false;
+      this.clearQueues();
       return;
     }
 
@@ -789,15 +835,18 @@ export class GameEngine {
     }
 
     const isDemo = this.phase === 'demo';
+    const twoPlayer = this.opponent === 'human';
 
     // ---------- controlli ----------
     for (const p of this.players) {
       p.hasBall = false;
-      const isHuman = !isDemo && p.team === 0 && p.idx === this.controlledIdx;
-      if (isHuman && this.phase === 'play') {
+      if (this.isHumanPlayer(p) && this.phase === 'play') {
         this.humanControl(p, dt);
       } else {
-        const cfg = isDemo ? DEMO_CFG : p.team === 1 ? DIFFS[this.diff] : { ...DIFFS.normal, speed: 262 };
+        // in 2 giocatori la squadra ROSSA non è mai IA; squadre non umane usano la IA
+        // a velocità pari, così i due hanno davvero la stessa squadra di compagni
+        const mates = twoPlayer ? DIFFS.normal : p.team === 1 ? DIFFS[this.diff] : { ...DIFFS.normal, speed: 262 };
+        const cfg = isDemo ? DEMO_CFG : mates;
         this.aiControl(p, dt, cfg);
       }
       this.integratePlayer(p, dt);
@@ -831,37 +880,64 @@ export class GameEngine {
 
     // queue input uomini
     if (this.phase === 'play' && !isDemo) {
-      const me = this.getControlled();
-      if (this.switchQ) {
-        this.controlledIdx = (this.controlledIdx + 1) % 3;
-        this.sfx.swap();
-      }
-      if (this.shootQ && me.kickCd <= 0 && dist(me.x, me.y, this.ball.x, this.ball.y) < KICK_RANGE) {
-        this.shoot(me, 0.05);
-      }
-      if (this.passQ && me.kickCd <= 0 && dist(me.x, me.y, this.ball.x, this.ball.y) < KICK_RANGE) {
-        this.pass(me, 0.05, true);
+      for (let slot = 0; slot < 2; slot++) {
+        if (!this.slotEnabled(slot)) continue;
+        const me = this.getControlled(slot);
+        if (this.switchQ[slot]) {
+          this.controlledIdx[slot] = (this.controlledIdx[slot] + 1) % 3;
+          this.sfx.swap();
+        }
+        const near = me.kickCd <= 0 && dist(me.x, me.y, this.ball.x, this.ball.y) < KICK_RANGE;
+        if (this.shootQ[slot] && near) {
+          this.shoot(me, 0.05);
+        }
+        if (this.passQ[slot] && near) {
+          this.pass(me, 0.05, true);
+        }
       }
     }
-    this.shootQ = false;
-    this.passQ = false;
-    this.switchQ = false;
+    this.clearQueues();
   }
 
-  private getControlled() {
-    return this.players[this.controlledIdx];
+  private clearQueues() {
+    this.shootQ[0] = false;
+    this.shootQ[1] = false;
+    this.passQ[0] = false;
+    this.passQ[1] = false;
+    this.switchQ[0] = false;
+    this.switchQ[1] = false;
   }
 
-  private inputDir() {
+  /** lo slot 1 (P2, squadra ROSSA) esiste solo in modalità 2 giocatori */
+  private slotEnabled(slot: number) {
+    return slot === 0 || this.opponent === 'human';
+  }
+
+  private isDemo() {
+    return this.phase === 'demo';
+  }
+
+  /** il giocatore umano che sta toccando la palla in un dato momento */
+  private isHumanPlayer(p: Player) {
+    return !this.demo && this.slotEnabled(p.team) && p.idx === this.controlledIdx[p.team];
+  }
+
+  private getControlled(team: number) {
+    return this.players[team * 3 + this.controlledIdx[team]];
+  }
+
+  private inputDir(slot: number) {
+    const km = KEYMAP[slot];
     let x = 0;
     let y = 0;
-    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) y -= 1;
-    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) y += 1;
-    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) x -= 1;
-    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) x += 1;
-    if (this.stick.active && (Math.abs(this.stick.x) > 0.12 || Math.abs(this.stick.y) > 0.12)) {
-      x = this.stick.x;
-      y = this.stick.y;
+    if (km.up.some((k) => this.keys.has(k))) y -= 1;
+    if (km.down.some((k) => this.keys.has(k))) y += 1;
+    if (km.left.some((k) => this.keys.has(k))) x -= 1;
+    if (km.right.some((k) => this.keys.has(k))) x += 1;
+    const st = this.sticks[slot];
+    if (st.active && (Math.abs(st.x) > 0.12 || Math.abs(st.y) > 0.12)) {
+      x = st.x;
+      y = st.y;
     }
     const l = Math.hypot(x, y);
     if (l > 1) {
@@ -872,8 +948,8 @@ export class GameEngine {
   }
 
   private humanControl(p: Player, dt: number) {
-    const dir = this.inputDir();
-    const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+    const dir = this.inputDir(p.team);
+    const sprint = KEYMAP[p.team].sprint.some((k) => this.keys.has(k));
     const maxS = (sprint ? 352 : 296) * (dir.len || 0);
     const dvx = dir.x * maxS - p.vx;
     const dvy = dir.y * maxS - p.vy;
@@ -1184,7 +1260,7 @@ export class GameEngine {
   // ---------- calci ----------
   private shoot(p: Player, errRange: number) {
     const oppX = this.oppGoalX(p.team);
-    const dir = p.team === 0 ? this.inputDir() : { x: 0, y: 0, len: 0 };
+    const dir = this.slotEnabled(p.team) && !this.demo ? this.inputDir(p.team) : { x: 0, y: 0, len: 0 };
     const aimY = H / 2 + (dir.len > 0.2 ? dir.y * 80 : (Math.random() - 0.5) * 130) + (Math.random() - 0.5) * errRange * 300;
     const dx = oppX - p.x;
     const dy = aimY - p.y;
@@ -1204,7 +1280,7 @@ export class GameEngine {
 
   private pass(p: Player, errRange: number, humanSwitch: boolean) {
     const mates = this.players.filter((q) => q.team === p.team && q !== p);
-    const dir = p.team === 0 ? this.inputDir() : { x: p.faceX, y: p.faceY, len: 1 };
+    const dir = this.slotEnabled(p.team) && !this.demo ? this.inputDir(p.team) : { x: p.faceX, y: p.faceY, len: 1 };
     const useDir = dir.len > 0.2 ? dir : { x: p.faceX, y: p.faceY, len: 1 };
 
     let best: Player | null = null;
@@ -1241,8 +1317,10 @@ export class GameEngine {
     p.holdT = 0;
     this.sfx.pass();
     this.spawnKick(this.ball.x, this.ball.y, dx / dl, dy / dl, '#ffffff');
-    if (humanSwitch && p.team === 0) {
-      this.controlledIdx = best.idx;
+    // il passaggio aggancia automaticamente il ricevitore: in 2 giocatori vale
+    // per entrambe le squadre, in 1 giocatore solo per quella comandata a mano
+    if (humanSwitch && this.slotEnabled(p.team)) {
+      this.controlledIdx[p.team] = best.idx;
       this.sfx.swap();
     }
     void tx;
@@ -2066,7 +2144,7 @@ export class GameEngine {
 
   private drawPlayer(ctx: CanvasRenderingContext2D, p: Player) {
     const color = TEAM_COLORS[p.team];
-    const isHuman = this.phase !== 'demo' && p.team === 0 && p.idx === this.controlledIdx;
+    const isHuman = this.isHumanPlayer(p);
 
     if (isHuman) {
       const pulse = 1 + Math.sin(this.time * 6) * 0.08;
@@ -2173,7 +2251,8 @@ export class GameEngine {
       lastGoalTeam: this.lastGoalTeam,
       winner: this.winner,
       muted: this.sfx.muted,
-      controlled: this.controlledIdx,
+      controlled: [this.controlledIdx[0], this.controlledIdx[1]],
+      opponent: this.opponent,
       pens: ps
         ? {
             score: [...ps.score],

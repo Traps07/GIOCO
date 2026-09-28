@@ -1,5 +1,5 @@
-import { Play, RotateCcw, Home, Trophy, Frown, Handshake, ChevronRight, Zap, Target, Timer, Languages } from 'lucide-react';
-import type { Difficulty, DecidedBy, GameMode } from '../game/engine';
+import { Play, RotateCcw, Home, Trophy, Frown, Handshake, ChevronRight, Zap, Target, Timer, Languages, User, Users } from 'lucide-react';
+import type { Difficulty, DecidedBy, GameMode, Opponent } from '../game/engine';
 import { LANGUAGES, type Language, type Strings } from '../i18n';
 
 interface ScreenProps {
@@ -11,6 +11,8 @@ export function MenuScreen({
   setDifficulty,
   mode,
   setMode,
+  opponent,
+  setOpponent,
   lang,
   setLang,
   onStart,
@@ -20,6 +22,8 @@ export function MenuScreen({
   setDifficulty: (d: Difficulty) => void;
   mode: GameMode;
   setMode: (m: GameMode) => void;
+  opponent: Opponent;
+  setOpponent: (o: Opponent) => void;
   lang: Language;
   setLang: (l: Language) => void;
   onStart: () => void;
@@ -33,6 +37,11 @@ export function MenuScreen({
     { id: 'match', label: t.modeMatch, desc: t.modeMatchDesc, icon: 'timer' },
     { id: 'pens', label: t.modePens, desc: t.modePensDesc, icon: 'target' },
   ];
+  const OPP_INFO: { id: Opponent; label: string; desc: string; icon: 'user' | 'users' }[] = [
+    { id: 'ai', label: t.opp1P, desc: t.opp1PDesc, icon: 'user' },
+    { id: 'human', label: t.opp2P, desc: t.opp2PDesc, icon: 'users' },
+  ];
+  const twoPlayer = opponent === 'human';
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col items-center justify-center overflow-y-auto bg-gradient-to-b from-[#02040ad9] via-[#02040a8c] to-[#02040ae6] backdrop-blur-[2px] py-6">
@@ -87,7 +96,47 @@ export function MenuScreen({
           })}
         </div>
 
-        {/* difficoltà */}
+        {/* giocatori: 1 vs IA oppure 2 in locale */}
+        <div className="mt-3 flex flex-col items-center gap-2">
+          <span className="flex items-center gap-1.5 font-display text-[10px] tracking-[0.3em] text-white/40">
+            <Users size={12} /> {t.playersLabel}
+          </span>
+          <div className="flex gap-2 sm:gap-3">
+            {OPP_INFO.map((o) => {
+              const Icon = o.icon === 'user' ? User : Users;
+              const active = opponent === o.id;
+              return (
+                <button
+                  key={o.id}
+                  onClick={() => setOpponent(o.id)}
+                  className={`group flex flex-col items-center rounded-2xl border px-5 sm:px-7 py-3 transition-all duration-200 ${
+                    active
+                      ? o.id === 'human'
+                        ? 'border-rose-300/70 bg-rose-400/15 shadow-[0_0_30px_rgba(251,113,133,0.25)]'
+                        : 'border-emerald-300/70 bg-emerald-400/15 shadow-[0_0_30px_rgba(52,211,153,0.2)]'
+                      : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10'
+                  }`}
+                >
+                  <span
+                    className={`flex items-center gap-2 font-display text-xs tracking-[0.2em] ${
+                      active
+                        ? o.id === 'human'
+                          ? 'text-rose-200'
+                          : 'text-emerald-200'
+                        : 'text-white/75'
+                    }`}
+                  >
+                    <Icon size={14} /> {o.label}
+                  </span>
+                  <span className="mt-1 text-[10px] text-white/40">{o.desc}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* difficoltà: ha senso solo contro la IA */}
+        {!twoPlayer && (
         <div className="mt-3 flex gap-2 sm:gap-3">
           {DIFF_INFO.map((d) => (
             <button
@@ -106,6 +155,11 @@ export function MenuScreen({
             </button>
           ))}
         </div>
+        )}
+
+        {twoPlayer && (
+          <p className="mt-3 max-w-sm text-center text-[11px] text-white/35">{t.noDiff2p}</p>
+        )}
 
         <button
           onClick={onStart}
@@ -115,17 +169,37 @@ export function MenuScreen({
           {mode === 'pens' ? t.btnPlayPens : t.btnPlay}
         </button>
 
-        <div className="mt-7 hidden grid-cols-5 gap-2 sm:grid">
+        {/* legenda tasti: una riga per giocatore, in 2 giocatori */}
+        <div className="mt-7 hidden w-full max-w-2xl flex-col items-center gap-2 sm:flex">
           {[
-            ['WASD · Frecce', t.menuMove],
-            ['Shift', t.menuSprint],
-            ['Spazio', t.menuShoot],
-            ['C', t.menuPass],
-            ['Q · Tab', t.menuSwitch],
-          ].map(([k, v]) => (
-            <div key={k} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-black/35 px-3 py-2.5">
-              <span className="font-display text-[11px] text-sky-200 tracking-wide">{k}</span>
-              <span className="text-[10px] text-white/45">{v}</span>
+            { label: 'P1', tone: 'text-sky-200', keys: [
+              ['WASD · Frecce', t.menuMove],
+              ['Shift', t.menuSprint],
+              ['Spazio', t.menuShoot],
+              ['C', t.menuPass],
+              ['Q · Tab', t.menuSwitch],
+            ] },
+            ...(twoPlayer
+              ? [{ label: 'P2', tone: 'text-rose-200', keys: [
+                  ['I J K L', t.menuMove2],
+                  ['Shift dx', t.menuSprint2],
+                  ['Invio', t.menuShoot2],
+                  ['M', t.menuPass2],
+                  [',', t.menuSwitch2],
+                ] }]
+              : []),
+          ].map((row) => (
+            <div key={row.label} className="grid w-full grid-cols-6 items-center gap-2">
+              <span className={`font-display text-[11px] tracking-[0.2em] ${row.tone}`}>{row.label}</span>
+              {row.keys.map(([k, v]) => (
+                <div
+                  key={k}
+                  className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-black/35 px-2 py-2.5"
+                >
+                  <span className={`font-display text-[11px] tracking-wide ${row.tone}`}>{k}</span>
+                  <span className="text-center text-[10px] leading-tight text-white/45">{v}</span>
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -156,7 +230,9 @@ export function MenuScreen({
             })}
           </div>
         </div>
-        <p className="mt-5 text-[11px] text-white/35 sm:hidden">{t.mobileHint}</p>
+        <p className="mt-5 text-center text-[11px] text-white/35 sm:hidden">
+          {twoPlayer ? t.mobileHint2p : t.mobileHint}
+        </p>
       </div>
     </div>
   );
