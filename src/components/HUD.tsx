@@ -295,6 +295,10 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
               <span><kbd>Shift</kbd> {t.kSprint}</span>
               <span><kbd>Space</kbd> {t.kShoot}</span>
               <span><kbd>C</kbd> {t.kPass}</span>
+              <span><kbd>V</kbd> {t.kCross}</span>
+              <span><kbd>F</kbd> {t.kCurve}</span>
+              <span><kbd>R</kbd> {t.kPower}</span>
+              <span><kbd>E</kbd> {t.kTackle}</span>
               {snap.teamSize > 1 && <span><kbd>Q</kbd> {t.kSwitch}</span>}
             </div>
             <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-xl border bg-black/50 px-3 py-2 text-white/65 backdrop-blur-md" style={{ borderColor: `${awayTeam.kit.primary}55` }}>
@@ -303,12 +307,16 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
               <span><kbd>RShift</kbd> {t.kSprint}</span>
               <span><kbd>Enter</kbd> {t.kShoot}</span>
               <span><kbd>/</kbd> {t.kPass}</span>
+              <span><kbd>M</kbd> {t.kCross}</span>
+              <span><kbd>U</kbd> {t.kCurve}</span>
+              <span><kbd>O</kbd> {t.kPower}</span>
+              <span><kbd>I</kbd> {t.kTackle}</span>
               {snap.teamSize > 1 && <span><kbd>.</kbd> {t.kSwitch}</span>}
               <span><kbd>Esc</kbd> {t.kPause}</span>
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-4 rounded-full border border-white/10 bg-black/40 px-6 py-2 text-[11px] font-medium tracking-wide text-white/55 backdrop-blur-md">
+          <div className="flex max-w-[96vw] flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-2xl border border-white/10 bg-black/40 px-4 py-2 text-[10px] font-medium tracking-wide text-white/55 backdrop-blur-md">
             <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.kMove}</span>
             <span className="text-white/20">•</span>
             <span><kbd>Shift</kbd> {t.kSprint}</span>
@@ -316,6 +324,14 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
             <span><kbd>Spazio</kbd> {t.kShoot}</span>
             <span className="text-white/20">•</span>
             <span><kbd>C</kbd> {t.kPass}</span>
+            <span className="text-white/20">•</span>
+            <span><kbd>V</kbd> {t.kCross}</span>
+            <span className="text-white/20">•</span>
+            <span><kbd>F</kbd> {t.kCurve}</span>
+            <span className="text-white/20">•</span>
+            <span><kbd>R</kbd> {t.kPower}</span>
+            <span className="text-white/20">•</span>
+            <span><kbd>E</kbd> {t.kTackle}</span>
             {snap.teamSize > 1 && (
               <>
                 <span className="text-white/20">•</span>

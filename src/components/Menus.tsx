@@ -275,7 +275,8 @@ export function MenuScreen({
                 P1 · {homeTeam.flag} {homeTeam.names[lang]}
               </span>
               <span><kbd>WASD</kbd> {t.kMove} · <kbd>Shift</kbd> {t.kSprint}</span>
-              <span><kbd>Space</kbd> {t.kShoot} · <kbd>C</kbd> {t.kPass}{teamSize > 1 && <> · <kbd>Q</kbd> {t.kSwitch}</>}</span>
+              <span><kbd>Space</kbd> {t.kShoot} · <kbd>C</kbd> {t.kPass} · <kbd>V</kbd> {t.kCross} · <kbd>F</kbd> {t.kCurve}</span>
+              <span><kbd>R</kbd> {t.kPower} · <kbd>E</kbd> {t.kTackle}{teamSize > 1 && <> · <kbd>Q</kbd> {t.kSwitch}</>}</span>
             </div>
             <div
               className="flex flex-col gap-1.5 rounded-xl border px-4 py-3 text-[10px] text-white/60"
@@ -285,19 +286,24 @@ export function MenuScreen({
                 P2 · {awayTeam.flag} {awayTeam.names[lang]}
               </span>
               <span><kbd>↑ ↓ ← →</kbd> {t.kMove} · <kbd>RShift</kbd> {t.kSprint}</span>
-              <span><kbd>Enter</kbd> {t.kShoot} · <kbd>/</kbd> {t.kPass}{teamSize > 1 && <> · <kbd>.</kbd> {t.kSwitch}</>}</span>
+              <span><kbd>Enter</kbd> {t.kShoot} · <kbd>/</kbd> {t.kPass} · <kbd>M</kbd> {t.kCross} · <kbd>U</kbd> {t.kCurve}</span>
+              <span><kbd>O</kbd> {t.kPower} · <kbd>I</kbd> {t.kTackle}{teamSize > 1 && <> · <kbd>.</kbd> {t.kSwitch}</>}</span>
             </div>
           </div>
         ) : (
-          <div className={`mt-7 hidden gap-2 sm:grid ${teamSize > 1 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+          <div className="mt-7 hidden max-w-5xl flex-wrap justify-center gap-2 sm:flex">
             {[
               ['WASD · Frecce', t.menuMove],
               ['Shift', t.menuSprint],
               ['Spazio', t.menuShoot],
               ['C', t.menuPass],
+              ['V', t.menuCross],
+              ['F', t.menuCurve],
+              ['R', t.menuPower],
+              ['E', t.menuTackle],
               ...(teamSize > 1 ? [['Q · Tab', t.menuSwitch]] : []),
             ].map(([k, v]) => (
-              <div key={k} className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-black/35 px-3 py-2.5">
+              <div key={k} className="flex min-w-20 flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-black/35 px-3 py-2.5">
                 <span className="font-display text-[11px] text-sky-200 tracking-wide">{k}</span>
                 <span className="text-[10px] text-white/45">{v}</span>
               </div>

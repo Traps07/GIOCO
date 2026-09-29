@@ -38,6 +38,7 @@ export interface Snapshot {
 
 export type EngineEvent =
   | { type: 'goal'; team: number; score: [number, number] }
+  | { type: 'corner'; team: number }
   | { type: 'extratime' }
   | { type: 'pensstart' }
   | { type: 'penResult'; result: PenKickResult; team: number }
@@ -54,10 +55,12 @@ const B_R = 9;
 const MATCH_TIME = 90;
 const EXTRA_TIME = 30;
 const PEN_ROUNDS = 5;
-const KICK_RANGE = P_R + B_R + 22;
 const GK_R = 23;
 const GK_X = 38;
 const GK_SPEED = 300;
+const BALL_GRAVITY = 980;
+const BALL_CARRY_OFFSET = P_R + B_R + 2;
+const TACKLE_RANGE = P_R * 2 + 16;
 
 const FORMATIONS: Record<TeamSize, { x: number; y: number }[]> = {
   1: [{ x: 360, y: 350 }],
@@ -121,6 +124,9 @@ class Player {
   hasBall = false;
   kickCd = 0;
   holdT = 0;
+  tackleCd = 0;
+  tackleT = 0;
+  tackleResolved = false;
   number: number;
   constructor(public team: number, public idx: number, public teamSize: TeamSize) {
     const f = formationFor(team, idx, teamSize);
@@ -140,6 +146,9 @@ class Player {
     this.hasBall = false;
     this.holdT = 0;
     this.kickCd = 0;
+    this.tackleCd = 0;
+    this.tackleT = 0;
+    this.tackleResolved = false;
     this.faceX = this.team === 0 ? 1 : -1;
     this.faceY = 0;
   }
@@ -237,7 +246,8 @@ export class GameEngine {
   private teamSize: TeamSize = 3;
   private selectedTeams: TeamSelection = [...DEFAULT_TEAMS];
   private controlledIdx: [number, number] = [1, 1];
-  private ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, lastTouch: -1 };
+  private ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, z: 0, vz: 0, curve: 0, lastTouch: -1, lastTouchWasKeeper: false };
+  private ballCarrier: Player | null = null;
   private trail: { x: number; y: number }[] = [];
   private particles: Particle[] = [];
   private score: [number, number] = [0, 0];
@@ -261,10 +271,17 @@ export class GameEngine {
   private goalFlash = 0;
 
   private keys = new Set<string>();
-  private stick = { x: 0, y: 0, active: false };
+  private sticks: [{ x: number; y: number; active: boolean }, { x: number; y: number; active: boolean }] = [
+    { x: 0, y: 0, active: false },
+    { x: 0, y: 0, active: false },
+  ];
   private shootQ: [boolean, boolean] = [false, false];
   private passQ: [boolean, boolean] = [false, false];
   private switchQ: [boolean, boolean] = [false, false];
+  private crossQ: [boolean, boolean] = [false, false];
+  private curveQ: [boolean, boolean] = [false, false];
+  private powerQ: [boolean, boolean] = [false, false];
+  private tackleQ: [boolean, boolean] = [false, false];
 
   private sfx = new SFX();
   private demo = true;
@@ -353,6 +370,15 @@ export class GameEngine {
     if (e.code === 'KeyC' || e.code === 'KeyJ' || e.code === 'KeyX') this.passQ[0] = true;
     if (localMatch && (e.code === 'Slash' || e.code === 'Numpad0')) this.passQ[1] = true;
 
+    if (e.code === 'KeyV') this.crossQ[0] = true;
+    if (localMatch && e.code === 'KeyM') this.crossQ[1] = true;
+    if (e.code === 'KeyF') this.curveQ[0] = true;
+    if (localMatch && e.code === 'KeyU') this.curveQ[1] = true;
+    if (e.code === 'KeyR') this.powerQ[0] = true;
+    if (localMatch && e.code === 'KeyO') this.powerQ[1] = true;
+    if (e.code === 'KeyE') this.tackleQ[0] = true;
+    if (localMatch && e.code === 'KeyI') this.tackleQ[1] = true;
+
     if (e.code === 'KeyQ' || e.code === 'Tab') this.switchQ[0] = true;
     if (localMatch && (e.code === 'Period' || e.code === 'NumpadDecimal')) this.switchQ[1] = true;
   };
@@ -361,25 +387,43 @@ export class GameEngine {
     this.keys.delete(e.code);
   };
 
-  setStick(x: number, y: number, active: boolean) {
-    this.stick = { x, y, active };
+  setStick(x: number, y: number, active: boolean): void;
+  setStick(slot: number, x: number, y: number, active: boolean): void;
+  setStick(a: number, b: number, c: number | boolean, d?: boolean) {
+    const slot = d === undefined ? 0 : clamp(Math.trunc(a), 0, 1);
+    const x = d === undefined ? a : b;
+    const y = d === undefined ? b : (c as number);
+    const active = d === undefined ? (c as boolean) : d;
+    this.sticks[slot as 0 | 1] = { x, y, active };
   }
 
-  touchShoot() {
-    if (this.inputEnabled && !this.paused) this.shootQ[0] = true;
+  touchShoot(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.shootQ[slot] = true;
   }
-  touchPass() {
-    if (this.inputEnabled && !this.paused) this.passQ[0] = true;
+  touchPass(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.passQ[slot] = true;
   }
-  touchSwitch() {
-    if (this.inputEnabled && !this.paused) this.switchQ[0] = true;
+  touchSwitch(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.switchQ[slot] = true;
+  }
+  touchCross(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.crossQ[slot] = true;
+  }
+  touchCurve(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.curveQ[slot] = true;
+  }
+  touchPower(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.powerQ[slot] = true;
+  }
+  touchTackle(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.tackleQ[slot] = true;
   }
 
   setPaused(p: boolean) {
     this.paused = p;
     if (p) {
       this.keys.clear();
-      this.stick = { x: 0, y: 0, active: false };
+      this.sticks = [{ x: 0, y: 0, active: false }, { x: 0, y: 0, active: false }];
       this.clearInputQueues();
     }
   }
@@ -388,6 +432,10 @@ export class GameEngine {
     this.shootQ = [false, false];
     this.passQ = [false, false];
     this.switchQ = [false, false];
+    this.crossQ = [false, false];
+    this.curveQ = [false, false];
+    this.powerQ = [false, false];
+    this.tackleQ = [false, false];
   }
   setMuted(m: boolean) {
     this.sfx.setMuted(m);
@@ -416,6 +464,7 @@ export class GameEngine {
   }
 
   private configurePlayers(teamSize: TeamSize) {
+    this.releaseBall();
     this.teamSize = teamSize;
     this.players = [];
     for (let team = 0; team < 2; team++) {
@@ -498,15 +547,103 @@ export class GameEngine {
   }
 
   private newBall() {
+    this.releaseBall();
     this.ball.x = W / 2;
     this.ball.y = H / 2;
     this.ball.vx = 0;
     this.ball.vy = 0;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
     this.ball.lastTouch = -1;
+    this.ball.lastTouchWasKeeper = false;
     this.trail = [];
   }
 
+  private releaseBall(player?: Player) {
+    if (player && this.ballCarrier !== player) return;
+    if (this.ballCarrier) {
+      this.ballCarrier.hasBall = false;
+      this.ballCarrier.holdT = 0;
+    }
+    this.ballCarrier = null;
+  }
+
+  private placeBallAtCarrier(player: Player) {
+    const fx = player.faceX || (player.team === 0 ? 1 : -1);
+    const fy = player.faceY;
+    this.ball.x = clamp(player.x + fx * BALL_CARRY_OFFSET, B_R, W - B_R);
+    this.ball.y = clamp(player.y + fy * BALL_CARRY_OFFSET, B_R, H - B_R);
+    this.ball.vx = player.vx + fx * 38;
+    this.ball.vy = player.vy + fy * 38;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
+  }
+
+  private claimBall(player: Player) {
+    if (this.ballCarrier === player) return;
+    this.releaseBall();
+    this.ballCarrier = player;
+    player.hasBall = true;
+    player.holdT = 0;
+    player.kickCd = 0;
+    player.tackleT = 0;
+    player.tackleResolved = false;
+    this.ball.lastTouch = player.team;
+    this.ball.lastTouchWasKeeper = false;
+    this.placeBallAtCarrier(player);
+  }
+
+  private startTackle(player: Player) {
+    if (player.tackleCd > 0 || !this.ballCarrier || this.ballCarrier.team === player.team) return;
+    player.tackleCd = 0.72;
+    player.tackleT = 0.22;
+    player.tackleResolved = false;
+    const dx = this.ballCarrier.x - player.x;
+    const dy = this.ballCarrier.y - player.y;
+    const d = Math.hypot(dx, dy) || 1;
+    player.faceX = dx / d;
+    player.faceY = dy / d;
+    player.vx += (dx / d) * 180;
+    player.vy += (dy / d) * 180;
+  }
+
+  private resolveTackles() {
+    const carrier = this.ballCarrier;
+    if (!carrier) return;
+    for (const tackler of this.players) {
+      if (tackler.team === carrier.team || tackler.tackleT <= 0 || tackler.tackleResolved) continue;
+      const d = dist(tackler.x, tackler.y, carrier.x, carrier.y);
+      if (d > TACKLE_RANGE) continue;
+      tackler.tackleResolved = true;
+      const nx = (carrier.x - tackler.x) / (d || 1);
+      const ny = (carrier.y - tackler.y) / (d || 1);
+      const closing = (tackler.vx - carrier.vx) * nx + (tackler.vy - carrier.vy) * ny;
+      const success = clamp(0.68 + closing / 1400, 0.48, 0.9);
+      if (Math.random() < success) {
+        this.claimBall(tackler);
+        tackler.vx += nx * 90;
+        tackler.vy += ny * 90;
+        this.sfx.block();
+        this.shake = Math.min(this.shake + 2.5, 8);
+        this.spawnKick(this.ball.x, this.ball.y, nx, ny, this.teamKit(tackler.team).primary);
+      } else {
+        carrier.vx += nx * 90;
+        carrier.vy += ny * 90;
+        this.ball.vx = carrier.vx + nx * 140;
+        this.ball.vy = carrier.vy + ny * 140;
+        this.releaseBall(carrier);
+        this.sfx.block();
+        this.shake = Math.min(this.shake + 1.5, 8);
+      }
+      return;
+    }
+  }
+
   private goal(team: number) {
+    this.releaseBall();
+    this.ball.curve = 0;
     this.score[team]++;
     this.lastGoalTeam = team;
     this.phase = 'goal';
@@ -860,7 +997,11 @@ export class GameEngine {
     this.shake = Math.max(0, this.shake - dt * 40 - this.shake * 4 * dt);
     this.goalFlash = Math.max(0, this.goalFlash - dt * 1.6);
     this.updateParticles(dt);
-    this.players.forEach((p) => (p.kickCd = Math.max(0, p.kickCd - dt)));
+    this.players.forEach((p) => {
+      p.kickCd = Math.max(0, p.kickCd - dt);
+      p.tackleCd = Math.max(0, p.tackleCd - dt);
+      p.tackleT = Math.max(0, p.tackleT - dt);
+    });
 
     if (this.phase === 'countdown') {
       this.clearInputQueues();
@@ -929,9 +1070,9 @@ export class GameEngine {
 
     const isDemo = this.phase === 'demo';
 
-    // ---------- controlli ----------
+    // ---------- controlli e possesso ----------
     for (const p of this.players) {
-      p.hasBall = false;
+      p.hasBall = this.ballCarrier === p;
       const hasHumanTeam = p.team === 0 || this.playerCount === 2;
       const isHuman = !isDemo && hasHumanTeam && p.idx === this.controlledIdx[p.team];
       if (isHuman && this.phase === 'play') {
@@ -950,21 +1091,19 @@ export class GameEngine {
     }
 
     this.separatePlayers();
-
-    for (const p of this.players) this.contactBall(p, dt);
-
+    this.resolveTackles();
     this.updateGoalkeepers(dt);
     this.updateBall(dt, isDemo);
-
-    // dribble magnet
-    for (const p of this.players) {
-      if (!p.hasBall || p.kickCd > 0) continue;
-      const bs = Math.hypot(this.ball.vx, this.ball.vy);
-      if (bs > 260) continue;
-      const k = Math.min(1, 12 * dt);
-      this.ball.vx += (p.vx * 1.02 + p.faceX * 46 - this.ball.vx) * k;
-      this.ball.vy += (p.vy * 1.02 + p.faceY * 46 - this.ball.vy) * k;
-      p.holdT += dt;
+    if (!this.ballCarrier && (this.phase === 'play' || isDemo)) {
+      for (const p of this.players) {
+        this.contactBall(p, dt);
+        if (this.ballCarrier) break;
+      }
+    }
+    if (this.ballCarrier && (this.phase === 'play' || isDemo)) {
+      this.ballCarrier.hasBall = true;
+      this.ballCarrier.holdT += dt;
+      this.placeBallAtCarrier(this.ballCarrier);
     }
 
     // trail palla
@@ -987,12 +1126,13 @@ export class GameEngine {
       }
       for (const team of teams) {
         const me = this.getControlled(team);
-        if (this.shootQ[team] && me.kickCd <= 0 && dist(me.x, me.y, this.ball.x, this.ball.y) < KICK_RANGE) {
-          this.shoot(me, 0.05);
-        }
-        if (this.passQ[team] && me.kickCd <= 0 && dist(me.x, me.y, this.ball.x, this.ball.y) < KICK_RANGE) {
-          this.pass(me, 0.05, true);
-        }
+        if (this.tackleQ[team]) this.startTackle(me);
+        if (this.ballCarrier !== me || me.kickCd > 0) continue;
+        if (this.powerQ[team]) this.powerShot(me);
+        else if (this.curveQ[team]) this.curveShot(me);
+        else if (this.crossQ[team]) this.cross(me, 0.04, true);
+        else if (this.shootQ[team]) this.shoot(me, 0.05);
+        else if (this.passQ[team]) this.pass(me, 0.05, true);
       }
     }
     this.clearInputQueues();
@@ -1022,9 +1162,10 @@ export class GameEngine {
       if (this.keys.has('ArrowLeft')) x -= 1;
       if (this.keys.has('ArrowRight')) x += 1;
     }
-    if (team === 0 && this.stick.active && (Math.abs(this.stick.x) > 0.12 || Math.abs(this.stick.y) > 0.12)) {
-      x = this.stick.x;
-      y = this.stick.y;
+    const stick = this.sticks[team as 0 | 1];
+    if (stick.active && (Math.abs(stick.x) > 0.12 || Math.abs(stick.y) > 0.12)) {
+      x = stick.x;
+      y = stick.y;
     }
     const l = Math.hypot(x, y);
     if (l > 1) {
@@ -1074,86 +1215,94 @@ export class GameEngine {
     const oppX = this.oppGoalX(p.team);
     const opps = this.players.filter((q) => q.team !== p.team);
     const form = formationFor(p.team, p.idx, this.teamSize);
-    const myTeamPossession = ball.lastTouch === p.team;
-    const meHas = dist(p.x, p.y, ball.x, ball.y) < P_R + B_R + 3;
+    const carrier = this.ballCarrier;
+    const meHas = carrier === p;
     let tx = p.tx;
     let ty = p.ty;
     let maxS = cfg.speed;
 
-    // Tutti i giocatori di movimento selezionati partecipano all'azione.
+    // Il giocatore più vicino pressa il portatore o attacca il pallone libero.
     const field = this.players.filter((q) => q.team === p.team);
-    const sorted = [...field].sort(
-      (a, b) => dist(a.x, a.y, ball.x, ball.y) - dist(b.x, b.y, ball.x, ball.y),
-    );
-    const chaser = sorted[0];
-    // il pallone è "libero" se nessun giocatore lo sta toccando
-    const loose = !this.players.some(
-      (q) => dist(q.x, q.y, ball.x, ball.y) < P_R + B_R + 6,
-    );
+    const targetX = carrier?.x ?? ball.x;
+    const targetY = carrier?.y ?? ball.y;
+    const chaser = [...field].sort(
+      (a, b) => dist(a.x, a.y, targetX, targetY) - dist(b.x, b.y, targetX, targetY),
+    )[0];
 
     if (meHas) {
-      // ---- ho la palla ----
-      const dGoal = dist(ball.x, ball.y, oppX, H / 2);
+      const dGoal = dist(p.x, p.y, oppX, H / 2);
       const pressure = Math.min(...opps.map((o) => dist(o.x, o.y, p.x, p.y)));
       const dOwn = dist(p.x, p.y, ownX, H / 2);
 
       if (p.kickCd <= 0 && p.holdT > cfg.minHold) {
         if (dOwn < 240) {
-          // spazza via il pallone se riceve pressione vicino alla propria porta
           if (pressure < 120 || p.holdT > 1.6) this.clear(p);
         } else if (dGoal < cfg.shootRange) {
-          this.aiShoot(p, cfg);
-        } else if (pressure < 100 || p.holdT > 1.7) {
+          if (Math.abs(p.y - H / 2) > 115 && pressure > 90) this.aiCurveShot(p);
+          else this.aiShoot(p, cfg);
+        } else if (Math.abs(p.y - H / 2) > 145 && dGoal < 600 && pressure > 115 && this.teamSize > 1) {
+          this.aiCross(p, cfg);
+        } else if (pressure < 120 || p.holdT > 1.7) {
           this.aiPass(p, cfg);
         }
       }
-      // dribbling verso la porta con curvatura
+
       const gy = H / 2 + Math.sin(this.time * 1.3 + p.idx * 2.1) * 90;
-      const dx = oppX - ball.x;
-      const dy = gy - ball.y;
+      const dx = oppX - p.x;
+      const dy = gy - p.y;
       const dl = Math.hypot(dx, dy) || 1;
       let sideX = 0;
       let sideY = 0;
       if (pressure < 130) {
-        // aggira il difensore
         const op = opps.reduce((a, b) =>
           dist(a.x, a.y, p.x, p.y) < dist(b.x, b.y, p.x, p.y) ? a : b,
         );
         sideX = -(op.y - p.y) * 0.5;
         sideY = (op.x - p.x) * 0.5;
       }
-      tx = ball.x + (dx / dl) * 70 + sideX;
-      ty = ball.y + (dy / dl) * 70 + sideY;
+      tx = p.x + (dx / dl) * 70 + sideX;
+      ty = p.y + (dy / dl) * 70 + sideY;
       maxS = cfg.speed * 0.92;
-    } else if (p === chaser && (!myTeamPossession || loose)) {
-      // ---- presso il pallone ----
-      tx = ball.x + ball.vx * 0.22;
-      ty = ball.y + ball.vy * 0.22;
+    } else if (carrier && carrier.team !== p.team) {
+      if (p === chaser) {
+        const lead = 0.12;
+        tx = carrier.x + carrier.vx * lead;
+        ty = carrier.y + carrier.vy * lead;
+        maxS = cfg.speed * 1.12;
+        if (dist(p.x, p.y, carrier.x, carrier.y) < TACKLE_RANGE + 22 && p.tackleCd <= 0) {
+          this.startTackle(p);
+        }
+      } else {
+        const dx = carrier.x - ownX;
+        const dy = carrier.y - H / 2;
+        const wob = Math.sign(form.y - H / 2) * 115;
+        tx = ownX + dx * 0.38;
+        ty = H / 2 + dy * 0.5 + wob * 0.42;
+        tx = p.team === 0 ? clamp(tx, 90, W * 0.62) : clamp(tx, W * 0.38, W - 90);
+        ty = clamp(ty, 70, H - 70);
+      }
+    } else if (!carrier && p === chaser) {
+      tx = ball.x + ball.vx * 0.18;
+      ty = ball.y + ball.vy * 0.18;
       maxS = cfg.speed * 1.06;
-    } else if (!myTeamPossession && ball.lastTouch !== p.team) {
-      // ---- copertura difensiva ----
-      const gx = ownX;
-      const dx = ball.x - gx;
+    } else if (!carrier && ball.lastTouch !== p.team) {
+      const dx = ball.x - ownX;
       const dy = ball.y - H / 2;
       const wob = Math.sign(form.y - H / 2) * 120;
-      tx = gx + dx * 0.38;
+      tx = ownX + dx * 0.38;
       ty = H / 2 + dy * 0.55 + wob * 0.4;
       tx = p.team === 0 ? clamp(tx, 90, W * 0.62) : clamp(tx, W * 0.38, W - 90);
       ty = clamp(ty, 70, H - 70);
     } else {
-      // ---- supporto in attacco ----
       const dir = p.team === 0 ? 1 : -1;
       const spread = Math.sign(form.y - H / 2);
-      const adv = clamp(p.team === 0 ? ball.x - form.x : form.x - ball.x, 0, 260);
+      const adv = clamp(p.team === 0 ? targetX - form.x : form.x - targetX, 0, 260);
       tx = form.x + dir * (60 + adv * 0.5);
-      ty = clamp(ball.y + spread * 190, 90, H - 90);
-      // non sovrapporsi al portatore
-      const carrier = this.players.find(
-        (q) => q.team === p.team && q !== p && dist(q.x, q.y, ball.x, ball.y) < P_R + B_R + 4,
-      );
-      if (carrier && dist(tx, ty, carrier.x, carrier.y) < 150) {
-        const supportSide = spread || (carrier.y < H / 2 ? 1 : -1);
-        ty = carrier.y + supportSide * 220;
+      ty = clamp(targetY + spread * 190, 90, H - 90);
+      const teammateCarrier = carrier?.team === p.team && carrier !== p ? carrier : null;
+      if (teammateCarrier && dist(tx, ty, teammateCarrier.x, teammateCarrier.y) < 150) {
+        const supportSide = spread || (teammateCarrier.y < H / 2 ? 1 : -1);
+        ty = teammateCarrier.y + supportSide * 220;
       }
       ty = clamp(ty, 80, H - 80);
     }
@@ -1250,39 +1399,28 @@ export class GameEngine {
     }
   }
 
-  private contactBall(p: Player, dt: number) {
-    const ball = this.ball;
-    const dx = ball.x - p.x;
-    const dy = ball.y - p.y;
+  private contactBall(p: Player, _dt: number) {
+    if (this.ballCarrier || this.ball.z > 24) return;
+    const dx = this.ball.x - p.x;
+    const dy = this.ball.y - p.y;
     const d = Math.hypot(dx, dy);
-    const min = P_R + B_R;
-    if (d < min && d > 0.01) {
-      const nx = dx / d;
-      const ny = dy / d;
-      ball.x = p.x + nx * (min + 0.5);
-      ball.y = p.y + ny * (min + 0.5);
-      const rvx = ball.vx - p.vx;
-      const rvy = ball.vy - p.vy;
-      const approach = rvx * nx + rvy * ny;
-      if (approach < 0) {
-        ball.vx -= nx * approach * 1.35;
-        ball.vy -= ny * approach * 1.35;
-      }
-      ball.vx += p.vx * 0.18;
-      ball.vy += p.vy * 0.18;
-      p.hasBall = true;
-      ball.lastTouch = p.team;
-      void dt;
+    if (d < P_R + B_R + 7) {
+      // Un contatto controllabile diventa possesso: il pallone non rimbalza più via.
+      this.claimBall(p);
+      this.sfx.pass();
     }
   }
 
   private contactGoalkeeper(keeper: FixedGoalkeeper, isDemo: boolean) {
     const ball = this.ball;
+    if (ball.z > 26) return;
     const dx = ball.x - keeper.x;
     const dy = ball.y - keeper.y;
     const d = Math.hypot(dx, dy);
     const min = GK_R + B_R;
     if (d >= min) return;
+
+    if (this.ballCarrier) this.releaseBall(this.ballCarrier);
 
     const faceX = keeper.team === 0 ? 1 : -1;
     const incoming = keeper.team === 0 ? ball.vx < -20 : ball.vx > 20;
@@ -1291,13 +1429,24 @@ export class GameEngine {
     let ny = d > 0.01 ? dy / d : 0;
 
     if (incoming) {
-      // La parata respinge sempre il pallone verso il campo, senza poter attraversare il portiere.
-      nx = faceX;
-      ny = impact * 0.45;
-      ball.x = keeper.x + faceX * (min + 0.5);
-      ball.y = keeper.y + dy;
-      ball.vx = faceX * Math.max(190, Math.abs(ball.vx) * 0.58);
-      ball.vy = ball.vy * 0.38 + keeper.vy * 0.35 + impact * 180;
+      const cornerDeflection = !isDemo && this.teamSize > 1 && Math.abs(impact) > 0.68 && Math.random() < 0.48;
+      if (cornerDeflection) {
+        // Una parata laterale può deviare il pallone oltre la linea di fondo.
+        nx = -faceX;
+        ny = Math.sign(impact || 1);
+        ball.x = keeper.x - faceX * (min + 0.5);
+        ball.y = keeper.y + dy;
+        ball.vx = -faceX * Math.max(190, Math.abs(ball.vx) * 0.2);
+        ball.vy = Math.sign(impact || 1) * Math.max(520, Math.abs(ball.vy) * 0.72);
+      } else {
+        // La parata ordinaria respinge il pallone verso il campo.
+        nx = faceX;
+        ny = impact * 0.45;
+        ball.x = keeper.x + faceX * (min + 0.5);
+        ball.y = keeper.y + dy;
+        ball.vx = faceX * Math.max(190, Math.abs(ball.vx) * 0.58);
+        ball.vy = ball.vy * 0.38 + keeper.vy * 0.35 + impact * 180;
+      }
     } else {
       ball.x = keeper.x + nx * (min + 0.5);
       ball.y = keeper.y + ny * (min + 0.5);
@@ -1310,38 +1459,96 @@ export class GameEngine {
       }
     }
 
+    ball.z = 0;
+    ball.vz = 0;
+    ball.curve = 0;
     ball.lastTouch = keeper.team;
+    ball.lastTouchWasKeeper = true;
     if (!isDemo) this.sfx.block();
     this.shake = Math.min(this.shake + 2.5, 10);
     this.spawnKick(ball.x, ball.y, nx, ny, this.teamKit(keeper.team).primary);
   }
 
+  private awardCorner(team: number, leftEnd: boolean, y: number) {
+    const top = y < H / 2;
+    const taker = this.players
+      .filter((p) => p.team === team)
+      .reduce((best, p) => {
+        const cornerX = leftEnd ? 0 : W;
+        const cornerY = top ? 0 : H;
+        return dist(p.x, p.y, cornerX, cornerY) < dist(best.x, best.y, cornerX, cornerY) ? p : best;
+      });
+
+    this.releaseBall();
+    taker.x = team === 0 ? W - 48 : 48;
+    taker.y = top ? 48 : H - 48;
+    taker.vx = 0;
+    taker.vy = 0;
+    taker.faceX = team === 0 ? 1 : -1;
+    taker.faceY = top ? 0.5 : -0.5;
+    this.controlledIdx[team] = taker.idx;
+    this.claimBall(taker);
+    this.ball.lastTouch = team;
+    this.ball.lastTouchWasKeeper = false;
+    this.emit({ type: 'corner', team });
+  }
+
   private updateBall(dt: number, isDemo: boolean) {
     const ball = this.ball;
-    ball.x += ball.vx * dt;
-    ball.y += ball.vy * dt;
-    const drag = Math.exp(-0.5 * dt);
-    ball.vx *= drag;
-    ball.vy *= drag;
-    if (Math.hypot(ball.vx, ball.vy) < 6) {
-      ball.vx = 0;
-      ball.vy = 0;
-    }
+    const carriedAtStart = this.ballCarrier !== null;
+    if (this.ballCarrier) {
+      this.placeBallAtCarrier(this.ballCarrier);
+    } else {
+      const speed = Math.hypot(ball.vx, ball.vy);
+      if (ball.curve && speed > 1) {
+        const nx = -ball.vy / speed;
+        const ny = ball.vx / speed;
+        ball.vx += nx * ball.curve * dt;
+        ball.vy += ny * ball.curve * dt;
+        ball.curve *= Math.exp(-3.6 * dt);
+      }
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+      if (ball.z > 0 || ball.vz > 0) {
+        ball.z += ball.vz * dt;
+        ball.vz -= BALL_GRAVITY * dt;
+        if (ball.z <= 0) {
+          ball.z = 0;
+          ball.vz = 0;
+        }
+      }
+      const drag = Math.exp(-(ball.z > 0 || ball.vz > 0 ? 0.08 : 0.5) * dt);
+      ball.vx *= drag;
+      ball.vy *= drag;
+      if (Math.hypot(ball.vx, ball.vy) < 6) {
+        ball.vx = 0;
+        ball.vy = 0;
+      }
 
-    // pareti alto/basso
-    if (ball.y < B_R) {
-      ball.y = B_R;
-      ball.vy = Math.abs(ball.vy) * 0.62;
-    } else if (ball.y > H - B_R) {
-      ball.y = H - B_R;
-      ball.vy = -Math.abs(ball.vy) * 0.62;
+      // pareti laterali
+      if (ball.y < B_R) {
+        ball.y = B_R;
+        ball.vy = Math.abs(ball.vy) * 0.62;
+      } else if (ball.y > H - B_R) {
+        ball.y = H - B_R;
+        ball.vy = -Math.abs(ball.vy) * 0.62;
+      }
     }
 
     for (const keeper of this.goalkeepers) this.contactGoalkeeper(keeper, isDemo);
+    if (this.ballCarrier) {
+      this.placeBallAtCarrier(this.ballCarrier);
+      return;
+    }
+    // Se il portiere ha fermato un portatore, la respinta parte dal punto del contatto.
+    if (carriedAtStart) {
+      ball.z = 0;
+      ball.vz = 0;
+    }
 
     const inMouth = Math.abs(ball.y - H / 2) < GOAL_HALF - 4;
 
-    // gol?
+    // Gol o calcio d'angolo dopo una deviazione del portiere.
     if (inMouth) {
       if (ball.x < 0) {
         this.goal(1);
@@ -1351,11 +1558,21 @@ export class GameEngine {
         this.goal(0);
         return;
       }
-    } else {
+    } else if (ball.x < 0 || ball.x > W) {
+      const defendingTeam = ball.x < 0 ? 0 : 1;
+      if (
+        !isDemo &&
+        this.teamSize > 1 &&
+        ball.lastTouchWasKeeper &&
+        ball.lastTouch === defendingTeam
+      ) {
+        this.awardCorner(1 - defendingTeam, ball.x < 0, ball.y);
+        return;
+      }
       if (ball.x < B_R) {
         ball.x = B_R;
         ball.vx = Math.abs(ball.vx) * 0.62;
-      } else if (ball.x > W - B_R) {
+      } else {
         ball.x = W - B_R;
         ball.vx = -Math.abs(ball.vx) * 0.62;
       }
@@ -1399,30 +1616,79 @@ export class GameEngine {
     }
   }
 
-  // ---------- calci ----------
-  private shoot(p: Player, errRange: number) {
-    const oppX = this.oppGoalX(p.team);
-    const dir = p.team === 0 || this.playerCount === 2
-      ? this.inputDir(p.team)
-      : { x: 0, y: 0, len: 0 };
-    const aimY = H / 2 + (dir.len > 0.2 ? dir.y * 80 : (Math.random() - 0.5) * 130) + (Math.random() - 0.5) * errRange * 300;
-    const dx = oppX - p.x;
-    const dy = aimY - p.y;
+  // ---------- calci e passaggi ----------
+  private shootAim(p: Player, spread: number) {
+    const dir = this.inputDir(p.team);
+    const aimY = H / 2 + (dir.len > 0.2 ? dir.y * 80 : (Math.random() - 0.5) * 130) + (Math.random() - 0.5) * spread * 300;
+    const dx = this.oppGoalX(p.team) - this.ball.x;
+    const dy = aimY - this.ball.y;
     const dl = Math.hypot(dx, dy) || 1;
+    return { x: dx / dl, y: dy / dl };
+  }
+
+  private shoot(p: Player, errRange: number) {
+    if (this.ballCarrier !== p) return;
+    const dir = this.shootAim(p, errRange);
     const power = 820 + Math.random() * 60;
-    this.ball.vx = (dx / dl) * power + p.vx * 0.25;
-    this.ball.vy = (dy / dl) * power + p.vy * 0.25;
+    this.releaseBall(p);
+    this.ball.vx = dir.x * power + p.vx * 0.25;
+    this.ball.vy = dir.y * power + p.vy * 0.25;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
     this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
     p.kickCd = 0.3;
-    p.hasBall = false;
-    p.holdT = 0;
     this.shots[p.team]++;
     this.shake = Math.min(this.shake + 5, 14);
     this.sfx.kick(1);
-    this.spawnKick(p.x + (dx / dl) * 22, p.y + (dy / dl) * 22, dx / dl, dy / dl, this.teamKit(p.team).primary);
+    this.spawnKick(this.ball.x, this.ball.y, dir.x, dir.y, this.teamKit(p.team).primary);
+  }
+
+  private powerShot(p: Player) {
+    if (this.ballCarrier !== p) return;
+    const dir = this.shootAim(p, 0.015);
+    const power = 1460;
+    this.releaseBall(p);
+    this.ball.vx = dir.x * power + p.vx * 0.35;
+    this.ball.vy = dir.y * power + p.vy * 0.35;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
+    this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
+    p.kickCd = 0.42;
+    this.shots[p.team]++;
+    this.shake = Math.min(this.shake + 8, 16);
+    this.sfx.kick(1.65);
+    this.spawnKick(this.ball.x, this.ball.y, dir.x, dir.y, this.teamKit(p.team).accent);
+  }
+
+  private curveShot(p: Player) {
+    if (this.ballCarrier !== p) return;
+    const dir = this.shootAim(p, 0.025);
+    const power = 1370;
+    const steer = this.inputDir(p.team);
+    const vertical = steer.len > 0.2 ? steer.y : (p.y < H / 2 ? -1 : 1);
+    const spin = (vertical < 0 ? -1 : 1) * (p.team === 0 ? 1 : -1);
+    this.releaseBall(p);
+    this.ball.vx = dir.x * power + p.vx * 0.18;
+    this.ball.vy = dir.y * power + p.vy * 0.18;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    // Curva volutamente esagerata: piega forte, ma resta un tiro controllabile.
+    this.ball.curve = spin * 7200;
+    this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
+    p.kickCd = 0.38;
+    this.shots[p.team]++;
+    this.shake = Math.min(this.shake + 7, 16);
+    this.sfx.kick(1.5);
+    this.spawnKick(this.ball.x, this.ball.y, dir.x, dir.y, this.teamKit(p.team).accent);
   }
 
   private pass(p: Player, errRange: number, humanSwitch: boolean) {
+    if (this.ballCarrier !== p) return;
     const mates = this.players.filter((q) => q.team === p.team && q !== p);
     if (mates.length === 0) {
       this.clear(p);
@@ -1444,35 +1710,83 @@ export class GameEngine {
       const openness = Math.min(
         ...this.players.filter((o) => o.team !== p.team).map((o) => dist(o.x, o.y, m.x, m.y)),
       );
-      let s = align * 1.6 + openness / 200 + d / 600;
-      if (dir.len <= 0.2) s = forward * 2 + openness / 200;
-      if (s > bestScore) {
-        bestScore = s;
+      let score = align * 1.6 + openness / 200 + d / 600;
+      if (dir.len <= 0.2) score = forward * 2 + openness / 200;
+      if (score > bestScore) {
+        bestScore = score;
         best = m;
       }
     }
     if (!best) return;
     const d = dist(p.x, p.y, best.x, best.y);
-    const power = clamp(400 + d * 0.62, 420, 700);
+    const power = clamp(420 + d * 0.66, 430, 760);
     const lead = (d / power) * 0.72;
-    let tx = best.x + best.vx * lead + (Math.random() - 0.5) * errRange * 220;
-    let ty = best.y + best.vy * lead + (Math.random() - 0.5) * errRange * 220;
+    const tx = best.x + best.vx * lead + (Math.random() - 0.5) * errRange * 220;
+    const ty = best.y + best.vy * lead + (Math.random() - 0.5) * errRange * 220;
     const dx = tx - this.ball.x;
     const dy = ty - this.ball.y;
     const dl = Math.hypot(dx, dy) || 1;
+    this.releaseBall(p);
     this.ball.vx = (dx / dl) * power;
     this.ball.vy = (dy / dl) * power;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
     this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
     p.kickCd = 0.25;
-    p.holdT = 0;
     this.sfx.pass();
     this.spawnKick(this.ball.x, this.ball.y, dx / dl, dy / dl, '#ffffff');
     if (humanSwitch) {
       this.controlledIdx[p.team] = best.idx;
       this.sfx.swap();
     }
-    void tx;
-    void ty;
+  }
+
+  private cross(p: Player, errRange: number, humanSwitch: boolean) {
+    if (this.ballCarrier !== p) return;
+    const dir = this.inputDir(p.team);
+    const towardGoal = p.team === 0 ? 1 : -1;
+    const mates = this.players.filter((q) => q.team === p.team && q !== p);
+    const boxX = this.oppGoalX(p.team) - towardGoal * 145;
+    let targetY = dir.len > 0.2
+      ? H / 2 + dir.y * 185
+      : p.y < H / 2
+        ? H / 2 + 95
+        : H / 2 - 95;
+    let targetX = boxX;
+
+    if (mates.length > 0) {
+      const receiver = mates.reduce((best, mate) => {
+        const boxDistance = dist(mate.x, mate.y, boxX, targetY);
+        const openness = Math.min(...this.players.filter((q) => q.team !== p.team).map((q) => dist(q.x, q.y, mate.x, mate.y)));
+        const bestDistance = dist(best.x, best.y, boxX, targetY);
+        const bestOpen = Math.min(...this.players.filter((q) => q.team !== p.team).map((q) => dist(q.x, q.y, best.x, best.y)));
+        return boxDistance - openness * 0.16 < bestDistance - bestOpen * 0.16 ? mate : best;
+      });
+      targetX = clamp(receiver.x + receiver.vx * 0.2, p.team === 0 ? W - 300 : 160, p.team === 0 ? W - 80 : 300);
+      targetY = clamp(receiver.y + receiver.vy * 0.2, H / 2 - 210, H / 2 + 210);
+      if (dir.len > 0.2) targetY = clamp(targetY + dir.y * 45, H / 2 - 220, H / 2 + 220);
+      if (humanSwitch) this.controlledIdx[p.team] = receiver.idx;
+    }
+
+    targetY += (Math.random() - 0.5) * errRange * 180;
+    const dx = targetX - this.ball.x;
+    const dy = targetY - this.ball.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const flight = clamp(d / 700, 0.58, 1.05);
+    this.releaseBall(p);
+    this.ball.vx = dx / flight;
+    this.ball.vy = dy / flight;
+    this.ball.z = 0;
+    this.ball.vz = BALL_GRAVITY * flight * 0.5;
+    this.ball.curve = 0;
+    this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
+    p.kickCd = 0.28;
+    this.sfx.kick(1.15);
+    this.spawnKick(this.ball.x, this.ball.y, dx / d, dy / d, '#d8f4ff');
+    if (humanSwitch && mates.length > 0) this.sfx.swap();
   }
 
   private aiShoot(p: Player, cfg: DiffCfg) {
@@ -1483,17 +1797,29 @@ export class GameEngine {
     this.pass.call(this, p, cfg.passErr, false);
   }
 
+  private aiCross(p: Player, cfg: DiffCfg) {
+    this.cross.call(this, p, cfg.passErr * 0.7, false);
+  }
+
+  private aiCurveShot(p: Player) {
+    this.curveShot.call(this, p);
+  }
+
   private clear(p: Player) {
     const oppX = this.oppGoalX(p.team);
     const side = Math.random() > 0.5 ? 0.22 : 0.78;
     const dx = oppX - p.x;
     const dy = H * side - p.y;
     const dl = Math.hypot(dx, dy) || 1;
+    this.releaseBall(p);
     this.ball.vx = (dx / dl) * 680;
     this.ball.vy = (dy / dl) * 680;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
     this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
     p.kickCd = 0.35;
-    p.holdT = 0;
     this.sfx.kick(0.8);
     this.spawnKick(this.ball.x, this.ball.y, dx / dl, dy / dl, this.teamKit(p.team).primary);
   }
@@ -2168,9 +2494,9 @@ export class GameEngine {
       ctx.ellipse(keeper.x + 4, keeper.y + 9, GK_R * 1.05, GK_R * 0.55, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillStyle = `rgba(0,0,0,${0.3 * Math.exp(-this.ball.z / 120)})`;
     ctx.beginPath();
-    ctx.ellipse(this.ball.x + 2, this.ball.y + 6, B_R, B_R * 0.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(this.ball.x + 2, this.ball.y + 6, B_R + this.ball.z * 0.04, B_R * 0.5 + this.ball.z * 0.015, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // scia palla
@@ -2450,6 +2776,16 @@ export class GameEngine {
       (p.team === 0 || this.playerCount === 2) &&
       p.idx === this.controlledIdx[p.team];
 
+    if (p.tackleT > 0) {
+      ctx.save();
+      ctx.strokeStyle = `rgba(251,191,36,${0.45 + p.tackleT * 2})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, P_R + 8 + (0.22 - p.tackleT) * 22, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     if (isHuman) {
       const pulse = 1 + Math.sin(this.time * 6) * 0.08;
       ctx.save();
@@ -2559,12 +2895,14 @@ export class GameEngine {
 
   private drawBall(ctx: CanvasRenderingContext2D) {
     const b = this.ball;
+    const drawY = b.y - b.z;
+    const radius = B_R + Math.min(5, b.z * 0.025);
     ctx.save();
-    ctx.shadowColor = 'rgba(255,255,255,0.7)';
-    ctx.shadowBlur = 10;
+    ctx.shadowColor = 'rgba(255,255,255,0.85)';
+    ctx.shadowBlur = 10 + b.z * 0.08;
     ctx.fillStyle = '#f8fafc';
     ctx.beginPath();
-    ctx.arc(b.x, b.y, B_R, 0, Math.PI * 2);
+    ctx.arc(b.x, drawY, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
     ctx.strokeStyle = 'rgba(15,23,42,0.4)';
@@ -2575,7 +2913,7 @@ export class GameEngine {
     for (let i = 0; i < 3; i++) {
       const a = (i * Math.PI * 2) / 3 + spin;
       ctx.beginPath();
-      ctx.arc(b.x + Math.cos(a) * B_R * 0.5, b.y + Math.sin(a) * B_R * 0.5, 1.6, 0, Math.PI * 2);
+      ctx.arc(b.x + Math.cos(a) * radius * 0.5, drawY + Math.sin(a) * radius * 0.5, 1.6, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();

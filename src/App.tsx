@@ -96,6 +96,8 @@ export default function App() {
         showEventBanner(tRef.current.extraTimeTitle, tRef.current.extraTimeSub, 'amber', 2700);
       } else if (e.type === 'pensstart') {
         showEventBanner(tRef.current.pensTitle, tRef.current.pensSub, 'white', 2700);
+      } else if (e.type === 'corner') {
+        showEventBanner(tRef.current.cornerTitle, tRef.current.cornerSub, 'amber', 1900);
       } else if (e.type === 'penResult') {
         if (e.result === 'goal') {
           setGoalBanner({ team: e.team, id: Date.now() });
@@ -305,7 +307,7 @@ export default function App() {
         />
       )}
 
-      {screen === 'playing' && isTouch && <TouchControls engine={engineRef.current} teamSize={teamSize} t={t} />}
+      {screen === 'playing' && isTouch && <TouchControls engine={engineRef.current} playerCount={playerCount} teamSize={teamSize} t={t} />}
 
       {screen === 'menu' && (
         <MenuScreen

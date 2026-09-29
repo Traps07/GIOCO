@@ -80,6 +80,10 @@ export interface Strings {
   menuSprint: string;
   menuShoot: string;
   menuPass: string;
+  menuCross: string;
+  menuCurve: string;
+  menuPower: string;
+  menuTackle: string;
   menuSwitch: string;
   mobileHint: string;
   // HUD
@@ -100,6 +104,10 @@ export interface Strings {
   kSprint: string;
   kShoot: string;
   kPass: string;
+  kCross: string;
+  kCurve: string;
+  kPower: string;
+  kTackle: string;
   kSwitch: string;
   kPause: string;
   hintAimUpDown: string;
@@ -117,6 +125,8 @@ export interface Strings {
   postSub: string;
   missTitle: string;
   missSub: string;
+  cornerTitle: string;
+  cornerSub: string;
   // pausa
   pauseTitle: string;
   pauseSub: string;
@@ -135,6 +145,10 @@ export interface Strings {
   btnRematch: string;
   // touch
   touchMove: string;
+  touchCross: string;
+  touchCurve: string;
+  touchPower: string;
+  touchTackle: string;
 }
 
 const it: Strings = {
@@ -201,6 +215,10 @@ const it: Strings = {
   menuSprint: 'scatto',
   menuShoot: 'tiro',
   menuPass: 'passaggio',
+  menuCross: "cross",
+  menuCurve: "tiro a giro",
+  menuPower: "potenza",
+  menuTackle: "contrasto",
   menuSwitch: 'cambia giocatore',
   mobileHint: 'Su mobile: joystick a sinistra, pulsanti a destra',
   kickOff: "CALCIO D'INIZIO",
@@ -218,6 +236,10 @@ const it: Strings = {
   kSprint: 'scatto',
   kShoot: 'tiro',
   kPass: 'passaggio',
+  kCross: "cross",
+  kCurve: "tiro a giro",
+  kPower: "potenza",
+  kTackle: "contrasto",
   kSwitch: 'cambia',
   kPause: 'pausa',
   hintAimUpDown: 'mira dentro la porta',
@@ -234,6 +256,8 @@ const it: Strings = {
   postSub: 'CHE BRIVIDO... PALLONE FUORI',
   missTitle: 'FUORI!',
   missSub: 'ERRORE DAL DISCHETTO',
+  cornerTitle: "CALCIO D'ANGOLO",
+  cornerSub: "LA PALLA È TUA: CROSSA IN AREA",
   pauseTitle: 'PAUSA',
   pauseSub: 'Prendi fiato, la partita ti aspetta.',
   btnResume: 'RIPRENDI',
@@ -249,6 +273,10 @@ const it: Strings = {
   shots: 'TIRI',
   btnRematch: 'RIVINCITA',
   touchMove: 'MUOVI',
+  touchCross: "CROSS",
+  touchCurve: "GIRO",
+  touchPower: "POTENZA",
+  touchTackle: "CONTRASTO",
 };
 
 const en: Strings = {
@@ -315,6 +343,10 @@ const en: Strings = {
   menuSprint: 'sprint',
   menuShoot: 'shoot',
   menuPass: 'pass',
+  menuCross: "cross",
+  menuCurve: "curl shot",
+  menuPower: "power shot",
+  menuTackle: "tackle",
   menuSwitch: 'switch player',
   mobileHint: 'On mobile: joystick on the left, buttons on the right',
   kickOff: 'KICK-OFF',
@@ -332,6 +364,10 @@ const en: Strings = {
   kSprint: 'sprint',
   kShoot: 'shoot',
   kPass: 'pass',
+  kCross: "cross",
+  kCurve: "curl shot",
+  kPower: "power shot",
+  kTackle: "tackle",
   kSwitch: 'switch',
   kPause: 'pause',
   hintAimUpDown: 'aim anywhere in goal',
@@ -348,6 +384,8 @@ const en: Strings = {
   postSub: 'SO CLOSE... IT STAYS OUT',
   missTitle: 'WIDE!',
   missSub: 'MISSED FROM THE SPOT',
+  cornerTitle: "CORNER KICK",
+  cornerSub: "YOUR BALL: CROSS IT INTO THE BOX",
   pauseTitle: 'PAUSE',
   pauseSub: 'Catch your breath, the match is waiting.',
   btnResume: 'RESUME',
@@ -363,6 +401,10 @@ const en: Strings = {
   shots: 'SHOTS',
   btnRematch: 'REMATCH',
   touchMove: 'MOVE',
+  touchCross: "CROSS",
+  touchCurve: "CURL",
+  touchPower: "POWER",
+  touchTackle: "TACKLE",
 };
 
 const de: Strings = {
@@ -429,6 +471,10 @@ const de: Strings = {
   menuSprint: 'sprinten',
   menuShoot: 'schießen',
   menuPass: 'passen',
+  menuCross: "Flanke",
+  menuCurve: "Effet",
+  menuPower: "Wuchtschuss",
+  menuTackle: "Grätsche",
   menuSwitch: 'spieler wechseln',
   mobileHint: 'Auf dem Handy: Joystick links, Buttons rechts',
   kickOff: 'ANSTOSS',
@@ -446,6 +492,10 @@ const de: Strings = {
   kSprint: 'sprint',
   kShoot: 'schuss',
   kPass: 'pass',
+  kCross: "Flanke",
+  kCurve: "Effet",
+  kPower: "Wucht",
+  kTackle: "Grätsche",
   kSwitch: 'wechseln',
   kPause: 'pause',
   hintAimUpDown: 'ins Tor zielen',
@@ -462,6 +512,8 @@ const de: Strings = {
   postSub: 'KNAPP... DER BALL BLEIBT DRAUßEN',
   missTitle: 'DANEBEN!',
   missSub: 'FEHLER VOM PUNKT',
+  cornerTitle: "ECKBALL",
+  cornerSub: "DEIN BALL: FLANKE IN DEN STRAFRAUM",
   pauseTitle: 'PAUSE',
   pauseSub: 'Kurz durchatmen, das Spiel wartet.',
   btnResume: 'WEITER',
@@ -477,6 +529,10 @@ const de: Strings = {
   shots: 'SCHÜSSE',
   btnRematch: 'REVANCHE',
   touchMove: 'BEWEGEN',
+  touchCross: "FLANKE",
+  touchCurve: "EFFET",
+  touchPower: "WUCHT",
+  touchTackle: "GRÄTSCHE",
 };
 
 const fr: Strings = {
@@ -543,6 +599,10 @@ const fr: Strings = {
   menuSprint: 'sprint',
   menuShoot: 'tir',
   menuPass: 'passe',
+  menuCross: "centre",
+  menuCurve: "tir enroulé",
+  menuPower: "tir puissant",
+  menuTackle: "tacle",
   menuSwitch: 'changer de joueur',
   mobileHint: 'Sur mobile : joystick à gauche, boutons à droite',
   kickOff: 'COUP D’ENVOI',
@@ -560,6 +620,10 @@ const fr: Strings = {
   kSprint: 'sprint',
   kShoot: 'tir',
   kPass: 'passe',
+  kCross: "centre",
+  kCurve: "enroulé",
+  kPower: "puissant",
+  kTackle: "tacle",
   kSwitch: 'changer',
   kPause: 'pause',
   hintAimUpDown: 'vise dans le but',
@@ -576,6 +640,8 @@ const fr: Strings = {
   postSub: 'OUF... LE BALLON RESTE DEHORS',
   missTitle: 'À CÔTÉ !',
   missSub: 'RATÉ DEPUIS LE POINT',
+  cornerTitle: "CORNER",
+  cornerSub: "À TOI DE JOUER : CENTRE DANS LA SURFACE",
   pauseTitle: 'PAUSE',
   pauseSub: 'Souffle un peu, le match t’attend.',
   btnResume: 'REPRENDRE',
@@ -591,6 +657,10 @@ const fr: Strings = {
   shots: 'TIRS',
   btnRematch: 'REVANCHE',
   touchMove: 'BOUGER',
+  touchCross: "CENTRE",
+  touchCurve: "ENROULÉ",
+  touchPower: "PUISSANCE",
+  touchTackle: "TACLE",
 };
 
 const es: Strings = {
@@ -657,6 +727,10 @@ const es: Strings = {
   menuSprint: 'sprint',
   menuShoot: 'tiro',
   menuPass: 'pase',
+  menuCross: "centro",
+  menuCurve: "tiro con rosca",
+  menuPower: "tiro potente",
+  menuTackle: "entrada",
   menuSwitch: 'cambiar jugador',
   mobileHint: 'En móvil: joystick a la izquierda, botones a la derecha',
   kickOff: 'SAQUE INICIAL',
@@ -674,6 +748,10 @@ const es: Strings = {
   kSprint: 'sprint',
   kShoot: 'tiro',
   kPass: 'pase',
+  kCross: "centro",
+  kCurve: "con rosca",
+  kPower: "potente",
+  kTackle: "entrada",
   kSwitch: 'cambiar',
   kPause: 'pausa',
   hintAimUpDown: 'apunta a cualquier zona',
@@ -690,6 +768,8 @@ const es: Strings = {
   postSub: 'QUÉ SUSTO... SE MARCHA FUERA',
   missTitle: '¡FUERA!',
   missSub: 'ERROR DESDE EL PUNTO',
+  cornerTitle: "CÓRNER",
+  cornerSub: "TU BALÓN: CENTRA AL ÁREA",
   pauseTitle: 'PAUSA',
   pauseSub: 'Toma aire, el partido te espera.',
   btnResume: 'CONTINUAR',
@@ -705,6 +785,10 @@ const es: Strings = {
   shots: 'TIROS',
   btnRematch: 'REVANCHA',
   touchMove: 'MUÉVETE',
+  touchCross: "CENTRO",
+  touchCurve: "ROSCA",
+  touchPower: "POTENCIA",
+  touchTackle: "ENTRADA",
 };
 
 const ar: Strings = {
@@ -771,6 +855,10 @@ const ar: Strings = {
   menuSprint: 'انطلاق',
   menuShoot: 'تسديد',
   menuPass: 'تمرير',
+  menuCross: "عرضية",
+  menuCurve: "تسديدة مقوسة",
+  menuPower: "تسديدة قوية",
+  menuTackle: "افتكاك",
   menuSwitch: 'تبديل اللاعب',
   mobileHint: 'على الجوال: عصا تحكم يساراً وأزرار يميناً',
   kickOff: 'ركلة البداية',
@@ -788,6 +876,10 @@ const ar: Strings = {
   kSprint: 'انطلاق',
   kShoot: 'تسديد',
   kPass: 'تمرير',
+  kCross: "عرضية",
+  kCurve: "مقوسة",
+  kPower: "قوية",
+  kTackle: "افتكاك",
   kSwitch: 'تبديل',
   kPause: 'إيقاف',
   hintAimUpDown: 'صوّب نحو أي نقطة من المرمى',
@@ -804,6 +896,8 @@ const ar: Strings = {
   postSub: 'يا لها من قشعريرة... الكرة خارجاً',
   missTitle: 'خارجاً!',
   missSub: 'خطأ من النقطة',
+  cornerTitle: "ركلة ركنية",
+  cornerSub: "الكرة لك: ارفعها إلى منطقة الجزاء",
   pauseTitle: 'إيقاف مؤقت',
   pauseSub: 'خذ نفساً، المباراة بانتظارك.',
   btnResume: 'استئناف',
@@ -819,6 +913,10 @@ const ar: Strings = {
   shots: 'تسديدات',
   btnRematch: 'مباراة العودة',
   touchMove: 'تحرّك',
+  touchCross: "عرضية",
+  touchCurve: "مقوسة",
+  touchPower: "قوة",
+  touchTackle: "افتكاك",
 };
 
 export const STRINGS: Record<Language, Strings> = { it, en, de, fr, es, ar };

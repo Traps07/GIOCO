@@ -1,65 +1,71 @@
-# ⚽ Street Soccer 3v3
+# ⚽ Street Soccer
 
-Calcio arcade con **1–5 giocatori di movimento più un portiere fisso per squadra**, interamente nel browser: partite lampo da 90 secondi, **supplementari con golden goal**, **calci di rigore in prima persona** e **6 lingue** (Italiano, English, Deutsch, Français, Español, العربية).
+Calcio arcade nel browser con **da 1 a 5 giocatori di movimento più un portiere fisso per squadra**, partite da 90 secondi, **supplementari con golden goal**, **rigori in prima persona** e **6 lingue** (italiano, inglese, tedesco, francese, spagnolo e arabo).
 
-## ▶️ Per giocare SUBITO (senza installare niente)
+## ▶️ Per giocare subito
 
 1. Scarica la cartella da GitHub (**Code → Download ZIP**) e decomprimila.
-2. Apri con doppio click il file **`APRI-PER-GIOCARE.html`** nel browser (Chrome, Edge, Firefox, Safari).
+2. Apri **`APRI-PER-GIOCARE.html`** nel browser (Chrome, Edge, Firefox o Safari).
 
-> ⚠️ **Attenzione**: aprire `index.html` mostra una **pagina bianca**. È normale!
-> Quello è il file sorgente che punta al codice TypeScript (`/src/main.tsx`), che il
-> browser non sa eseguire. Il gioco vero e proprio, già "compilato" in un unico
-> file autonomo, è **`APRI-PER-GIOCARE.html`** — quello va aprire.
+Il file è autonomo e funziona offline; internet serve solo per caricare i font al primo avvio. `index.html` è invece il sorgente Vite e non è il file da aprire direttamente.
 
-Funziona anche offline e su smartphone/tablet: serve internet solo per caricare i font all'inizio
-(in mancanza, il gioco usa i font di sistema).
+## 🎮 Modalità
 
-## 🎮 Modalità e comandi
+- **PARTITA 90s** — scegli **1v1, 2v2, 3v3, 4v4 o 5v5**; il portiere è sempre aggiuntivo e fisso. In caso di parità: supplementari e poi rigori.
+- **SOLO RIGORI** — vai direttamente alla serie dal dischetto.
+- **TORNEO NAZIONALE** — 12 nazionali, 4 gruppi da 3, prime due ai quarti, poi semifinali e finale. Le partite del giocatore usano il formato selezionato.
+- **1 o 2 giocatori locali** — la scelta degli utenti è indipendente dal formato delle squadre.
+- Selezione di 12 nazionali con kit ispirati a colori e motivi delle maglie da Mondiale; tre livelli di difficoltà e sei lingue.
 
-- **PARTITA 90s** — scegli il formato **1v1, 2v2, 3v3, 4v4 o 5v5** di giocatori di movimento; ogni squadra ha anche un portiere fisso. In caso di parità: tempi supplementari (golden goal) e poi rigori.
-- **SOLO RIGORI** — direttamente alla serie dal dischetto (meglio di 5 + morte subita)
-- **TORNEO NAZIONALE** — competizione per un giocatore con le 12 nazionali: 4 gruppi da 3, le prime due passano ai quarti, poi semifinali e finale. Le partite della CPU vengono simulate; gli incontri del giocatore usano il formato selezionato nel menu. Nella fase a gironi sono ammessi i pareggi, mentre a eliminazione diretta il pareggio porta a supplementari e rigori.
-- **1 GIOCATORE** — una nazionale scelta dal giocatore contro l’IA
-- **2 GIOCATORI IN LOCALE** — due nazionali sullo stesso schermo e con una tastiera condivisa; disponibili sia partita completa sia solo rigori
-- Prima di giocare si apre la **selezione squadre**: scegli una nazionale per ciascun lato. Sono disponibili Italia, Francia, Inghilterra, Spagna, Germania, Portogallo, Paesi Bassi, Brasile, Argentina, Croazia, Giappone e Marocco. Divise, colori e nomi sul tabellone si aggiornano in base alla scelta (predefinite: Italia e Francia); le maglie sono reinterpretazioni stilizzate ispirate alle palette e ai motivi dei kit del Mondiale 2026.
-- Difficoltà: FACILE / NORMALE / DIFFICILE · Selettore lingua nel menu
+## ⚽ Possesso e azioni
+
+I giocatori **controllano la palla quando la raccolgono**: non rimbalza via a ogni contatto. Gli avversari pressano e tentano contrasti; un contrasto riuscito strappa il possesso, mentre quello fallito può lasciare la palla contesa. La CPU tenta i contrasti automaticamente; in locale si può intervenire con il comando dedicato.
+
+- **Passaggio**: serve a liberare un compagno e cambiare lato; il ricevente controllato viene selezionato automaticamente.
+- **Cross**: pallone alto indirizzato verso l’area e i compagni in posizione da tiro.
+- **Tiro a giro**: conclusione volutamente molto potente e con una curva accentuata.
+- **Tiro di potenza**: conclusione dritta e rapidissima.
+- **Calcio d’angolo**: una parata del portiere può deviare il pallone oltre la linea di fondo e assegnare un corner alla squadra avversaria. I corner non vengono assegnati nel formato 1v1.
+
+## ⌨️ Comandi
 
 In modalità **1 giocatore**:
 
 | Tasto | Azione |
 | --- | --- |
-| `WASD` / Frecce | Movimento (nei rigori: mira / guantone) |
+| `WASD` / Frecce | Movimento |
 | `Shift` | Scatto |
-| `Spazio` | Tiro (rigori: calcia / tuffo) |
+| `Spazio` | Tiro |
 | `C` | Passaggio |
-| `Q` / `Tab` | Cambia giocatore (solo con almeno 2 giocatori di movimento) |
+| `V` | Cross |
+| `F` | Tiro a giro |
+| `R` | Tiro di potenza |
+| `E` | Contrasto |
+| `Q` / `Tab` | Cambia giocatore, solo dal 2v2 in su |
 | `Esc` / `P` | Pausa |
 
-In modalità **2 giocatori** (anche durante i rigori):
+In modalità **2 giocatori** (anche ai rigori):
 
-| Giocatore | Movimento | Scatto | Tiro / tuffo | Passaggio | Cambia giocatore |
-| --- | --- | --- | --- | --- | --- |
-| **P1 · squadra di casa** | `W A S D` | `Shift` sinistro | `Spazio` | `C` | `Q` (o `Tab`) |
-| **P2 · squadra ospite** | `↑ ↓ ← →` | `Shift` destro | `Invio` | `/` (o `Numpad 0`) | `.` (o `Numpad .`) |
+| Giocatore | Movimento | Scatto | Tiro | Passaggio | Cross | Giro | Potenza | Contrasto | Cambio |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **P1 · casa** | `WASD` | `Shift` sinistro | `Spazio` | `C` | `V` | `F` | `R` | `E` | `Q` / `Tab` |
+| **P2 · ospiti** | `↑ ↓ ← →` | `Shift` destro | `Invio` | `/` | `M` | `U` | `O` | `I` | `.` |
 
-Il cambio giocatore è attivo solo nei formati con più di un giocatore di movimento per squadra; nel formato 1v1 controlli direttamente l’unico giocatore.
+Il cambio giocatore è disattivato in 1v1: ciascuno controlla l’unico giocatore di movimento della propria squadra. Su mobile sono disponibili joystick e pulsanti touch per passaggio, cross, tiro a giro, tiro di potenza e contrasto.
 
-Durante i rigori, il giocatore che tira usa i propri tasti di movimento per mirare e quello che para per spostare il guantone; tiro e tuffo usano il tasto azione della rispettiva squadra.
+Durante i rigori, movimento e azione servono a mirare/calciare o a spostare il guantone e tuffarsi.
 
-Su mobile: joystick a sinistra, pulsanti a destra per il giocatore singolo. In due si gioca con la tastiera condivisa.
+## 🛠️ Sviluppo
 
-## 🛠️ Per sviluppatori (modificare il gioco)
-
-Richiede [Node.js](https://nodejs.org/) (versione 18+):
+Richiede Node.js 18 o superiore:
 
 ```bash
-npm install      # installa le dipendenze (solo la prima volta)
-npm run dev      # avvia il gioco in sviluppo su http://localhost:5173
-npm run build    # genera dist/index.html (file unico con tutto dentro)
+npm install
+npm run dev
+npm run build
 ```
 
-Per aggiornare il file giocabile dopo una modifica:
+Per aggiornare il file giocabile autonomo dopo una modifica:
 
 ```bash
 npm run build && cp dist/index.html APRI-PER-GIOCARE.html
