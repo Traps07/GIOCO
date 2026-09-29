@@ -258,7 +258,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
       )}
 
       {/* controlli a fondo pagina (desktop) */}
-      <div className="mt-auto hidden justify-center pb-4 md:flex">
+      <div className="mt-auto hidden flex-col items-center justify-center gap-1 pb-4 md:flex">
         {inPens ? (
           playerCount === 2 ? (
             <div className="flex max-w-[96vw] flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-2xl border border-amber-300/25 bg-black/50 px-5 py-2 text-[10px] font-medium tracking-wide text-amber-100/80 backdrop-blur-md">
@@ -342,6 +342,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
             <span><kbd>Esc</kbd> {t.kPause}</span>
           </div>
         )}
+        <p className="max-w-[96vw] text-center text-[9px] leading-relaxed text-white/30">{t.gamepadHint}</p>
       </div>
     </div>
   );

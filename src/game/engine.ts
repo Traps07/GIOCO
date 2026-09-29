@@ -230,6 +230,18 @@ interface FPLayout {
   bottom: number;
 }
 
+interface CurveFlight {
+  team: number;
+  startX: number;
+  startY: number;
+  targetX: number;
+  targetY: number;
+  duration: number;
+  elapsed: number;
+  arc: number;
+  scores: boolean;
+}
+
 export class GameEngine {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -248,6 +260,7 @@ export class GameEngine {
   private controlledIdx: [number, number] = [1, 1];
   private ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, z: 0, vz: 0, curve: 0, lastTouch: -1, lastTouchWasKeeper: false };
   private ballCarrier: Player | null = null;
+  private curveFlight: CurveFlight | null = null;
   private trail: { x: number; y: number }[] = [];
   private particles: Particle[] = [];
   private score: [number, number] = [0, 0];
@@ -275,6 +288,12 @@ export class GameEngine {
     { x: 0, y: 0, active: false },
     { x: 0, y: 0, active: false },
   ];
+  private gamepadAxes: [{ x: number; y: number }, { x: number; y: number }] = [
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ];
+  private gamepadSprint: [boolean, boolean] = [false, false];
+  private gamepadButtonState = new Map<number, boolean[]>();
   private shootQ: [boolean, boolean] = [false, false];
   private passQ: [boolean, boolean] = [false, false];
   private switchQ: [boolean, boolean] = [false, false];
@@ -386,6 +405,63 @@ export class GameEngine {
   private onKeyUp = (e: KeyboardEvent) => {
     this.keys.delete(e.code);
   };
+
+  private togglePauseFromGamepad() {
+    if (!['play', 'countdown', 'goal', 'pens'].includes(this.phase)) return;
+    this.setPaused(!this.paused);
+    this.emit({ type: this.paused ? 'pause' : 'resume' });
+  }
+
+  private pollGamepads() {
+    let pads: Gamepad[] = [];
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function') {
+        pads = Array.from(navigator.getGamepads()).filter((pad): pad is Gamepad => Boolean(pad?.connected));
+      }
+    } catch {
+      // Alcuni browser bloccano Gamepad API finché l'utente non interagisce con la pagina.
+    }
+
+    this.gamepadAxes = [{ x: 0, y: 0 }, { x: 0, y: 0 }];
+    this.gamepadSprint = [false, false];
+    const currentButtonState = new Map<number, boolean[]>();
+    pads.sort((a, b) => a.index - b.index).slice(0, this.playerCount).forEach((pad, slot) => {
+      const buttons = Array.from(pad.buttons, (button) => Boolean(button && (button.pressed || button.value >= 0.5)));
+      const previous = this.gamepadButtonState.get(pad.index) ?? [];
+      const pressed = (index: number) => buttons[index] ?? false;
+      const justPressed = (index: number) => pressed(index) && !previous[index];
+      currentButtonState.set(pad.index, buttons);
+
+      let x = pad.axes[0] ?? 0;
+      let y = pad.axes[1] ?? 0;
+      if (Math.abs(x) < 0.18) x = 0;
+      if (Math.abs(y) < 0.18) y = 0;
+      x += (pressed(15) ? 1 : 0) - (pressed(14) ? 1 : 0);
+      y += (pressed(13) ? 1 : 0) - (pressed(12) ? 1 : 0);
+      this.gamepadAxes[slot as 0 | 1] = { x: clamp(x, -1, 1), y: clamp(y, -1, 1) };
+
+      if (!this.inputEnabled) return;
+      if (justPressed(9) && ['play', 'countdown', 'goal', 'pens'].includes(this.phase)) {
+        this.togglePauseFromGamepad();
+        return;
+      }
+      if (this.paused) return;
+
+      this.gamepadSprint[slot as 0 | 1] = pressed(7);
+      if (this.phase === 'play') {
+        if (justPressed(0)) this.shootQ[slot as 0 | 1] = true; // A / Cross
+        if (justPressed(1)) this.passQ[slot as 0 | 1] = true; // B / Circle
+        if (justPressed(2)) this.crossQ[slot as 0 | 1] = true; // X / Square
+        if (justPressed(3)) this.curveQ[slot as 0 | 1] = true; // Y / Triangle
+        if (justPressed(4)) this.powerQ[slot as 0 | 1] = true; // LB / L1
+        if (justPressed(5)) this.tackleQ[slot as 0 | 1] = true; // RB / R1
+        if (justPressed(6) || justPressed(8)) this.switchQ[slot as 0 | 1] = true; // LT / Select
+      } else if (this.phase === 'pens' && justPressed(0)) {
+        this.shootQ[slot as 0 | 1] = true;
+      }
+    });
+    this.gamepadButtonState = currentButtonState;
+  }
 
   setStick(x: number, y: number, active: boolean): void;
   setStick(slot: number, x: number, y: number, active: boolean): void;
@@ -562,6 +638,7 @@ export class GameEngine {
 
   private releaseBall(player?: Player) {
     if (player && this.ballCarrier !== player) return;
+    this.curveFlight = null;
     if (this.ballCarrier) {
       this.ballCarrier.hasBall = false;
       this.ballCarrier.holdT = 0;
@@ -620,7 +697,7 @@ export class GameEngine {
       const nx = (carrier.x - tackler.x) / (d || 1);
       const ny = (carrier.y - tackler.y) / (d || 1);
       const closing = (tackler.vx - carrier.vx) * nx + (tackler.vy - carrier.vy) * ny;
-      const success = clamp(0.68 + closing / 1400, 0.48, 0.9);
+      const success = clamp(0.28 + closing / 2400, 0.14, 0.48);
       if (Math.random() < success) {
         this.claimBall(tackler);
         tackler.vx += nx * 90;
@@ -629,13 +706,14 @@ export class GameEngine {
         this.shake = Math.min(this.shake + 2.5, 8);
         this.spawnKick(this.ball.x, this.ball.y, nx, ny, this.teamKit(tackler.team).primary);
       } else {
-        carrier.vx += nx * 90;
-        carrier.vy += ny * 90;
-        this.ball.vx = carrier.vx + nx * 140;
-        this.ball.vy = carrier.vy + ny * 140;
-        this.releaseBall(carrier);
+        // Un contrasto fallito rallenta appena l'azione, ma non fa perdere il possesso.
+        carrier.vx += nx * 38;
+        carrier.vy += ny * 38;
+        tackler.vx -= nx * 24;
+        tackler.vy -= ny * 24;
+        this.placeBallAtCarrier(carrier);
         this.sfx.block();
-        this.shake = Math.min(this.shake + 1.5, 8);
+        this.shake = Math.min(this.shake + 1, 8);
       }
       return;
     }
@@ -987,6 +1065,7 @@ export class GameEngine {
     if (this.disposed) return;
     const dt = clamp((t - this.lastT) / 1000, 0, 0.033);
     this.lastT = t;
+    this.pollGamepads();
     if (!this.paused) this.update(dt);
     this.render();
     this.raf = requestAnimationFrame(this.frame);
@@ -1162,10 +1241,17 @@ export class GameEngine {
       if (this.keys.has('ArrowLeft')) x -= 1;
       if (this.keys.has('ArrowRight')) x += 1;
     }
-    const stick = this.sticks[team as 0 | 1];
+    const slot = team as 0 | 1;
+    const stick = this.sticks[slot];
     if (stick.active && (Math.abs(stick.x) > 0.12 || Math.abs(stick.y) > 0.12)) {
       x = stick.x;
       y = stick.y;
+    } else {
+      const gamepad = this.gamepadAxes[slot];
+      if (Math.abs(gamepad.x) > 0.12 || Math.abs(gamepad.y) > 0.12) {
+        x = gamepad.x;
+        y = gamepad.y;
+      }
     }
     const l = Math.hypot(x, y);
     if (l > 1) {
@@ -1177,9 +1263,9 @@ export class GameEngine {
 
   private humanControl(p: Player, dt: number) {
     const dir = this.inputDir(p.team);
-    const sprint = this.playerCount === 2
+    const sprint = this.gamepadSprint[p.team as 0 | 1] || (this.playerCount === 2
       ? this.keys.has(p.team === 0 ? 'ShiftLeft' : 'ShiftRight')
-      : this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+      : this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
     const maxS = (sprint ? 352 : 296) * (dir.len || 0);
     const dvx = dir.x * maxS - p.vx;
     const dvy = dir.y * maxS - p.vy;
@@ -1400,7 +1486,7 @@ export class GameEngine {
   }
 
   private contactBall(p: Player, _dt: number) {
-    if (this.ballCarrier || this.ball.z > 24) return;
+    if (this.ballCarrier || this.ball.z > 24 || this.curveFlight) return;
     const dx = this.ball.x - p.x;
     const dy = this.ball.y - p.y;
     const d = Math.hypot(dx, dy);
@@ -1493,7 +1579,49 @@ export class GameEngine {
     this.emit({ type: 'corner', team });
   }
 
+  private updateCurveFlight(dt: number) {
+    const flight = this.curveFlight;
+    if (!flight) return;
+    flight.elapsed = Math.min(flight.duration, flight.elapsed + dt);
+    const progress = clamp(flight.elapsed / flight.duration, 0, 1);
+    const previousX = this.ball.x;
+    const previousY = this.ball.y;
+    const sweep = Math.sin(Math.PI * progress);
+    this.ball.x = flight.startX + (flight.targetX - flight.startX) * progress;
+    this.ball.y = clamp(
+      flight.startY + (flight.targetY - flight.startY) * progress + flight.arc * sweep,
+      B_R,
+      H - B_R,
+    );
+    this.ball.z = sweep * 7;
+    this.ball.vx = dt > 0 ? (this.ball.x - previousX) / dt : 0;
+    this.ball.vy = dt > 0 ? (this.ball.y - previousY) / dt : 0;
+    this.ball.vz = 0;
+
+    if (progress < 1) return;
+    this.curveFlight = null;
+    this.ball.x = flight.targetX;
+    this.ball.y = flight.targetY;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
+    if (flight.scores) {
+      this.goal(flight.team);
+      return;
+    }
+
+    // Il 5% restante sfila appena fuori dallo specchio invece di essere una parata automatica.
+    this.ball.vx = (flight.team === 0 ? 1 : -1) * 520;
+    this.ball.vy = Math.sign(flight.targetY - H / 2) * 250;
+    this.ball.lastTouch = flight.team;
+    this.ball.lastTouchWasKeeper = false;
+  }
+
   private updateBall(dt: number, isDemo: boolean) {
+    if (this.curveFlight && !isDemo) {
+      this.updateCurveFlight(dt);
+      return;
+    }
     const ball = this.ball;
     const carriedAtStart = this.ballCarrier !== null;
     if (this.ballCarrier) {
@@ -1666,25 +1794,37 @@ export class GameEngine {
 
   private curveShot(p: Player) {
     if (this.ballCarrier !== p) return;
-    const dir = this.shootAim(p, 0.025);
-    const power = 1370;
     const steer = this.inputDir(p.team);
-    const vertical = steer.len > 0.2 ? steer.y : (p.y < H / 2 ? -1 : 1);
-    const spin = (vertical < 0 ? -1 : 1) * (p.team === 0 ? 1 : -1);
+    const defaultOffset = p.y < H / 2 ? GOAL_HALF * 0.52 : -GOAL_HALF * 0.52;
+    const targetOffset = steer.len > 0.2
+      ? clamp(steer.y, -1, 1) * (GOAL_HALF - B_R - 10)
+      : defaultOffset;
+    const scores = Math.random() < 0.95;
+    const direction = p.team === 0 ? 1 : -1;
+    const goalX = this.oppGoalX(p.team);
+    const targetY = scores
+      ? H / 2 + targetOffset
+      : H / 2 + (targetOffset < 0 ? -1 : 1) * (GOAL_HALF + 22);
+    const targetX = goalX + direction * (GOAL_DEPTH + 6);
+    const startX = this.ball.x;
+    const startY = this.ball.y;
+    const duration = clamp(Math.abs(targetX - startX) / 1460, 0.38, 1.25);
+    const arc = (p.y < H / 2 ? 1 : -1) * 72;
+
     this.releaseBall(p);
-    this.ball.vx = dir.x * power + p.vx * 0.18;
-    this.ball.vy = dir.y * power + p.vy * 0.18;
+    this.ball.vx = (targetX - startX) / duration;
+    this.ball.vy = (targetY - startY) / duration;
     this.ball.z = 0;
     this.ball.vz = 0;
-    // Curva volutamente esagerata: piega forte, ma resta un tiro controllabile.
-    this.ball.curve = spin * 7200;
+    this.ball.curve = 0;
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
+    this.curveFlight = { team: p.team, startX, startY, targetX, targetY, duration, elapsed: 0, arc, scores };
     p.kickCd = 0.38;
     this.shots[p.team]++;
     this.shake = Math.min(this.shake + 7, 16);
     this.sfx.kick(1.5);
-    this.spawnKick(this.ball.x, this.ball.y, dir.x, dir.y, this.teamKit(p.team).accent);
+    this.spawnKick(this.ball.x, this.ball.y, direction, 0, this.teamKit(p.team).accent);
   }
 
   private pass(p: Player, errRange: number, humanSwitch: boolean) {

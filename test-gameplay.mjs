@@ -49,6 +49,8 @@ globalThis.ResizeObserver = class { observe() {} disconnect() {} };
 globalThis.performance = { now: () => 1000 };
 globalThis.requestAnimationFrame = () => 1;
 globalThis.cancelAnimationFrame = noop;
+let mockGamepads = [];
+Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { getGamepads: () => mockGamepads } });
 
 const engine = new GameEngine(canvasStub);
 engine.setMuted(true);
@@ -56,7 +58,7 @@ engine.inputEnabled = true;
 const events = [];
 engine.on((event) => events.push(event));
 
-// Il contatto dà un possesso persistente; un contrasto riuscito lo trasferisce.
+// Il contatto dà possesso; i contrasti sono deliberatamente poco risolutivi.
 engine.startMatch('normal', 'match', 2, undefined, 3);
 const carrier = engine.players[0];
 const defender = engine.players[3];
@@ -74,21 +76,86 @@ const originalRandom = Math.random;
 Math.random = () => 0;
 engine.resolveTackles();
 Math.random = originalRandom;
-assert.equal(engine.ballCarrier, defender, 'il contrasto avversario ruba il possesso');
+assert.equal(engine.ballCarrier, defender, 'un contrasto può comunque rubare il possesso');
+engine.claimBall(carrier);
+carrier.vx = carrier.vy = defender.vx = defender.vy = 0;
+defender.x = carrier.x + 35;
+defender.y = carrier.y;
+defender.tackleT = 0.2;
+defender.tackleResolved = false;
+Math.random = () => 0.99;
+engine.resolveTackles();
+Math.random = originalRandom;
+assert.equal(engine.ballCarrier, carrier, 'un contrasto fallito non strappa né fa rimbalzare via la palla');
 
-// Tiri speciali e cross generano rispettivamente velocità/spin elevati e arco.
-engine.curveShot(defender);
-assert.equal(engine.ballCarrier, null);
-assert.ok(Math.hypot(engine.ball.vx, engine.ball.vy) > 1300 && Math.abs(engine.ball.curve) > 7000,
-  'il tiro a giro è volutamente overpowered');
-engine.claimBall(defender);
-engine.cross(defender, 0, false);
+// Due controller diversi (uno standard e uno generico) guidano P1 e P2.
+const makeGamepad = (index, mapping = 'standard') => ({
+  index, connected: true, mapping, axes: [0, 0, 0, 0],
+  buttons: Array.from({ length: 16 }, () => ({ pressed: false, value: 0 })),
+});
+const button = (pressed = true) => ({ pressed, value: pressed ? 1 : 0 });
+engine.startMatch('normal', 'match', 2, undefined, 3);
+engine.phase = 'play';
+const pad0 = makeGamepad(0);
+const pad1 = makeGamepad(1, '');
+pad0.axes[0] = 0.72;
+pad0.axes[1] = -0.24;
+pad1.axes[0] = -0.68;
+pad1.axes[1] = 0.22;
+pad0.buttons[0] = button(); // A / Cross: tiro
+pad0.buttons[4] = button(); // LB / L1: potenza
+pad0.buttons[7] = button(); // RT / R2: scatto tenuto
+pad1.buttons[1] = button(); // B / Circle: passaggio
+pad1.buttons[5] = button(); // RB / R1: contrasto
+pad1.buttons[8] = button(); // Select: cambio
+mockGamepads = [pad0, pad1];
+engine.pollGamepads();
+assert.ok(engine.inputDir(0).x > 0.6 && engine.inputDir(1).x < -0.6, 'stick analogici separati per P1 e P2');
+assert.ok(engine.shootQ[0] && engine.powerQ[0] && engine.gamepadSprint[0], 'A, LB e RT sono mappati per P1');
+assert.ok(engine.passQ[1] && engine.tackleQ[1] && engine.switchQ[1], 'i tasti del pad generico sono mappati per P2');
+engine.clearInputQueues();
+engine.pollGamepads();
+assert.equal(engine.shootQ[0], false, 'un pulsante mantenuto non ripete il tiro a ogni frame');
+pad0.buttons[9] = button();
+engine.pollGamepads();
+assert.equal(engine.paused, true, 'Start mette in pausa');
+pad0.buttons[9] = button(false);
+engine.pollGamepads();
+pad0.buttons[9] = button();
+engine.pollGamepads();
+assert.equal(engine.paused, false, 'Start riprende la partita');
+mockGamepads = [];
+engine.pollGamepads();
+assert.equal(engine.inputDir(0).len, 0, 'alla disconnessione gli assi vengono azzerati');
+
+// Il tiro a giro è curvo e viene convertito in gol nel 95% dei tentativi.
+let curveGoals = 0;
+for (let attempt = 0; attempt < 100; attempt++) {
+  engine.startMatch('normal', 'match', 1, undefined, 3);
+  engine.phase = 'play';
+  const shooter = engine.players[0];
+  engine.claimBall(shooter);
+  Math.random = () => attempt < 95 ? 0.94 : 0.96;
+  engine.curveShot(shooter);
+  const flight = engine.curveFlight;
+  assert.ok(flight, 'il tiro a giro avvia una traiettoria curva');
+  engine.updateBall(flight.duration, false);
+  curveGoals += engine.score[0];
+}
+Math.random = originalRandom;
+assert.equal(curveGoals, 95, 'esattamente 95 tiri su 100 entrano in rete');
+
+// Cross e tiro di potenza mantengono le traiettorie dedicate.
+engine.startMatch('normal', 'match', 2, undefined, 3);
+const skillPlayer = engine.players[0];
+engine.claimBall(skillPlayer);
+engine.cross(skillPlayer, 0, false);
 assert.ok(engine.ball.vz > 0, 'il cross parte con traiettoria aerea');
-engine.claimBall(defender);
-engine.powerShot(defender);
+engine.claimBall(skillPlayer);
+engine.powerShot(skillPlayer);
 assert.ok(Math.hypot(engine.ball.vx, engine.ball.vy) > 1400, 'il tiro di potenza è più veloce del tiro base');
 
-// Ogni giocatore locale mantiene il proprio joystick touch.
+// Joystick touch e controller non condividono gli assi tra i giocatori.
 engine.setStick(0, 0.8, 0, true);
 engine.setStick(1, -0.8, 0, true);
 assert.equal(engine.inputDir(0).x, 0.8);
@@ -129,4 +196,4 @@ assert.equal(events.filter((event) => event.type === 'corner').length, before1v1
 assert.ok(engine.ball.x >= 0, 'nel formato 1v1 la palla viene rimessa in gioco');
 
 engine.dispose();
-console.log('PASS: possesso, contrasto, tiro a giro, cross, potenza, joystick 2P e regole corner.');
+console.log('PASS: possesso, tackle più bilanciati, pad multipli, tiro a giro 95%, cross, potenza e corner.');

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Play, RotateCcw, Home, Trophy, Frown, Handshake, ChevronRight, ChevronLeft, Zap, Target, Timer, Languages, User, Users } from 'lucide-react';
+import { Play, RotateCcw, Home, Trophy, Frown, Handshake, ChevronRight, ChevronLeft, Zap, Target, Timer, Languages, User, Users, Gamepad2 } from 'lucide-react';
 import type { Difficulty, DecidedBy, GameMode, PlayerCount, TeamSize } from '../game/engine';
 import { getNationalTeam, NATIONAL_TEAMS, type NationalTeam, type NationalTeamId, type TeamKit, type TeamSelection } from '../game/teams';
 import { getActiveTournamentMatch, getGroupStandings, type TournamentGroup, type TournamentMatch, type TournamentState } from '../game/tournament';
@@ -310,6 +310,11 @@ export function MenuScreen({
             ))}
           </div>
         )}
+
+        <div className="mt-3 flex max-w-4xl items-start justify-center gap-2 text-left text-[9px] leading-relaxed text-white/40">
+          <Gamepad2 size={14} className="mt-0.5 shrink-0 text-sky-200/70" />
+          <span>{t.gamepadHint}</span>
+        </div>
 
         {/* selezione lingua */}
         <div className="mt-6 flex flex-col items-center gap-2">

@@ -184,6 +184,12 @@ if (has(twoP, STRINGS.en.diffNormal) && has(oneP, STRINGS.en.diffNormal)) {
   failures++;
   console.log('FAIL  la difficoltà resta disponibile per i compagni IA');
 }
+if (has(twoP, STRINGS.en.gamepadHint) && has(oneP, STRINGS.en.gamepadHint)) {
+  console.log('PASS  la legenda controller è visibile nelle modalità 1P e 2P');
+} else {
+  failures++;
+  console.log('FAIL  la legenda controller è visibile nelle modalità 1P e 2P');
+}
 
 console.log(failures ? `\n${failures} fallimenti` : '\ninterfaccia: tutto renders senza errori');
 if (failures) process.exit(1);

@@ -19,11 +19,11 @@ Il file è autonomo e funziona offline; internet serve solo per caricare i font 
 
 ## ⚽ Possesso e azioni
 
-I giocatori **controllano la palla quando la raccolgono**: non rimbalza via a ogni contatto. Gli avversari pressano e tentano contrasti; un contrasto riuscito strappa il possesso, mentre quello fallito può lasciare la palla contesa. La CPU tenta i contrasti automaticamente; in locale si può intervenire con il comando dedicato.
+I giocatori **controllano la palla quando la raccolgono**: non rimbalza via a ogni contatto. Gli avversari pressano e tentano contrasti, ma hanno una probabilità ridotta di strappare il possesso; se falliscono, il portatore conserva la palla. La CPU tenta i contrasti automaticamente; in locale si può intervenire con il comando dedicato.
 
 - **Passaggio**: serve a liberare un compagno e cambiare lato; il ricevente controllato viene selezionato automaticamente.
 - **Cross**: pallone alto indirizzato verso l’area e i compagni in posizione da tiro.
-- **Tiro a giro**: conclusione volutamente molto potente e con una curva accentuata.
+- **Tiro a giro**: conclusione con traiettoria curva che entra in rete nel **95% dei tentativi**.
 - **Tiro di potenza**: conclusione dritta e rapidissima.
 - **Calcio d’angolo**: una parata del portiere può deviare il pallone oltre la linea di fondo e assegnare un corner alla squadra avversaria. I corner non vengono assegnati nel formato 1v1.
 
@@ -50,6 +50,8 @@ In modalità **2 giocatori** (anche ai rigori):
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **P1 · casa** | `WASD` | `Shift` sinistro | `Spazio` | `C` | `V` | `F` | `R` | `E` | `Q` / `Tab` |
 | **P2 · ospiti** | `↑ ↓ ← →` | `Shift` destro | `Invio` | `/` | `M` | `U` | `O` | `I` | `.` |
+
+Sono supportati i controller USB o Bluetooth riconosciuti dal browser tramite Gamepad API (Xbox, PlayStation, Switch e pad generici). Il gioco legge stick analogici e croce direzionale; in locale, i primi due controller collegati comandano P1 e P2. Mappatura standard: stick/D-pad movimento, `A/×` tiro, `B/○` passaggio, `X/□` cross, `Y/△` tiro a giro, `LB/L1` potenza, `RB/R1` contrasto, `RT/R2` scatto, `LT/L2` o Select cambio giocatore, Start pausa.
 
 Il cambio giocatore è disattivato in 1v1: ciascuno controlla l’unico giocatore di movimento della propria squadra. Su mobile sono disponibili joystick e pulsanti touch per passaggio, cross, tiro a giro, tiro di potenza e contrasto; in locale a 2 giocatori i joystick sono indipendenti.
 
