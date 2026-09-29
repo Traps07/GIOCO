@@ -86,6 +86,27 @@ export interface Strings {
   menuTackle: string;
   menuSwitch: string;
   mobileHint: string;
+  // modalità giocatori (1 vs IA / 2 locali)
+  playersLabel: string;
+  opp1P: string;
+  opp1PDesc: string;
+  opp2P: string;
+  opp2PDesc: string;
+  player1: string;
+  player2: string;
+  noDiff2p: string;
+  // comandi del secondo giocatore
+  menuMove2: string;
+  menuSprint2: string;
+  menuShoot2: string;
+  menuPass2: string;
+  menuSwitch2: string;
+  mobileHint2p: string;
+  // suggerimenti rigori per il secondo giocatore
+  hintAimUpDown2: string;
+  hintKickPen2: string;
+  hintKeeperMove2: string;
+  hintDive2: string;
   // HUD
   kickOff: string;
   badgeGolden: string;

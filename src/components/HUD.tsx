@@ -258,7 +258,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
       )}
 
       {/* controlli a fondo pagina (desktop) */}
-      <div className="mt-auto hidden justify-center pb-4 md:flex">
+      <div className="mt-auto hidden flex-col items-center gap-1.5 pb-4 md:flex">
         {inPens ? (
           playerCount === 2 ? (
             <div className="flex max-w-[96vw] flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-2xl border border-amber-300/25 bg-black/50 px-5 py-2 text-[10px] font-medium tracking-wide text-amber-100/80 backdrop-blur-md">
@@ -315,6 +315,33 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
               <span><kbd>Esc</kbd> {t.kPause}</span>
             </div>
           </div>
+        ) : twoPlayer ? (
+          <>
+            <div className="flex items-center gap-3 rounded-full border border-sky-300/20 bg-black/40 px-5 py-2 text-[11px] font-medium tracking-wide text-white/55 backdrop-blur-md">
+              <span className="font-display text-[10px] tracking-[0.2em] text-sky-300">P1</span>
+              <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.kMove}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>Shift</kbd> {t.kSprint}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>Spazio</kbd> {t.kShoot}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>C</kbd> {t.kPass}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>Q</kbd> {t.kSwitch}</span>
+            </div>
+            <div className="flex items-center gap-3 rounded-full border border-rose-300/20 bg-black/40 px-5 py-2 text-[11px] font-medium tracking-wide text-white/55 backdrop-blur-md">
+              <span className="font-display text-[10px] tracking-[0.2em] text-rose-300">P2</span>
+              <span><kbd>IJKL</kbd> {t.menuMove2}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>Shift dx</kbd> {t.menuSprint2}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>Invio</kbd> {t.menuShoot2}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>M</kbd> {t.menuPass2}</span>
+              <span className="text-white/20">•</span>
+              <span><kbd>,</kbd> {t.menuSwitch2}</span>
+            </div>
+          </>
         ) : (
           <div className="flex max-w-[96vw] flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-2xl border border-white/10 bg-black/40 px-4 py-2 text-[10px] font-medium tracking-wide text-white/55 backdrop-blur-md">
             <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.kMove}</span>

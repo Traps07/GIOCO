@@ -1069,6 +1069,7 @@ export class GameEngine {
     }
 
     const isDemo = this.phase === 'demo';
+    const twoPlayer = this.opponent === 'human';
 
     // ---------- controlli e possesso ----------
     for (const p of this.players) {

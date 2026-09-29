@@ -227,7 +227,47 @@ export function MenuScreen({
           })}
         </div>
 
-        {/* difficoltà */}
+        {/* giocatori: 1 vs IA oppure 2 in locale */}
+        <div className="mt-3 flex flex-col items-center gap-2">
+          <span className="flex items-center gap-1.5 font-display text-[10px] tracking-[0.3em] text-white/40">
+            <Users size={12} /> {t.playersLabel}
+          </span>
+          <div className="flex gap-2 sm:gap-3">
+            {OPP_INFO.map((o) => {
+              const Icon = o.icon === 'user' ? User : Users;
+              const active = opponent === o.id;
+              return (
+                <button
+                  key={o.id}
+                  onClick={() => setOpponent(o.id)}
+                  className={`group flex flex-col items-center rounded-2xl border px-5 sm:px-7 py-3 transition-all duration-200 ${
+                    active
+                      ? o.id === 'human'
+                        ? 'border-rose-300/70 bg-rose-400/15 shadow-[0_0_30px_rgba(251,113,133,0.25)]'
+                        : 'border-emerald-300/70 bg-emerald-400/15 shadow-[0_0_30px_rgba(52,211,153,0.2)]'
+                      : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10'
+                  }`}
+                >
+                  <span
+                    className={`flex items-center gap-2 font-display text-xs tracking-[0.2em] ${
+                      active
+                        ? o.id === 'human'
+                          ? 'text-rose-200'
+                          : 'text-emerald-200'
+                        : 'text-white/75'
+                    }`}
+                  >
+                    <Icon size={14} /> {o.label}
+                  </span>
+                  <span className="mt-1 text-[10px] text-white/40">{o.desc}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* difficoltà: ha senso solo contro la IA */}
+        {!twoPlayer && (
         <div className="mt-3 flex gap-2 sm:gap-3">
           {DIFF_INFO.map((d) => (
             <button
@@ -246,6 +286,11 @@ export function MenuScreen({
             </button>
           ))}
         </div>
+        )}
+
+        {twoPlayer && (
+          <p className="mt-3 max-w-sm text-center text-[11px] text-white/35">{t.noDiff2p}</p>
+        )}
 
         <button
           onClick={onStart}
