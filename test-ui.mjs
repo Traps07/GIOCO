@@ -119,7 +119,7 @@ for (const { id } of LANGUAGES) {
   check(`legenda controller visibile e ad alto contrasto (${id})`, () => {
     const html = renderToStaticMarkup(
       h(HUD, {
-        snap: snap({ gamepadsConnected: 1 }),
+        snap: snap(),
         muted: false,
         onToggleMute: noop,
         onPause: noop,
@@ -131,8 +131,9 @@ for (const { id } of LANGUAGES) {
         t,
       }),
     );
-    if (!html.includes(t.gamepadControls) || !html.includes('md:hidden') || !html.includes('border-sky-200/55')) {
-      throw new Error('comandi assenti o non leggibili su mobile');
+    const commandPlacements = html.split(t.gamepadControls).length - 1;
+    if (commandPlacements < 2 || !html.includes('md:hidden') || !html.includes('border-sky-200/55')) {
+      throw new Error('comandi assenti, non responsive o non leggibili');
     }
     return html;
   });

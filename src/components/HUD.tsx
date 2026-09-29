@@ -257,8 +257,8 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
         </div>
       )}
 
-      {/* La legenda del controller segue il gamepad connesso, anche su schermi piccoli. */}
-      {!inPens && snap.phase === 'play' && snap.gamepadsConnected > 0 && (
+      {/* Comandi controller sempre visibili in partita, senza dipendere dal rilevamento hardware. */}
+      {!inPens && snap.phase === 'play' && (
         <div className="pointer-events-none absolute inset-x-2 top-[7.5rem] z-30 flex justify-center md:hidden">
           <p className="max-w-[96vw] rounded-xl border border-sky-200/55 bg-slate-950/90 px-3 py-2 text-center text-[9px] font-semibold leading-relaxed text-white shadow-[0_4px_18px_rgba(0,0,0,0.65)] sm:text-[10px]">
             {t.gamepadControls}
@@ -351,7 +351,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
             <span><kbd>Esc</kbd> {t.kPause}</span>
           </div>
         )}
-        {!inPens && snap.phase === 'play' && snap.gamepadsConnected > 0 && (
+        {!inPens && snap.phase === 'play' && (
           <p className="max-w-[96vw] rounded-xl border border-sky-200/55 bg-slate-950/90 px-4 py-1.5 text-center text-[10px] font-semibold leading-relaxed text-white shadow-[0_4px_18px_rgba(0,0,0,0.65)]">
             {t.gamepadControls}
           </p>

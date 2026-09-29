@@ -68,15 +68,22 @@ engine.ball.x = carrier.x;
 engine.ball.y = carrier.y;
 engine.contactBall(carrier, 1 / 60);
 assert.equal(engine.ballCarrier, carrier, 'il giocatore mantiene il pallone al contatto');
-engine.controlledIdx[0] = 1;
+assert.equal(engine.controlledIdx[0], carrier.idx, 'il controllo passa al portatore appena riceve la palla');
+const teammateCarrier = engine.players[2];
 engine.releaseBall(carrier);
-engine.claimBall(carrier);
-assert.equal(engine.controlledIdx[0], carrier.idx, 'il controllo passa automaticamente al compagno in possesso');
+engine.controlledIdx[0] = 0;
+teammateCarrier.x = 340;
+teammateCarrier.y = 300;
+engine.ball.x = teammateCarrier.x;
+engine.ball.y = teammateCarrier.y;
+engine.contactBall(teammateCarrier, 1 / 60);
+assert.equal(engine.controlledIdx[0], teammateCarrier.idx, 'il controllo passa al compagno AI che conquista il pallone');
 engine.controlledIdx[0] = 1;
 engine.switchQ[0] = true;
 engine.phase = 'play';
 engine.update(1 / 60);
-assert.equal(engine.controlledIdx[0], carrier.idx, 'il controllo resta sul portatore anche dopo un cambio manuale');
+assert.equal(engine.controlledIdx[0], teammateCarrier.idx, 'il controllo resta sul portatore anche dopo un cambio manuale');
+engine.claimBall(carrier);
 defender.x = carrier.x + 35;
 defender.y = carrier.y;
 defender.tackleT = 0.2;
@@ -166,9 +173,19 @@ engine.claimBall(rangeCarrier);
 const aiCfg = { speed: 252, shootRange: 385, shootErr: 0.1, passErr: 0.14, minHold: 0.5 };
 engine.aiControl(aiDefender, 1 / 60, aiCfg);
 assert.equal(aiDefender.tackleT, 0, 'l’IA non tenta il tackle da lontano');
-aiDefender.x = rangeCarrier.x - 54;
+aiDefender.x = rangeCarrier.x - 40;
 engine.aiControl(aiDefender, 1 / 60, aiCfg);
-assert.equal(aiDefender.tackleCd, 1.3, 'l’IA contrasta solo a distanza ravvicinata e rispetta il cooldown');
+assert.equal(aiDefender.tackleCd, 4, 'l’IA contrasta solo a distanza ravvicinata e rispetta il cooldown lungo');
+
+// Il portatore bot dribbla con decisione verso la porta avversaria prima di passare.
+engine.startMatch('normal', 'match', 1, undefined, 3);
+const attackingCarrier = engine.players[3];
+attackingCarrier.x = 700;
+attackingCarrier.y = 350;
+engine.claimBall(attackingCarrier);
+attackingCarrier.holdT = 0.2;
+engine.aiControl(attackingCarrier, 1 / 60, { speed: 252, shootRange: 385, shootErr: 0.1, passErr: 0.14, minHold: 0.5 });
+assert.ok(attackingCarrier.tx < attackingCarrier.x - 100 && attackingCarrier.vx < 0, 'il portatore bot avanza verso la porta avversaria');
 
 // Il tiro a giro è curvo: 95% gol e 5% parata con corner per il tiratore.
 let curveGoals = 0;
@@ -210,18 +227,54 @@ support.x = 420;
 support.y = 250;
 secondSupport.x = 430;
 secondSupport.y = 450;
-botCarrier.x = 650;
+botCarrier.x = 1050;
 botCarrier.y = 350;
 botCarrier.faceX = -1;
 botCarrier.faceY = 0;
-for (const opponent of engine.players.filter((player) => player.team === 0)) { opponent.x = 1050; opponent.y = 100 + opponent.idx * 180; }
+support.x = 1010;
+support.y = 250;
+secondSupport.x = 1000;
+secondSupport.y = 450;
+for (const opponent of engine.players.filter((player) => player.team === 0)) { opponent.x = 220; opponent.y = 100 + opponent.idx * 180; }
 engine.claimBall(botCarrier);
-botCarrier.holdT = 1.5;
+botCarrier.holdT = 0.65;
 engine.aiControl(support, 1 / 60, { speed: 252, shootRange: 385, shootErr: 0.1, passErr: 0.14, minHold: 0.5 });
-assert.ok(support.tx < botCarrier.x - 100, 'il compagno AI si smarca in avanti');
+assert.ok(support.tx < botCarrier.x - 150 && support.vx < 0, 'il compagno AI corre in avanti per sostenere l’azione');
 engine.aiControl(botCarrier, 1 / 60, { speed: 252, shootRange: 385, shootErr: 0.1, passErr: 0.14, minHold: 0.5 });
-assert.equal(engine.ballCarrier, null, 'il portatore bot scarica la palla su un compagno');
-assert.ok(Math.hypot(engine.ball.vx, engine.ball.vy) > 0, 'il passaggio AI mette la palla in movimento');
+assert.equal(engine.ballCarrier, null, 'il portatore bot passa anche quando è nella propria metà campo');
+assert.ok(engine.ball.vx < 0, 'il passaggio AI procede verso la porta avversaria');
+
+// Verifica anche la decisione AI dentro il normale ciclo di aggiornamento.
+engine.startMatch('normal', 'match', 1, undefined, 3);
+engine.phase = 'play';
+const liveCarrier = engine.players[3];
+const liveSupport = engine.players[4];
+const liveSecondSupport = engine.players[5];
+liveCarrier.x = 1050;
+liveCarrier.y = 350;
+liveCarrier.faceX = -1;
+liveCarrier.faceY = 0;
+liveSupport.x = 1010;
+liveSupport.y = 250;
+liveSecondSupport.x = 1000;
+liveSecondSupport.y = 450;
+for (const opponent of engine.players.filter((player) => player.team === 0)) {
+  opponent.x = 220;
+  opponent.y = 100 + opponent.idx * 180;
+}
+engine.claimBall(liveCarrier);
+const originalPass = engine.pass;
+let liveAiPasses = 0;
+engine.pass = function (...args) {
+  if (args[3]) liveAiPasses++;
+  return originalPass.apply(this, args);
+};
+const supportStartX = liveSupport.x;
+for (let frame = 0; frame < 12; frame++) engine.update(1 / 60);
+assert.ok(liveSupport.x < supportStartX - 5, 'nel ciclo partita il compagno bot avanza davvero verso l’attacco');
+for (let frame = 0; frame < 108; frame++) engine.update(1 / 60);
+engine.pass = originalPass;
+assert.ok(liveAiPasses > 0, 'nel ciclo partita il portatore bot esegue passaggi automatici');
 
 // Cross e tiro di potenza mantengono le traiettorie dedicate.
 engine.startMatch('normal', 'match', 2, undefined, 3);

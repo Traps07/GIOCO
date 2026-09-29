@@ -676,18 +676,19 @@ export class GameEngine {
     this.placeBallAtCarrier(player);
   }
 
-  private startTackle(player: Player) {
+  private startTackle(player: Player, automated = false) {
     if (player.tackleCd > 0 || !this.ballCarrier || this.ballCarrier.team === player.team) return;
-    player.tackleCd = 1.3;
-    player.tackleT = 0.18;
+    player.tackleCd = automated ? 4 : 1.3;
+    player.tackleT = automated ? 0.16 : 0.18;
     player.tackleResolved = false;
     const dx = this.ballCarrier.x - player.x;
     const dy = this.ballCarrier.y - player.y;
     const d = Math.hypot(dx, dy) || 1;
     player.faceX = dx / d;
     player.faceY = dy / d;
-    player.vx += (dx / d) * 120;
-    player.vy += (dy / d) * 120;
+    const lunge = automated ? 85 : 120;
+    player.vx += (dx / d) * lunge;
+    player.vy += (dy / d) * lunge;
   }
 
   private resolveTackles() {
@@ -701,7 +702,7 @@ export class GameEngine {
       const nx = (carrier.x - tackler.x) / (d || 1);
       const ny = (carrier.y - tackler.y) / (d || 1);
       const closing = (tackler.vx - carrier.vx) * nx + (tackler.vy - carrier.vy) * ny;
-      const success = clamp(0.18 + closing / 3500, 0.08, 0.34);
+      const success = clamp(0.1 + closing / 5000, 0.06, 0.24);
       if (Math.random() < success) {
         this.claimBall(tackler);
         tackler.vx += nx * 55;
@@ -1330,16 +1331,18 @@ export class GameEngine {
       const dOwn = dist(p.x, p.y, ownX, H / 2);
 
       if (p.kickCd <= 0 && p.holdT > cfg.minHold) {
-        if (dOwn < 240) {
-          if (pressure < 140 || p.holdT > 1.3) this.clear(p);
-        } else if (this.teamSize > 1 && Math.abs(p.y - H / 2) > 145 && dGoal < 700 && pressure > 65 && p.holdT > 0.45) {
+        const passDistance = Math.max(250, cfg.shootRange * 0.72);
+        if (this.teamSize > 1 && Math.abs(p.y - H / 2) > 145 && dGoal < 700 && pressure > 65 && p.holdT > 0.45) {
           this.aiCross(p, cfg);
-        } else if (this.teamSize > 1 && dGoal > 260 && p.holdT > 0.72 && (pressure < 250 || p.holdT > 1.1)) {
+        } else if (this.teamSize > 1 && dGoal > passDistance && p.holdT > Math.max(cfg.minHold, 0.52)) {
+          // Passare è la prima scelta anche nella propria metà: non spazzare via palloni innocui.
           this.aiPass(p, cfg);
+        } else if (dOwn < 240) {
+          if (this.teamSize === 1 && (pressure < 140 || p.holdT > 1.3)) this.clear(p);
         } else if (dGoal < cfg.shootRange) {
           if (Math.abs(p.y - H / 2) > 115 && pressure > 90) this.aiCurveShot(p);
           else this.aiShoot(p, cfg);
-        } else if (pressure < 130 || p.holdT > 1.35) {
+        } else if (pressure < 130 || p.holdT > 1.1) {
           this.aiPass(p, cfg);
         }
       }
@@ -1357,27 +1360,27 @@ export class GameEngine {
         sideX = -(op.y - p.y) * 0.5;
         sideY = (op.x - p.x) * 0.5;
       }
-      const advance = 135 + clamp((520 - dGoal) * 0.12, 0, 75);
+      const advance = 175 + clamp((520 - dGoal) * 0.14, 0, 110);
       tx = p.x + (dx / dl) * advance + sideX;
       ty = p.y + (dy / dl) * 105 + sideY;
-      maxS = cfg.speed * 1.04;
+      maxS = cfg.speed * 1.12;
     } else if (carrier && carrier.team === p.team) {
       const direction = p.team === 0 ? 1 : -1;
       const lane = Math.sign(form.y - H / 2) || (p.idx % 2 === 0 ? -1 : 1);
-      const forwardRun = p.idx % 2 === 0 ? 165 : 220;
+      const forwardRun = p.idx % 2 === 0 ? 220 : 290;
       const supportX = carrier.x + direction * forwardRun;
-      const supportY = carrier.y + lane * (p.idx % 2 === 0 ? 130 : 185);
+      const supportY = carrier.y + lane * (p.idx % 2 === 0 ? 145 : 205);
       tx = clamp(supportX, 70, W - 70);
       ty = clamp(supportY, 70, H - 70);
-      maxS = cfg.speed * 1.08;
+      maxS = cfg.speed * 1.18;
     } else if (carrier && carrier.team !== p.team) {
       if (p === chaser) {
         const lead = 0.12;
         tx = carrier.x + carrier.vx * lead;
         ty = carrier.y + carrier.vy * lead;
         maxS = cfg.speed * 1.12;
-        if (dist(p.x, p.y, carrier.x, carrier.y) < TACKLE_RANGE + 6 && p.tackleCd <= 0) {
-          this.startTackle(p);
+        if (dist(p.x, p.y, carrier.x, carrier.y) < TACKLE_RANGE - 8 && p.tackleCd <= 0) {
+          this.startTackle(p, true);
         }
       } else {
         const dx = carrier.x - ownX;
@@ -1859,16 +1862,18 @@ export class GameEngine {
     this.spawnKick(this.ball.x, this.ball.y, direction, 0, this.teamKit(p.team).accent);
   }
 
-  private pass(p: Player, errRange: number, humanSwitch: boolean) {
+  private pass(p: Player, errRange: number, humanSwitch: boolean, aiControlled = false) {
     if (this.ballCarrier !== p) return;
     const mates = this.players.filter((q) => q.team === p.team && q !== p);
     if (mates.length === 0) {
       this.clear(p);
       return;
     }
-    const dir = p.team === 0 || this.playerCount === 2
-      ? this.inputDir(p.team)
-      : { x: p.faceX, y: p.faceY, len: 1 };
+    const dir = aiControlled
+      ? { x: p.team === 0 ? 1 : -1, y: 0, len: 1 }
+      : p.team === 0 || this.playerCount === 2
+        ? this.inputDir(p.team)
+        : { x: p.faceX, y: p.faceY, len: 1 };
     const useDir = dir.len > 0.2 ? dir : { x: p.faceX, y: p.faceY, len: 1 };
 
     let best: Player | null = null;
@@ -1882,8 +1887,13 @@ export class GameEngine {
       const openness = Math.min(
         ...this.players.filter((o) => o.team !== p.team).map((o) => dist(o.x, o.y, m.x, m.y)),
       );
-      let score = align * 1.6 + openness / 200 + d / 600;
-      if (dir.len <= 0.2) score = forward * 2 + openness / 200;
+      let score = align * (aiControlled ? 2.6 : 1.6) + openness / 200 + d / 600;
+      if (aiControlled) {
+        const forwardProgress = (m.x - p.x) * (p.team === 0 ? 1 : -1);
+        score += clamp(forwardProgress / 260, -1, 1) * 1.1;
+      } else if (dir.len <= 0.2) {
+        score = forward * 2 + openness / 200;
+      }
       if (score > bestScore) {
         bestScore = score;
         best = m;
@@ -1966,7 +1976,7 @@ export class GameEngine {
   }
 
   private aiPass(p: Player, cfg: DiffCfg) {
-    this.pass.call(this, p, cfg.passErr, false);
+    this.pass.call(this, p, cfg.passErr, false, true);
   }
 
   private aiCross(p: Player, cfg: DiffCfg) {
