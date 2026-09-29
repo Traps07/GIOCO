@@ -21,6 +21,7 @@ const snap = (over = {}) => ({
   playerCount: 2,
   teamSize: 3,
   controlled: [1, 2],
+  gamepadsConnected: 0,
   pens: null,
   ...over,
 });
@@ -114,6 +115,27 @@ for (const { id } of LANGUAGES) {
       }),
     ),
   );
+
+  check(`legenda controller visibile e ad alto contrasto (${id})`, () => {
+    const html = renderToStaticMarkup(
+      h(HUD, {
+        snap: snap({ gamepadsConnected: 1 }),
+        muted: false,
+        onToggleMute: noop,
+        onPause: noop,
+        playerCount: 2,
+        teams: [...DEFAULT_TEAMS],
+        lang: id,
+        goalBanner: null,
+        eventBanner: null,
+        t,
+      }),
+    );
+    if (!html.includes(t.gamepadControls) || !html.includes('md:hidden') || !html.includes('border-sky-200/55')) {
+      throw new Error('comandi assenti o non leggibili su mobile');
+    }
+    return html;
+  });
 
   check(`HUD 2 giocatori ai rigori (${id})`, () =>
     renderToStaticMarkup(

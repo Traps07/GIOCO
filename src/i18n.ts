@@ -87,6 +87,7 @@ export interface Strings {
   menuSwitch: string;
   mobileHint: string;
   gamepadHint: string;
+  gamepadControls: string;
   // HUD
   kickOff: string;
   badgeGolden: string;
@@ -223,6 +224,7 @@ const it: Strings = {
   menuSwitch: 'cambia giocatore',
   mobileHint: 'Su mobile: joystick a sinistra, pulsanti a destra',
   gamepadHint: 'Nei menu: stick/D-pad naviga, A conferma, B indietro. In partita: USB/Bluetooth · A/× tiro · B/○ passaggio · X/□ cross · Y/△ giro · LB/L1 potenza · RB/R1 contrasto · RT/R2 scatto · LT/Select cambio · Start pausa',
+  gamepadControls: '🎮 Controller · Stick/D-pad: muovi · A/× tiro · B/○ passaggio · X/□ cross · Y/△ giro · LB/L1 potenza · RB/R1 contrasto · RT/R2 scatto · LT/Select cambio · Start pausa',
   kickOff: "CALCIO D'INIZIO",
   badgeGolden: 'SUPPLEMENTARI · GOLDEN GOAL',
   goal: 'GOOOL!',
@@ -352,6 +354,7 @@ const en: Strings = {
   menuSwitch: 'switch player',
   mobileHint: 'On mobile: joystick on the left, buttons on the right',
   gamepadHint: 'Menus: stick/D-pad navigate, A confirm, B back. Match: USB/Bluetooth · A/× shoot · B/○ pass · X/□ cross · Y/△ curve · LB/L1 power · RB/R1 tackle · RT/R2 sprint · LT/Select switch · Start pause',
+  gamepadControls: '🎮 Gamepad · Stick/D-pad: move · A/× shoot · B/○ pass · X/□ cross · Y/△ curve · LB/L1 power · RB/R1 tackle · RT/R2 sprint · LT/Select switch · Start pause',
   kickOff: 'KICK-OFF',
   badgeGolden: 'EXTRA TIME · GOLDEN GOAL',
   goal: 'GOOOAL!',
@@ -481,6 +484,7 @@ const de: Strings = {
   menuSwitch: 'spieler wechseln',
   mobileHint: 'Auf dem Handy: Joystick links, Buttons rechts',
   gamepadHint: 'Menüs: Stick/Steuerkreuz navigieren, A bestätigen, B zurück. Spiel: USB/Bluetooth · A/× Schuss · B/○ Pass · X/□ Flanke · Y/△ Effet · LB/L1 Kraft · RB/R1 Tackling · RT/R2 Sprint · LT/Select Wechsel · Start Pause',
+  gamepadControls: '🎮 Controller · Stick/Steuerkreuz: bewegen · A/× Schuss · B/○ Pass · X/□ Flanke · Y/△ Effet · LB/L1 Kraft · RB/R1 Tackling · RT/R2 Sprint · LT/Select Wechsel · Start Pause',
   kickOff: 'ANSTOSS',
   badgeGolden: 'VERLÄNGERUNG · GOLDEN GOAL',
   goal: 'TOOOR!',
@@ -610,6 +614,7 @@ const fr: Strings = {
   menuSwitch: 'changer de joueur',
   mobileHint: 'Sur mobile : joystick à gauche, boutons à droite',
   gamepadHint: 'Menus : stick/croix pour naviguer, A valider, B retour. Match : USB/Bluetooth · A/× tir · B/○ passe · X/□ centre · Y/△ effet · LB/L1 puissance · RB/R1 tacle · RT/R2 sprint · LT/Select changement · Start pause',
+  gamepadControls: '🎮 Manette · Stick/croix : bouger · A/× tir · B/○ passe · X/□ centre · Y/△ effet · LB/L1 puissance · RB/R1 tacle · RT/R2 sprint · LT/Select changer · Start pause',
   kickOff: 'COUP D’ENVOI',
   badgeGolden: 'PROLONGATIONS · BUT EN OR',
   goal: 'BUUUT !',
@@ -739,6 +744,7 @@ const es: Strings = {
   menuSwitch: 'cambiar jugador',
   mobileHint: 'En móvil: joystick a la izquierda, botones a la derecha',
   gamepadHint: 'Menús: stick/cruceta para navegar, A confirmar, B volver. Partido: USB/Bluetooth · A/× tiro · B/○ pase · X/□ centro · Y/△ efecto · LB/L1 potencia · RB/R1 entrada · RT/R2 sprint · LT/Select cambio · Start pausa',
+  gamepadControls: '🎮 Mando · Stick/cruceta: mover · A/× tiro · B/○ pase · X/□ centro · Y/△ efecto · LB/L1 potencia · RB/R1 entrada · RT/R2 sprint · LT/Select cambiar · Start pausa',
   kickOff: 'SAQUE INICIAL',
   badgeGolden: 'PRÓRROGA · GOL DE ORO',
   goal: '¡GOOOL!',
@@ -868,6 +874,7 @@ const ar: Strings = {
   menuSwitch: 'تبديل اللاعب',
   mobileHint: 'على الجوال: عصا تحكم يساراً وأزرار يميناً',
   gamepadHint: 'القوائم: حرّك العصا أو الأسهم للتنقل، A للتأكيد، B للرجوع. المباراة: يد USB/Bluetooth · A/× تسديد · B/○ تمرير · X/□ عرضية · Y/△ تسديدة ملتفة · LB/L1 قوة · RB/R1 افتكاك · RT/R2 سرعة · LT/Select تبديل · Start إيقاف',
+  gamepadControls: '🎮 يد التحكم · العصا/الأسهم: حركة · A/× تسديد · B/○ تمرير · X/□ عرضية · Y/△ تسديدة ملتفة · LB/L1 قوة · RB/R1 افتكاك · RT/R2 سرعة · LT/Select تبديل · Start إيقاف',
   kickOff: 'ركلة البداية',
   badgeGolden: 'وقت إضافي · هدف ذهبي',
   goal: 'هــدف!',

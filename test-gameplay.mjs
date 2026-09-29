@@ -68,6 +68,15 @@ engine.ball.x = carrier.x;
 engine.ball.y = carrier.y;
 engine.contactBall(carrier, 1 / 60);
 assert.equal(engine.ballCarrier, carrier, 'il giocatore mantiene il pallone al contatto');
+engine.controlledIdx[0] = 1;
+engine.releaseBall(carrier);
+engine.claimBall(carrier);
+assert.equal(engine.controlledIdx[0], carrier.idx, 'il controllo passa automaticamente al compagno in possesso');
+engine.controlledIdx[0] = 1;
+engine.switchQ[0] = true;
+engine.phase = 'play';
+engine.update(1 / 60);
+assert.equal(engine.controlledIdx[0], carrier.idx, 'il controllo resta sul portatore anche dopo un cambio manuale');
 defender.x = carrier.x + 35;
 defender.y = carrier.y;
 defender.tackleT = 0.2;
@@ -87,6 +96,17 @@ Math.random = () => 0.99;
 engine.resolveTackles();
 Math.random = originalRandom;
 assert.equal(engine.ballCarrier, carrier, 'un contrasto fallito non strappa né fa rimbalzare via la palla');
+defender.tackleCd = 0;
+engine.startTackle(defender);
+assert.equal(defender.tackleCd, 1.3, 'il contrasto ha un cooldown più lungo per ridurne la frequenza');
+defender.tackleT = 0;
+carrier.vx = carrier.vy = defender.vx = defender.vy = 0;
+defender.tackleT = 0.2;
+defender.tackleResolved = false;
+Math.random = () => 0.2;
+engine.resolveTackles();
+Math.random = originalRandom;
+assert.equal(engine.ballCarrier, carrier, 'la probabilità ridotta rende fallibile il contrasto ravvicinato');
 
 // Due controller diversi (uno standard e uno generico) guidano P1 e P2.
 const makeGamepad = (index, mapping = 'standard') => ({
@@ -111,6 +131,7 @@ pad1.buttons[8] = button(); // Select: cambio
 mockGamepads = [pad0, pad1];
 engine.pollGamepads();
 assert.ok(engine.inputDir(0).x > 0.6 && engine.inputDir(1).x < -0.6, 'stick analogici separati per P1 e P2');
+assert.equal(engine.getSnapshot().gamepadsConnected, 2, 'il motore rileva entrambi i controller connessi');
 assert.ok(engine.shootQ[0] && engine.powerQ[0] && engine.gamepadSprint[0], 'A, LB e RT sono mappati per P1');
 assert.ok(engine.passQ[1] && engine.tackleQ[1] && engine.switchQ[1], 'i tasti del pad generico sono mappati per P2');
 engine.clearInputQueues();
@@ -127,9 +148,31 @@ assert.equal(engine.paused, false, 'Start riprende la partita');
 mockGamepads = [];
 engine.pollGamepads();
 assert.equal(engine.inputDir(0).len, 0, 'alla disconnessione gli assi vengono azzerati');
+assert.equal(engine.getSnapshot().gamepadsConnected, 0, 'la legenda si aggiorna quando il controller viene scollegato');
 
-// Il tiro a giro è curvo e viene convertito in gol nel 95% dei tentativi.
+// I difensori bot attendono di essere vicini prima di tentare il contrasto.
+engine.startMatch('normal', 'match', 1, undefined, 3);
+const rangeCarrier = engine.players[3];
+const aiDefender = engine.players[0];
+rangeCarrier.x = 650;
+rangeCarrier.y = 350;
+for (const teammate of engine.players.filter((player) => player.team === 0 && player !== aiDefender)) {
+  teammate.x = 150;
+  teammate.y = 100 + teammate.idx * 200;
+}
+aiDefender.x = rangeCarrier.x - 60;
+aiDefender.y = rangeCarrier.y;
+engine.claimBall(rangeCarrier);
+const aiCfg = { speed: 252, shootRange: 385, shootErr: 0.1, passErr: 0.14, minHold: 0.5 };
+engine.aiControl(aiDefender, 1 / 60, aiCfg);
+assert.equal(aiDefender.tackleT, 0, 'l’IA non tenta il tackle da lontano');
+aiDefender.x = rangeCarrier.x - 54;
+engine.aiControl(aiDefender, 1 / 60, aiCfg);
+assert.equal(aiDefender.tackleCd, 1.3, 'l’IA contrasta solo a distanza ravvicinata e rispetta il cooldown');
+
+// Il tiro a giro è curvo: 95% gol e 5% parata con corner per il tiratore.
 let curveGoals = 0;
+const cornersBeforeCurve = events.filter((event) => event.type === 'corner').length;
 for (let attempt = 0; attempt < 100; attempt++) {
   engine.startMatch('normal', 'match', 1, undefined, 3);
   engine.phase = 'play';
@@ -144,6 +187,41 @@ for (let attempt = 0; attempt < 100; attempt++) {
 }
 Math.random = originalRandom;
 assert.equal(curveGoals, 95, 'esattamente 95 tiri su 100 entrano in rete');
+assert.equal(events.filter((event) => event.type === 'corner').length - cornersBeforeCurve, 5, 'le 5 parate sul tiro a giro danno corner');
+
+// Il 5% salvato non dà corner nel formato 1v1.
+engine.startMatch('normal', 'match', 1, undefined, 1);
+engine.phase = 'play';
+const soloShooter = engine.players[0];
+engine.claimBall(soloShooter);
+const cornersBeforeSoloCurve = events.filter((event) => event.type === 'corner').length;
+Math.random = () => 0.96;
+engine.curveShot(soloShooter);
+engine.updateBall(engine.curveFlight.duration, false);
+Math.random = originalRandom;
+assert.equal(events.filter((event) => event.type === 'corner').length, cornersBeforeSoloCurve, 'la parata sul giro non dà corner in 1v1');
+
+// I bot accompagnano il portatore e cercano compagni con passaggi in avanti.
+engine.startMatch('normal', 'match', 1, undefined, 3);
+const botCarrier = engine.players[3];
+const support = engine.players[4];
+const secondSupport = engine.players[5];
+support.x = 420;
+support.y = 250;
+secondSupport.x = 430;
+secondSupport.y = 450;
+botCarrier.x = 650;
+botCarrier.y = 350;
+botCarrier.faceX = -1;
+botCarrier.faceY = 0;
+for (const opponent of engine.players.filter((player) => player.team === 0)) { opponent.x = 1050; opponent.y = 100 + opponent.idx * 180; }
+engine.claimBall(botCarrier);
+botCarrier.holdT = 1.5;
+engine.aiControl(support, 1 / 60, { speed: 252, shootRange: 385, shootErr: 0.1, passErr: 0.14, minHold: 0.5 });
+assert.ok(support.tx < botCarrier.x - 100, 'il compagno AI si smarca in avanti');
+engine.aiControl(botCarrier, 1 / 60, { speed: 252, shootRange: 385, shootErr: 0.1, passErr: 0.14, minHold: 0.5 });
+assert.equal(engine.ballCarrier, null, 'il portatore bot scarica la palla su un compagno');
+assert.ok(Math.hypot(engine.ball.vx, engine.ball.vy) > 0, 'il passaggio AI mette la palla in movimento');
 
 // Cross e tiro di potenza mantengono le traiettorie dedicate.
 engine.startMatch('normal', 'match', 2, undefined, 3);

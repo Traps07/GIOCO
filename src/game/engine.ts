@@ -33,6 +33,7 @@ export interface Snapshot {
   playerCount: PlayerCount;
   teamSize: TeamSize;
   controlled: [number, number];
+  gamepadsConnected: number;
   pens: PensSnap | null;
 }
 
@@ -293,6 +294,7 @@ export class GameEngine {
     { x: 0, y: 0 },
   ];
   private gamepadSprint: [boolean, boolean] = [false, false];
+  private gamepadsConnected = 0;
   private gamepadButtonState = new Map<number, boolean[]>();
   private shootQ: [boolean, boolean] = [false, false];
   private passQ: [boolean, boolean] = [false, false];
@@ -422,6 +424,7 @@ export class GameEngine {
       // Alcuni browser bloccano Gamepad API finché l'utente non interagisce con la pagina.
     }
 
+    this.gamepadsConnected = pads.length;
     this.gamepadAxes = [{ x: 0, y: 0 }, { x: 0, y: 0 }];
     this.gamepadSprint = [false, false];
     const currentButtonState = new Map<number, boolean[]>();
@@ -662,6 +665,7 @@ export class GameEngine {
     if (this.ballCarrier === player) return;
     this.releaseBall();
     this.ballCarrier = player;
+    if (player.team === 0 || this.playerCount === 2) this.controlledIdx[player.team] = player.idx;
     player.hasBall = true;
     player.holdT = 0;
     player.kickCd = 0;
@@ -674,16 +678,16 @@ export class GameEngine {
 
   private startTackle(player: Player) {
     if (player.tackleCd > 0 || !this.ballCarrier || this.ballCarrier.team === player.team) return;
-    player.tackleCd = 0.72;
-    player.tackleT = 0.22;
+    player.tackleCd = 1.3;
+    player.tackleT = 0.18;
     player.tackleResolved = false;
     const dx = this.ballCarrier.x - player.x;
     const dy = this.ballCarrier.y - player.y;
     const d = Math.hypot(dx, dy) || 1;
     player.faceX = dx / d;
     player.faceY = dy / d;
-    player.vx += (dx / d) * 180;
-    player.vy += (dy / d) * 180;
+    player.vx += (dx / d) * 120;
+    player.vy += (dy / d) * 120;
   }
 
   private resolveTackles() {
@@ -697,11 +701,11 @@ export class GameEngine {
       const nx = (carrier.x - tackler.x) / (d || 1);
       const ny = (carrier.y - tackler.y) / (d || 1);
       const closing = (tackler.vx - carrier.vx) * nx + (tackler.vy - carrier.vy) * ny;
-      const success = clamp(0.28 + closing / 2400, 0.14, 0.48);
+      const success = clamp(0.18 + closing / 3500, 0.08, 0.34);
       if (Math.random() < success) {
         this.claimBall(tackler);
-        tackler.vx += nx * 90;
-        tackler.vy += ny * 90;
+        tackler.vx += nx * 55;
+        tackler.vy += ny * 55;
         this.sfx.block();
         this.shake = Math.min(this.shake + 2.5, 8);
         this.spawnKick(this.ball.x, this.ball.y, nx, ny, this.teamKit(tackler.team).primary);
@@ -1149,6 +1153,11 @@ export class GameEngine {
 
     const isDemo = this.phase === 'demo';
 
+    // La squadra umana segue sempre il compagno che ha appena conquistato il pallone.
+    if (this.ballCarrier && (this.ballCarrier.team === 0 || this.playerCount === 2)) {
+      this.controlledIdx[this.ballCarrier.team] = this.ballCarrier.idx;
+    }
+
     // ---------- controlli e possesso ----------
     for (const p of this.players) {
       p.hasBall = this.ballCarrier === p;
@@ -1198,7 +1207,7 @@ export class GameEngine {
     if (this.phase === 'play' && !isDemo) {
       const teams = this.playerCount === 2 ? [0, 1] : [0];
       for (const team of teams) {
-        if (this.switchQ[team] && this.teamSize > 1) {
+        if (this.switchQ[team] && this.teamSize > 1 && this.ballCarrier?.team !== team) {
           this.controlledIdx[team] = (this.controlledIdx[team] + 1) % this.teamSize;
           this.sfx.swap();
         }
@@ -1322,13 +1331,15 @@ export class GameEngine {
 
       if (p.kickCd <= 0 && p.holdT > cfg.minHold) {
         if (dOwn < 240) {
-          if (pressure < 120 || p.holdT > 1.6) this.clear(p);
+          if (pressure < 140 || p.holdT > 1.3) this.clear(p);
+        } else if (this.teamSize > 1 && Math.abs(p.y - H / 2) > 145 && dGoal < 700 && pressure > 65 && p.holdT > 0.45) {
+          this.aiCross(p, cfg);
+        } else if (this.teamSize > 1 && dGoal > 260 && p.holdT > 0.72 && (pressure < 250 || p.holdT > 1.1)) {
+          this.aiPass(p, cfg);
         } else if (dGoal < cfg.shootRange) {
           if (Math.abs(p.y - H / 2) > 115 && pressure > 90) this.aiCurveShot(p);
           else this.aiShoot(p, cfg);
-        } else if (Math.abs(p.y - H / 2) > 145 && dGoal < 600 && pressure > 115 && this.teamSize > 1) {
-          this.aiCross(p, cfg);
-        } else if (pressure < 120 || p.holdT > 1.7) {
+        } else if (pressure < 130 || p.holdT > 1.35) {
           this.aiPass(p, cfg);
         }
       }
@@ -1346,16 +1357,26 @@ export class GameEngine {
         sideX = -(op.y - p.y) * 0.5;
         sideY = (op.x - p.x) * 0.5;
       }
-      tx = p.x + (dx / dl) * 70 + sideX;
-      ty = p.y + (dy / dl) * 70 + sideY;
-      maxS = cfg.speed * 0.92;
+      const advance = 135 + clamp((520 - dGoal) * 0.12, 0, 75);
+      tx = p.x + (dx / dl) * advance + sideX;
+      ty = p.y + (dy / dl) * 105 + sideY;
+      maxS = cfg.speed * 1.04;
+    } else if (carrier && carrier.team === p.team) {
+      const direction = p.team === 0 ? 1 : -1;
+      const lane = Math.sign(form.y - H / 2) || (p.idx % 2 === 0 ? -1 : 1);
+      const forwardRun = p.idx % 2 === 0 ? 165 : 220;
+      const supportX = carrier.x + direction * forwardRun;
+      const supportY = carrier.y + lane * (p.idx % 2 === 0 ? 130 : 185);
+      tx = clamp(supportX, 70, W - 70);
+      ty = clamp(supportY, 70, H - 70);
+      maxS = cfg.speed * 1.08;
     } else if (carrier && carrier.team !== p.team) {
       if (p === chaser) {
         const lead = 0.12;
         tx = carrier.x + carrier.vx * lead;
         ty = carrier.y + carrier.vy * lead;
         maxS = cfg.speed * 1.12;
-        if (dist(p.x, p.y, carrier.x, carrier.y) < TACKLE_RANGE + 22 && p.tackleCd <= 0) {
+        if (dist(p.x, p.y, carrier.x, carrier.y) < TACKLE_RANGE + 6 && p.tackleCd <= 0) {
           this.startTackle(p);
         }
       } else {
@@ -1610,11 +1631,18 @@ export class GameEngine {
       return;
     }
 
-    // Il 5% restante sfila appena fuori dallo specchio invece di essere una parata automatica.
-    this.ball.vx = (flight.team === 0 ? 1 : -1) * 520;
-    this.ball.vy = Math.sign(flight.targetY - H / 2) * 250;
+    // Il 5% restante è una parata reale; nei formati maggiori diventa corner per chi ha tirato.
+    const keeper = this.goalkeepers[1 - flight.team];
+    const faceX = keeper.team === 0 ? 1 : -1;
+    const impactSide = Math.sign(flight.targetY - H / 2) || 1;
+    this.ball.x = keeper.x + faceX * (GK_R + B_R - 9);
+    this.ball.y = clamp(keeper.y + impactSide * GK_R * 0.78, B_R, H - B_R);
+    this.ball.vx = -faceX * 820;
+    this.ball.vy = impactSide * 180;
     this.ball.lastTouch = flight.team;
     this.ball.lastTouchWasKeeper = false;
+    this.contactGoalkeeper(keeper, false);
+    if (this.teamSize > 1) this.awardCorner(flight.team, flight.team === 1, this.ball.y);
   }
 
   private updateBall(dt: number, isDemo: boolean) {
@@ -1802,10 +1830,14 @@ export class GameEngine {
     const scores = Math.random() < 0.95;
     const direction = p.team === 0 ? 1 : -1;
     const goalX = this.oppGoalX(p.team);
+    const keeper = this.goalkeepers[1 - p.team];
+    const keeperFaceX = keeper.team === 0 ? 1 : -1;
     const targetY = scores
       ? H / 2 + targetOffset
-      : H / 2 + (targetOffset < 0 ? -1 : 1) * (GOAL_HALF + 22);
-    const targetX = goalX + direction * (GOAL_DEPTH + 6);
+      : clamp(keeper.y + Math.sign(targetOffset || 1) * GK_R * 0.78, B_R, H - B_R);
+    const targetX = scores
+      ? goalX + direction * (GOAL_DEPTH + 6)
+      : keeper.x + keeperFaceX * (GK_R + B_R - 9);
     const startX = this.ball.x;
     const startY = this.ball.y;
     const duration = clamp(Math.abs(targetX - startX) / 1460, 0.38, 1.25);
@@ -3090,6 +3122,7 @@ export class GameEngine {
       playerCount: this.playerCount,
       teamSize: this.teamSize,
       controlled: [...this.controlledIdx],
+      gamepadsConnected: this.gamepadsConnected,
       pens: ps
         ? {
             score: [...ps.score],
