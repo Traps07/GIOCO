@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement as h } from 'react';
 import { STRINGS, LANGUAGES } from './src/i18n.js';
 import { MenuScreen, EndScreen } from './src/components/Menus.js';
+import { DEFAULT_TEAMS } from './src/game/teams.js';
 import HUD from './src/components/HUD.js';
 
 const snap = (over = {}) => ({
@@ -17,8 +18,9 @@ const snap = (over = {}) => ({
   lastGoalTeam: 0,
   winner: -2,
   muted: false,
+  playerCount: 2,
+  teamSize: 3,
   controlled: [1, 2],
-  opponent: 'human',
   pens: null,
   ...over,
 });
@@ -61,11 +63,15 @@ for (const { id } of LANGUAGES) {
         setDifficulty: noop,
         mode: 'match',
         setMode: noop,
-        opponent: 'ai',
-        setOpponent: noop,
+        playerCount: 1,
+        setPlayerCount: noop,
+        teamSize: 3,
+        setTeamSize: noop,
+        teams: [...DEFAULT_TEAMS],
         lang: id,
         setLang: noop,
         onStart: noop,
+        onTournament: noop,
         t,
       }),
     ),
@@ -78,11 +84,15 @@ for (const { id } of LANGUAGES) {
         setDifficulty: noop,
         mode: 'match',
         setMode: noop,
-        opponent: 'human',
-        setOpponent: noop,
+        playerCount: 2,
+        setPlayerCount: noop,
+        teamSize: 3,
+        setTeamSize: noop,
+        teams: [...DEFAULT_TEAMS],
         lang: id,
         setLang: noop,
         onStart: noop,
+        onTournament: noop,
         t,
       }),
     ),
@@ -95,6 +105,9 @@ for (const { id } of LANGUAGES) {
         muted: false,
         onToggleMute: noop,
         onPause: noop,
+        playerCount: 2,
+        teams: [...DEFAULT_TEAMS],
+        lang: id,
         goalBanner: null,
         eventBanner: null,
         t,
@@ -109,6 +122,9 @@ for (const { id } of LANGUAGES) {
         muted: true,
         onToggleMute: noop,
         onPause: noop,
+        playerCount: 2,
+        teams: [...DEFAULT_TEAMS],
+        lang: id,
         goalBanner: null,
         eventBanner: null,
         t,
@@ -125,6 +141,9 @@ for (const { id } of LANGUAGES) {
         pens: null,
         decidedBy: 'regular',
         pensOnly: false,
+        playerCount: 2,
+        teams: [...DEFAULT_TEAMS],
+        lang: id,
         onRematch: noop,
         onMenu: noop,
         t,
@@ -138,30 +157,32 @@ const twoP = renderToStaticMarkup(
   h(MenuScreen, {
     difficulty: 'normal', setDifficulty: noop,
     mode: 'match', setMode: noop,
-    opponent: 'human', setOpponent: noop,
-    lang: 'en', setLang: noop, onStart: noop, t: STRINGS.en,
+    playerCount: 2, setPlayerCount: noop,
+    teamSize: 3, setTeamSize: noop, teams: [...DEFAULT_TEAMS],
+    lang: 'en', setLang: noop, onStart: noop, onTournament: noop, t: STRINGS.en,
   }),
 );
 const oneP = renderToStaticMarkup(
   h(MenuScreen, {
     difficulty: 'normal', setDifficulty: noop,
     mode: 'match', setMode: noop,
-    opponent: 'ai', setOpponent: noop,
-    lang: 'en', setLang: noop, onStart: noop, t: STRINGS.en,
+    playerCount: 1, setPlayerCount: noop,
+    teamSize: 3, setTeamSize: noop, teams: [...DEFAULT_TEAMS],
+    lang: 'en', setLang: noop, onStart: noop, onTournament: noop, t: STRINGS.en,
   }),
 );
 const has = (html, s) => html.includes(s);
-if (has(twoP, 'I J K L') && has(twoP, 'P2') && !has(oneP, 'I J K L') && !has(oneP, '>P2<')) {
+if (has(twoP, '↑ ↓ ← →') && has(twoP, 'P2') && !has(oneP, '↑ ↓ ← →') && !has(oneP, 'P2 ·')) {
   console.log('PASS  il menu 2P mostra i comandi di P2, quello 1P no');
 } else {
   failures++;
   console.log('FAIL  il menu 2P mostra i comandi di P2, quello 1P no');
 }
-if (has(twoP, STRINGS.en.noDiff2p) && !has(oneP, STRINGS.en.noDiff2p)) {
-  console.log('PASS  la difficoltà sparisce solo in 2P');
+if (has(twoP, STRINGS.en.diffNormal) && has(oneP, STRINGS.en.diffNormal)) {
+  console.log('PASS  la difficoltà resta disponibile per i compagni IA');
 } else {
   failures++;
-  console.log('FAIL  la difficoltà sparisce solo in 2P');
+  console.log('FAIL  la difficoltà resta disponibile per i compagni IA');
 }
 
 console.log(failures ? `\n${failures} fallimenti` : '\ninterfaccia: tutto renders senza errori');

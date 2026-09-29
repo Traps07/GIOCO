@@ -51,7 +51,7 @@ In modalità **2 giocatori** (anche ai rigori):
 | **P1 · casa** | `WASD` | `Shift` sinistro | `Spazio` | `C` | `V` | `F` | `R` | `E` | `Q` / `Tab` |
 | **P2 · ospiti** | `↑ ↓ ← →` | `Shift` destro | `Invio` | `/` | `M` | `U` | `O` | `I` | `.` |
 
-Il cambio giocatore è disattivato in 1v1: ciascuno controlla l’unico giocatore di movimento della propria squadra. Su mobile sono disponibili joystick e pulsanti touch per passaggio, cross, tiro a giro, tiro di potenza e contrasto.
+Il cambio giocatore è disattivato in 1v1: ciascuno controlla l’unico giocatore di movimento della propria squadra. Su mobile sono disponibili joystick e pulsanti touch per passaggio, cross, tiro a giro, tiro di potenza e contrasto; in locale a 2 giocatori i joystick sono indipendenti.
 
 Durante i rigori, movimento e azione servono a mirare/calciare o a spostare il guantone e tuffarsi.
 
@@ -63,6 +63,7 @@ Richiede Node.js 18 o superiore:
 npm install
 npm run dev
 npm run build
+npm test
 ```
 
 Per aggiornare il file giocabile autonomo dopo una modifica:

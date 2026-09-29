@@ -59,11 +59,11 @@ const events = [];
 eng.on((e) => events.push(e.type));
 
 // 2 giocatori, partita normale, poi anche la sola serie di rigori
-eng.startMatch('normal', 'match', 'human');
+eng.startMatch('normal', 'match', 2);
 
 // gioca: tiri ripetuti da entrambi, più cambi di giocatore, per tutta la partita
 const end = Date.now() + 25_000;
-const codes = ['KeyD', 'KeyA', 'KeyW', 'KeyS', 'KeyL', 'KeyJ', 'KeyK', 'KeyI'];
+const codes = ['KeyD', 'KeyA', 'KeyW', 'KeyS', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
 let i = 0;
 let errors = 0;
 while (eng.phase !== 'over' && Date.now() < end) {
@@ -71,17 +71,17 @@ while (eng.phase !== 'over' && Date.now() < end) {
   key(c);
   if (i % 7 === 0) key('Space');
   if (i % 11 === 0) key('Enter');
-  if (i % 5 === 0) key('Comma');
+  if (i % 5 === 0) key('Period');
   if (i % 13 === 0) key('KeyC');
   step(eng, 1 / 30, 1 / 30);
   key(c, 'keyup');
   key('Space', 'keyup');
   key('Enter', 'keyup');
-  key('Comma', 'keyup');
+  key('Period', 'keyup');
   key('KeyC', 'keyup');
   i++;
 }
-key('Space', 'keyup'); key('Enter', 'keyup'); key('Comma', 'keyup');
+key('Space', 'keyup'); key('Enter', 'keyup'); key('Period', 'keyup');
 
 const snap = eng.getSnapshot();
 console.log('partita 2 giocatori conclusa');
@@ -89,7 +89,7 @@ console.log('  fasi attraversate :', [...new Set(events)].join(', '));
 console.log('  punteggio         :', snap.score.join('-'));
 console.log('  tempo residuo     :', snap.timeLeft.toFixed(1), 's');
 console.log('  winner            :', snap.winner, '(-2 non finita, -1 pareggio)');
-console.log('  opponent nel snap :', snap.opponent);
+console.log('  player count nel snap :', snap.playerCount);
 console.log('  controlled        :', snap.controlled.join('/'));
 console.log('  frame simulati    :', i);
 
@@ -99,16 +99,16 @@ eng2.inputEnabled = true;
 eng2.setMuted(true);
 const ev2 = [];
 eng2.on((e) => ev2.push(e.type));
-eng2.startMatch('normal', 'pens', 'human');
+eng2.startMatch('normal', 'pens', 2);
 const end2 = Date.now() + 20_000;
 let j = 0;
 while (eng2.phase !== 'over' && Date.now() < end2) {
   if (j % 40 === 0) key('KeyD');
-  if (j % 40 === 20) key('KeyJ');
+  if (j % 40 === 20) key('ArrowLeft');
   if (j % 55 === 0) key('Space');
   if (j % 55 === 20) key('Enter');
   step(eng2, 1 / 30, 1 / 30);
-  key('KeyD', 'keyup'); key('KeyJ', 'keyup');
+  key('KeyD', 'keyup'); key('ArrowLeft', 'keyup');
   key('Space', 'keyup'); key('Enter', 'keyup');
   j++;
 }
@@ -122,7 +122,7 @@ console.log('  frame simulati    :', j);
 eng.dispose();
 eng2.dispose();
 
-const okMatch = eng && snap.opponent === 'human' && typeof snap.controlled[1] === 'number';
+const okMatch = eng && snap.playerCount === 2 && typeof snap.controlled[1] === 'number';
 const okPens = s2.winner !== -2;
 console.log(`\n${okMatch && okPens ? 'OK' : 'PROBLEMA'}: ciclo completo senza eccezioni`);
 if (!okMatch || !okPens) process.exit(1);

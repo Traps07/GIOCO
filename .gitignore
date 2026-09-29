@@ -5,3 +5,4 @@ dist/
 .test-bundle.mjs
 .soak-bundle.mjs
 .ui-bundle.cjs
+.gameplay-bundle.mjs
