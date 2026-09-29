@@ -67,6 +67,7 @@ export default function App() {
   );
 
   const screenRef = useRef<Screen>('menu');
+  const menuGamepadState = useRef<{ index: number; buttons: boolean[]; direction: number }>({ index: -1, buttons: [], direction: 0 });
   screenRef.current = screen;
 
   useEffect(() => {
@@ -287,6 +288,67 @@ export default function App() {
       /* ignore */
     }
   }, []);
+
+  useEffect(() => {
+    let raf = 0;
+    const state = menuGamepadState.current;
+    const pollMenuGamepad = () => {
+      let pad: Gamepad | undefined;
+      try {
+        if (typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function') {
+          pad = Array.from(navigator.getGamepads()).filter((candidate): candidate is Gamepad => Boolean(candidate?.connected))
+            .sort((a, b) => a.index - b.index)[0];
+        }
+      } catch {
+        // Il browser potrebbe esporre i controller solo dopo un primo input.
+      }
+
+      if (!pad) {
+        state.index = -1;
+        state.buttons = [];
+        state.direction = 0;
+      } else {
+        if (state.index !== pad.index) {
+          state.index = pad.index;
+          state.buttons = [];
+          state.direction = 0;
+        }
+        const buttons = Array.from(pad.buttons, (button) => Boolean(button && (button.pressed || button.value >= 0.5)));
+        const justPressed = (index: number) => Boolean(buttons[index] && !state.buttons[index]);
+        const direction = (buttons[13] || (pad.axes[1] ?? 0) > 0.55 || buttons[15] || (pad.axes[0] ?? 0) > 0.55)
+          ? 1
+          : (buttons[12] || (pad.axes[1] ?? 0) < -0.55 || buttons[14] || (pad.axes[0] ?? 0) < -0.55)
+            ? -1
+            : 0;
+        const controls = Array.from(document.querySelectorAll<HTMLButtonElement>('.z-30 button:not([disabled])'))
+          .filter((button) => button.getClientRects().length > 0);
+
+        if (direction !== 0 && state.direction === 0 && controls.length > 0) {
+          const activeIndex = controls.indexOf(document.activeElement as HTMLButtonElement);
+          const start = activeIndex < 0 ? (direction > 0 ? -1 : 0) : activeIndex;
+          const next = controls[(start + direction + controls.length) % controls.length];
+          next.focus();
+          next.scrollIntoView({ block: 'nearest' });
+        }
+        if (justPressed(0) && controls.length > 0) {
+          const active = document.activeElement as HTMLButtonElement;
+          const target = controls.includes(active) ? active : controls[0];
+          target.focus();
+          target.click();
+        }
+        if (justPressed(1)) {
+          if (screen === 'teams' || screen === 'tournamentSetup') backToMenu();
+          else if (screen === 'paused') resumeGame();
+          else if (screen === 'tournament' || screen === 'over') toMenu();
+        }
+        state.buttons = buttons;
+        state.direction = direction;
+      }
+      raf = window.requestAnimationFrame(pollMenuGamepad);
+    };
+    raf = window.requestAnimationFrame(pollMenuGamepad);
+    return () => window.cancelAnimationFrame(raf);
+  }, [screen, backToMenu, resumeGame, toMenu]);
 
   return (
     <div dir={isRTL(lang) ? 'rtl' : 'ltr'} className="relative h-full w-full overflow-hidden bg-[#02040a]">
