@@ -298,6 +298,8 @@ export class GameEngine {
   private countdownShown = -1;
   private goalT = 0;
   private lastGoalTeam = -1;
+  private nextKickoffTeam: number | null = null;
+  private kickoffTeam: number | null = null;
   private goalSide: -1 | 1 = 1;
   private winner = -2;
   private period: Period = 'regular';
@@ -596,6 +598,7 @@ export class GameEngine {
     this.shots = [0, 0];
     this.timeLeft = MATCH_TIME;
     this.winner = -2;
+    this.nextKickoffTeam = null;
     this.period = 'regular';
     this.allowDraw = false;
     this.pens = null;
@@ -626,6 +629,7 @@ export class GameEngine {
     this.timeLeft = MATCH_TIME;
     this.winner = -2;
     this.lastGoalTeam = -1;
+    this.nextKickoffTeam = null;
     this.resetControlledPlayers();
     this.period = 'regular';
     this.allowDraw = mode === 'group';
@@ -645,6 +649,19 @@ export class GameEngine {
     this.goalkeepers.forEach((keeper) => keeper.reset());
     this.newBall();
     this.resetControlledPlayers();
+    this.kickoffTeam = this.nextKickoffTeam;
+    this.nextKickoffTeam = null;
+    if (this.kickoffTeam !== null) {
+      const takerIndex = Math.min(1, this.teamSize - 1);
+      const taker = this.players[this.kickoffTeam * this.teamSize + takerIndex];
+      const attackDirection = this.kickoffTeam === 0 ? 1 : -1;
+      taker.x = W / 2 - attackDirection * BALL_CARRY_OFFSET;
+      taker.y = H / 2;
+      taker.vx = 0;
+      taker.vy = 0;
+      taker.faceX = attackDirection;
+      taker.faceY = 0;
+    }
     this.countdown = 3.4;
     this.countdownShown = 4;
     this.phase = 'countdown';
@@ -759,6 +776,7 @@ export class GameEngine {
     this.ball.curve = 0;
     this.score[team]++;
     this.lastGoalTeam = team;
+    this.nextKickoffTeam = 1 - team;
     this.phase = 'goal';
     this.goalT = team === 0 ? 2.6 : 2.2;
     this.goalFlash = 1;
@@ -1129,6 +1147,12 @@ export class GameEngine {
       }
       if (this.countdown <= 0) {
         this.phase = 'play';
+        if (this.kickoffTeam !== null) {
+          const takerIndex = Math.min(1, this.teamSize - 1);
+          const taker = this.players[this.kickoffTeam * this.teamSize + takerIndex];
+          this.claimBall(taker);
+        }
+        this.kickoffTeam = null;
         this.sfx.whistle(false);
       }
       return;
@@ -1399,11 +1423,10 @@ export class GameEngine {
       ty = p.y + (dy / dl) * 105 + sideY;
       maxS = cfg.speed * 1.24;
     } else if (!carrier && this.passReceiver === p) {
-      // Il ricevente corre sul pallone in arrivo, non continua la corsa di supporto in avanti.
-      const lead = clamp(dist(p.x, p.y, ball.x, ball.y) / Math.max(cfg.speed * 8, 1), 0, 0.12);
-      tx = ball.x + ball.vx * lead;
-      ty = ball.y + ball.vy * lead;
-      maxS = cfg.speed * 1.25;
+      // Il ricevente corre sul pallone in arrivo, non anticipa una corsa in avanti.
+      tx = ball.x;
+      ty = ball.y;
+      maxS = cfg.speed * 1.4;
     } else if (carrier && carrier.team === p.team) {
       const direction = p.team === 0 ? 1 : -1;
       const lane = Math.sign(form.y - H / 2) || (p.idx % 2 === 0 ? -1 : 1);
@@ -1668,7 +1691,7 @@ export class GameEngine {
     // Il tiro è basso: ogni giocatore lungo la traiettoria può murarlo, non solo il portiere.
     for (const player of this.players) {
       if (player === flight.shooter) continue;
-      const t = segmentCircleHit(previousX, previousY, nextX, nextY, player.x, player.y, P_R + B_R);
+      const t = segmentCircleHit(previousX, previousY, nextX, nextY, player.x, player.y, P_R + B_R + 4);
       if (t !== null && t < hitT) {
         hitT = t;
         hitPlayer = player;
@@ -1677,7 +1700,7 @@ export class GameEngine {
     }
     for (const keeper of this.goalkeepers) {
       if (keeper.team === flight.team) continue;
-      const t = segmentCircleHit(previousX, previousY, nextX, nextY, keeper.x, keeper.y, GK_R + B_R);
+      const t = segmentCircleHit(previousX, previousY, nextX, nextY, keeper.x, keeper.y, GK_R + B_R + 4);
       if (t !== null && t < hitT) {
         hitT = t;
         hitPlayer = null;
@@ -2009,6 +2032,11 @@ export class GameEngine {
     const dirX = fromPlayerX / playerToTarget;
     const dirY = fromPlayerY / playerToTarget;
 
+    // Sul passaggio manuale il ricevente non prosegue per inerzia oltre il pallone.
+    if (humanSwitch) {
+      best.vx = 0;
+      best.vy = 0;
+    }
     this.releaseBall(p);
     // Avvia il pallone dal lato del passaggio, mai attraverso il corpo del calciatore.
     const launchOffset = P_R + B_R + 14;

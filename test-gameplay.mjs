@@ -373,18 +373,19 @@ const receivingMate = engine.players[1];
 const receiveFartherMate = engine.players[2];
 receivePasser.x = 500;
 receivePasser.y = 350;
-receivingMate.x = 420;
+receivingMate.x = 650;
 receivingMate.y = 350;
-receiveFartherMate.x = 850;
+receivingMate.vx = 250; // inerzia in avanti prima del passaggio
+receiveFartherMate.x = 250;
 receiveFartherMate.y = 350;
 engine.claimBall(receivePasser);
-engine.setStick(0, -1, 0, true); // direzione opposta al pallone in arrivo
+engine.setStick(0, 1, 0, true); // lo stick continuerebbe a spingere il ricevente in avanti
 const receiverStartX = receivingMate.x;
 engine.pass(receivePasser, 0, true);
-for (let frame = 0; frame < 8 && engine.ballCarrier !== receivingMate; frame++) engine.update(1 / 60);
+for (let frame = 0; frame < 24 && engine.ballCarrier !== receivingMate; frame++) engine.update(1 / 60);
 engine.setStick(0, 0, 0, false);
 assert.equal(engine.ballCarrier, receivingMate, 'il compagno controllato corre incontro al passaggio e lo riceve automaticamente');
-assert.ok(receivingMate.x > receiverStartX, 'il ricevente segue la palla anche con lo stick puntato dalla parte opposta');
+assert.ok(receivingMate.x < receiverStartX, 'il ricevente frena la corsa in avanti e va verso il pallone');
 
 // Cross e tiro di potenza mantengono le traiettorie dedicate.
 engine.startMatch('normal', 'match', 2, undefined, 3);
@@ -436,5 +437,19 @@ engine.updateBall(0, false);
 assert.equal(events.filter((event) => event.type === 'corner').length, before1v1, 'in 1v1 non si assegna il corner');
 assert.ok(engine.ball.x >= 0, 'nel formato 1v1 la palla viene rimessa in gioco');
 
+// Al calcio d’inizio successivo al gol parte la squadra che lo ha subito.
+engine.startMatch('normal', 'match', 2, undefined, 3);
+engine.update(3.5);
+assert.equal(engine.ballCarrier, null, 'il calcio d’inizio iniziale resta neutrale');
+assert.ok(Math.abs(engine.ball.x - 600) < 1, 'la palla viene posizionata al centro al calcio d’inizio');
+engine.goal(0);
+engine.update(3);
+engine.update(3.5);
+assert.equal(engine.ballCarrier.team, 1, 'dopo il gol della squadra 0 riparte chi ha subito');
+engine.goal(1);
+engine.update(3);
+engine.update(3.5);
+assert.equal(engine.ballCarrier.team, 0, 'dopo il gol della squadra 1 riparte chi ha subito');
+
 engine.dispose();
-console.log('PASS: possesso, ricezione automatica, tackle bilanciati, tiro a giro murabile, cross, potenza e corner.');
+console.log('PASS: passaggi precisi, ricezione automatica, tiro a giro bloccabile, corner e kickoff alla squadra che subisce.');
