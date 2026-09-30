@@ -22,7 +22,7 @@ Il file è autonomo e funziona offline; internet serve solo per caricare i font 
 
 I giocatori **controllano la palla quando la raccolgono**: non rimbalza via a ogni contatto. Gli avversari pressano e tentano contrasti, ma hanno una probabilità ridotta di strappare il possesso; se falliscono, il portatore conserva la palla. La CPU tenta i contrasti automaticamente; in locale si può intervenire con il comando dedicato.
 
-- **Passaggio**: trova automaticamente il compagno più vicino senza mirare; il ricevente corre incontro al pallone.
+- **Passaggio**: mira con tasti o stick verso il compagno desiderato; il gioco cerca di servire lui anche se è più lontano. Se nessun compagno è nella direzione indicata, passa a quello più vicino. Il ricevente corre incontro al pallone.
 - **Cross**: pallone alto indirizzato verso l’area e i compagni in posizione da tiro.
 - **Tiro a giro**: resta efficace e segna nel **95% dei tentativi senza copertura**; portiere e giocatori di movimento possono murarlo se sulla traiettoria.
 - **Tiro di potenza**: conclusione dritta e rapidissima.

@@ -324,7 +324,7 @@ for (let frame = 0; frame < 108; frame++) engine.update(1 / 60);
 engine.pass = originalPass;
 assert.ok(liveAiPasses > 0, 'nel ciclo partita il portatore bot esegue passaggi automatici');
 
-// Il passaggio umano sceglie il compagno più vicino anche se lo stick punta altrove.
+// Il passaggio umano segue la mira e preferisce il compagno indicato anche se è più lontano.
 engine.startMatch('normal', 'match', 1, undefined, 3);
 engine.phase = 'play';
 const passer = engine.players[0];
@@ -339,13 +339,32 @@ nearestMate.y = 350;
 fartherMate.x = 700;
 fartherMate.y = 350;
 engine.claimBall(passer);
-engine.setStick(0, 1, 0, true); // mira in avanti, lontano dal compagno più vicino
+engine.setStick(0, 1, 0, true); // mira al compagno lontano in avanti
 engine.pass(passer, 0, true);
 engine.setStick(0, 0, 0, false);
-assert.ok(engine.ball.vx < 0, 'il passaggio va verso il compagno più vicino, non verso la mira');
-assert.equal(engine.controlledIdx[0], nearestMate.idx, 'il controllo passa al ricevente più vicino');
+assert.ok(engine.ball.vx > 0, 'il passaggio segue la mira verso il compagno più lontano');
+assert.equal(engine.controlledIdx[0], fartherMate.idx, 'il controllo passa al compagno mirato');
 
-// Prova end-to-end: il tasto passa in qualunque direzione sia orientato il giocatore.
+// Se nessun compagno è nella direzione indicata, resta il ripiego sul più vicino.
+engine.startMatch('normal', 'match', 1, undefined, 3);
+engine.phase = 'play';
+const fallbackPasser = engine.players[0];
+const fallbackNearest = engine.players[1];
+const fallbackOther = engine.players[2];
+fallbackPasser.x = 400;
+fallbackPasser.y = 350;
+fallbackNearest.x = 350;
+fallbackNearest.y = 350;
+fallbackOther.x = 400;
+fallbackOther.y = 620;
+engine.claimBall(fallbackPasser);
+engine.setStick(0, 1, 0, true); // nessun compagno davanti
+engine.pass(fallbackPasser, 0, true);
+engine.setStick(0, 0, 0, false);
+assert.ok(engine.ball.vx < 0, 'senza un compagno nella direzione indicata passa al più vicino');
+assert.equal(engine.controlledIdx[0], fallbackNearest.idx, 'il controllo passa al compagno più vicino come ripiego');
+
+// Prova end-to-end: il tasto C cerca il compagno indicato e lo seleziona per la ricezione.
 engine.startMatch('normal', 'match', 1, undefined, 3);
 engine.phase = 'play';
 const livePasser = engine.players[0];
@@ -362,10 +381,11 @@ engine.setStick(0, 1, 0, true);
 engine.onKeyDown({ code: 'KeyC', repeat: false, preventDefault: noop });
 engine.update(1 / 60);
 engine.setStick(0, 0, 0, false);
-assert.equal(engine.ballCarrier, null, 'il comando passaggio rilascia sempre la palla con un compagno disponibile');
-assert.ok(engine.ball.vx < 0, 'il comando passa verso il compagno vicino anche puntando dalla parte opposta');
-engine.update(1 / 60);
-assert.equal(engine.ballCarrier, liveNearest, 'il passaggio all’indietro supera il giocatore che ha calciato e raggiunge il ricevente');
+assert.equal(engine.ballCarrier, null, 'il comando passaggio rilascia la palla con il compagno indicato');
+assert.ok(engine.ball.vx > 0, 'il comando passa in avanti verso il compagno mirato');
+assert.equal(engine.controlledIdx[0], liveFarther.idx, 'il ricevente lontano viene selezionato automaticamente');
+for (let frame = 0; frame < 60 && engine.ballCarrier !== liveFarther; frame++) engine.update(1 / 60);
+assert.equal(engine.ballCarrier, liveFarther, 'il ricevente mirato corre incontro al pallone e lo controlla');
 
 // Dopo un passaggio il ricevente corre automaticamente verso il pallone, anche se lo stick punta altrove.
 engine.startMatch('normal', 'match', 1, undefined, 3);

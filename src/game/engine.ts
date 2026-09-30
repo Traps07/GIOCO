@@ -2041,12 +2041,43 @@ export class GameEngine {
       this.clear(p);
       return;
     }
-    // Il passaggio trova da solo il compagno più vicino: non serve mirare con lo stick.
-    const best = mates.reduce((closest, candidate) => {
+    const nearestMate = mates.reduce((closest, candidate) => {
       const candidateDistance = (candidate.x - p.x) ** 2 + (candidate.y - p.y) ** 2;
       const closestDistance = (closest.x - p.x) ** 2 + (closest.y - p.y) ** 2;
       return candidateDistance < closestDistance ? candidate : closest;
     });
+    let best = nearestMate;
+
+    // Per il passaggio umano, usa la direzione dei comandi per scegliere il compagno mirato.
+    // Se nessuno è nel cono davanti al giocatore, resta il ripiego sul più vicino.
+    if (humanSwitch) {
+      const aim = this.inputDir(p.team);
+      const aimLength = Math.hypot(aim.x, aim.y);
+      if (aim.len > 0.2 && aimLength > 0) {
+        const aimX = aim.x / aimLength;
+        const aimY = aim.y / aimLength;
+        const minAlignment = Math.SQRT1_2; // cono di mira di 45 gradi
+        let bestAlignment = minAlignment;
+        let bestDistance = Infinity;
+
+        for (const candidate of mates) {
+          const dx = candidate.x - p.x;
+          const dy = candidate.y - p.y;
+          const candidateDistance = Math.hypot(dx, dy);
+          if (candidateDistance <= 1) continue;
+          const alignment = (dx * aimX + dy * aimY) / candidateDistance;
+          if (alignment < minAlignment) continue;
+          if (
+            alignment > bestAlignment + 1e-6 ||
+            (Math.abs(alignment - bestAlignment) <= 1e-6 && candidateDistance < bestDistance)
+          ) {
+            best = candidate;
+            bestAlignment = alignment;
+            bestDistance = candidateDistance;
+          }
+        }
+      }
+    }
     const d = dist(p.x, p.y, best.x, best.y);
     const power = clamp(420 + d * 0.66, 430, 760);
     const lead = humanSwitch ? 0 : (d / power) * 0.72;
