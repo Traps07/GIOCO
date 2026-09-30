@@ -1330,11 +1330,12 @@ export class GameEngine {
       const pressure = Math.min(...opps.map((o) => dist(o.x, o.y, p.x, p.y)));
       const dOwn = dist(p.x, p.y, ownX, H / 2);
 
-      if (p.kickCd <= 0 && p.holdT > cfg.minHold) {
+      const aiActionHold = Math.min(cfg.minHold, 0.42);
+      if (p.kickCd <= 0 && p.holdT > aiActionHold) {
         const passDistance = Math.max(250, cfg.shootRange * 0.72);
-        if (this.teamSize > 1 && Math.abs(p.y - H / 2) > 145 && dGoal < 700 && pressure > 65 && p.holdT > 0.45) {
+        if (this.teamSize > 1 && Math.abs(p.y - H / 2) > 145 && dGoal < 700 && pressure > 65 && p.holdT > 0.35) {
           this.aiCross(p, cfg);
-        } else if (this.teamSize > 1 && dGoal > passDistance && p.holdT > Math.max(cfg.minHold, 0.52)) {
+        } else if (this.teamSize > 1 && dGoal > passDistance) {
           // Passare è la prima scelta anche nella propria metà: non spazzare via palloni innocui.
           this.aiPass(p, cfg);
         } else if (dOwn < 240) {
@@ -1342,7 +1343,7 @@ export class GameEngine {
         } else if (dGoal < cfg.shootRange) {
           if (Math.abs(p.y - H / 2) > 115 && pressure > 90) this.aiCurveShot(p);
           else this.aiShoot(p, cfg);
-        } else if (pressure < 130 || p.holdT > 1.1) {
+        } else if (pressure < 130 || p.holdT > 0.9) {
           this.aiPass(p, cfg);
         }
       }
@@ -1360,10 +1361,10 @@ export class GameEngine {
         sideX = -(op.y - p.y) * 0.5;
         sideY = (op.x - p.x) * 0.5;
       }
-      const advance = 175 + clamp((520 - dGoal) * 0.14, 0, 110);
+      const advance = 190 + clamp((520 - dGoal) * 0.14, 0, 110);
       tx = p.x + (dx / dl) * advance + sideX;
       ty = p.y + (dy / dl) * 105 + sideY;
-      maxS = cfg.speed * 1.12;
+      maxS = cfg.speed * 1.24;
     } else if (carrier && carrier.team === p.team) {
       const direction = p.team === 0 ? 1 : -1;
       const lane = Math.sign(form.y - H / 2) || (p.idx % 2 === 0 ? -1 : 1);
@@ -1372,7 +1373,7 @@ export class GameEngine {
       const supportY = carrier.y + lane * (p.idx % 2 === 0 ? 145 : 205);
       tx = clamp(supportX, 70, W - 70);
       ty = clamp(supportY, 70, H - 70);
-      maxS = cfg.speed * 1.18;
+      maxS = cfg.speed * 1.3;
     } else if (carrier && carrier.team !== p.team) {
       if (p === chaser) {
         const lead = 0.12;
@@ -1862,44 +1863,19 @@ export class GameEngine {
     this.spawnKick(this.ball.x, this.ball.y, direction, 0, this.teamKit(p.team).accent);
   }
 
-  private pass(p: Player, errRange: number, humanSwitch: boolean, aiControlled = false) {
+  private pass(p: Player, errRange: number, humanSwitch: boolean) {
     if (this.ballCarrier !== p) return;
     const mates = this.players.filter((q) => q.team === p.team && q !== p);
     if (mates.length === 0) {
       this.clear(p);
       return;
     }
-    const dir = aiControlled
-      ? { x: p.team === 0 ? 1 : -1, y: 0, len: 1 }
-      : p.team === 0 || this.playerCount === 2
-        ? this.inputDir(p.team)
-        : { x: p.faceX, y: p.faceY, len: 1 };
-    const useDir = dir.len > 0.2 ? dir : { x: p.faceX, y: p.faceY, len: 1 };
-
-    let best: Player | null = null;
-    let bestScore = -Infinity;
-    for (const m of mates) {
-      const dx = m.x - p.x;
-      const dy = m.y - p.y;
-      const d = Math.hypot(dx, dy) || 1;
-      const align = (dx / d) * useDir.x + (dy / d) * useDir.y;
-      const forward = p.team === 0 ? m.x / W : (W - m.x) / W;
-      const openness = Math.min(
-        ...this.players.filter((o) => o.team !== p.team).map((o) => dist(o.x, o.y, m.x, m.y)),
-      );
-      let score = align * (aiControlled ? 2.6 : 1.6) + openness / 200 + d / 600;
-      if (aiControlled) {
-        const forwardProgress = (m.x - p.x) * (p.team === 0 ? 1 : -1);
-        score += clamp(forwardProgress / 260, -1, 1) * 1.1;
-      } else if (dir.len <= 0.2) {
-        score = forward * 2 + openness / 200;
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        best = m;
-      }
-    }
-    if (!best) return;
+    // Il passaggio trova da solo il compagno più vicino: non serve mirare con lo stick.
+    const best = mates.reduce((closest, candidate) => {
+      const candidateDistance = (candidate.x - p.x) ** 2 + (candidate.y - p.y) ** 2;
+      const closestDistance = (closest.x - p.x) ** 2 + (closest.y - p.y) ** 2;
+      return candidateDistance < closestDistance ? candidate : closest;
+    });
     const d = dist(p.x, p.y, best.x, best.y);
     const power = clamp(420 + d * 0.66, 430, 760);
     const lead = (d / power) * 0.72;
@@ -1976,7 +1952,7 @@ export class GameEngine {
   }
 
   private aiPass(p: Player, cfg: DiffCfg) {
-    this.pass.call(this, p, cfg.passErr, false, true);
+    this.pass.call(this, p, Math.min(cfg.passErr, 0.06), false);
   }
 
   private aiCross(p: Player, cfg: DiffCfg) {

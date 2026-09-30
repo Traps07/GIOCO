@@ -266,15 +266,38 @@ engine.claimBall(liveCarrier);
 const originalPass = engine.pass;
 let liveAiPasses = 0;
 engine.pass = function (...args) {
-  if (args[3]) liveAiPasses++;
+  if (args[2] === false) liveAiPasses++;
   return originalPass.apply(this, args);
 };
+const carrierStartX = liveCarrier.x;
 const supportStartX = liveSupport.x;
 for (let frame = 0; frame < 12; frame++) engine.update(1 / 60);
-assert.ok(liveSupport.x < supportStartX - 5, 'nel ciclo partita il compagno bot avanza davvero verso l’attacco');
+assert.ok(liveCarrier.x < carrierStartX - 5, 'l’avversario bot avanza davvero con il pallone');
+assert.ok(liveSupport.x < supportStartX - 5, 'il compagno bot avanza davvero verso l’attacco');
 for (let frame = 0; frame < 108; frame++) engine.update(1 / 60);
 engine.pass = originalPass;
 assert.ok(liveAiPasses > 0, 'nel ciclo partita il portatore bot esegue passaggi automatici');
+
+// Il passaggio umano sceglie il compagno più vicino anche se lo stick punta altrove.
+engine.startMatch('normal', 'match', 1, undefined, 3);
+engine.phase = 'play';
+const passer = engine.players[0];
+const nearestMate = engine.players[1];
+const fartherMate = engine.players[2];
+passer.x = 400;
+passer.y = 350;
+passer.faceX = 1;
+passer.faceY = 0;
+nearestMate.x = 350;
+nearestMate.y = 350;
+fartherMate.x = 700;
+fartherMate.y = 350;
+engine.claimBall(passer);
+engine.setStick(0, 1, 0, true); // mira in avanti, lontano dal compagno più vicino
+engine.pass(passer, 0, true);
+engine.setStick(0, 0, 0, false);
+assert.ok(engine.ball.vx < 0, 'il passaggio va verso il compagno più vicino, non verso la mira');
+assert.equal(engine.controlledIdx[0], nearestMate.idx, 'il controllo passa al ricevente più vicino');
 
 // Cross e tiro di potenza mantengono le traiettorie dedicate.
 engine.startMatch('normal', 'match', 2, undefined, 3);
