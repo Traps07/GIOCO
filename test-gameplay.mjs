@@ -1,6 +1,7 @@
 // Test headless delle meccaniche di possesso, contrasti, tiri e corner.
 import assert from 'node:assert/strict';
 import { GameEngine } from './src/game/engine.js';
+import { cloneKeyBindings } from './src/game/keyboard.js';
 
 const noop = () => {};
 const ctxStub = new Proxy({}, {
@@ -486,5 +487,24 @@ for (const teamSize of [1, 2, 3, 4, 5]) {
   assert.equal(engine.goalkeepers[1].x, engine.fieldWidth - 38, `${teamSize}v${teamSize}: portiere sul limite del campo`);
 }
 
+// Le preferenze durata e tastiera si applicano all’avvio della partita.
+engine.setMatchDuration(60);
+engine.startMatch('normal', 'match', 1, undefined, 3);
+assert.equal(engine.getSnapshot().matchDuration, 60, 'la durata scelta viene salvata nello snapshot');
+assert.equal(engine.getSnapshot().timeLeft, 60, 'la partita parte con la durata selezionata');
+const customKeys = cloneKeyBindings();
+engine.gamepadAxes[0] = { x: 0, y: 0 };
+engine.setStick(0, 0, 0, false);
+customKeys.p1.right = 'KeyL';
+customKeys.p1.pass = 'KeyZ';
+engine.setKeyBindings(customKeys);
+engine.phase = 'play';
+engine.onKeyDown({ code: 'KeyL', repeat: false, preventDefault: noop });
+assert.equal(engine.inputDir(0).x, 1, 'il movimento usa la rimappatura personalizzata');
+engine.onKeyDown({ code: 'KeyZ', repeat: false, preventDefault: noop });
+assert.equal(engine.passQ[0], true, 'il passaggio usa il tasto personalizzato');
+engine.onKeyUp({ code: 'KeyL' });
+engine.onKeyUp({ code: 'KeyZ' });
+
 engine.dispose();
-console.log('PASS: passaggi precisi, tiro a giro bloccabile, corner 1v1, campi estesi e kickoff alla squadra che subisce.');
+console.log('PASS: passaggi, impostazioni tastiera/durata, tiro a giro, corner 1v1, campi e kickoff verificati.');

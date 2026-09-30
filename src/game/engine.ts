@@ -1,10 +1,14 @@
 import { SFX } from './sound';
+import { cloneKeyBindings, DEFAULT_KEY_BINDINGS, type KeyboardBindings } from './keyboard';
 import { DEFAULT_TEAMS, getNationalTeam, type TeamKit, type TeamSelection } from './teams';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type GameMode = 'match' | 'pens';
 export type PlayerCount = 1 | 2;
 export type TeamSize = 1 | 2 | 3 | 4 | 5;
+export const MATCH_DURATIONS = [60, 90, 120, 180] as const;
+export type MatchDuration = (typeof MATCH_DURATIONS)[number];
+export const DEFAULT_MATCH_DURATION: MatchDuration = 90;
 export type Phase = 'demo' | 'countdown' | 'play' | 'goal' | 'pens' | 'over';
 export type Period = 'regular' | 'extra' | 'pens';
 export type PenKickResult = 'goal' | 'save' | 'miss' | 'post';
@@ -26,6 +30,7 @@ export interface Snapshot {
   score: [number, number];
   shots: [number, number];
   timeLeft: number;
+  matchDuration: MatchDuration;
   countdown: number;
   lastGoalTeam: number;
   winner: number; // -2 = non finita, -1 = pareggio
@@ -55,7 +60,6 @@ const GOAL_HALF = 100;
 const GOAL_DEPTH = 32;
 const P_R = 17;
 const B_R = 9;
-const MATCH_TIME = 90;
 const EXTRA_TIME = 30;
 const PEN_ROUNDS = 5;
 const GK_R = 23;
@@ -324,7 +328,8 @@ export class GameEngine {
   private particles: Particle[] = [];
   private score: [number, number] = [0, 0];
   private shots: [number, number] = [0, 0];
-  private timeLeft = MATCH_TIME;
+  private matchDuration: MatchDuration = DEFAULT_MATCH_DURATION;
+  private timeLeft: number = DEFAULT_MATCH_DURATION;
   private countdown = 0;
   private countdownShown = -1;
   private goalT = 0;
@@ -344,6 +349,7 @@ export class GameEngine {
   private goalFlash = 0;
 
   private keys = new Set<string>();
+  private keyBindings: KeyboardBindings = cloneKeyBindings(DEFAULT_KEY_BINDINGS);
   private sticks: [{ x: number; y: number; active: boolean }, { x: number; y: number; active: boolean }] = [
     { x: 0, y: 0, active: false },
     { x: 0, y: 0, active: false },
@@ -409,25 +415,17 @@ export class GameEngine {
 
   // ---------- input ----------
   private onKeyDown = (e: KeyboardEvent) => {
-    const preventCodes = [
-      'Space',
-      'Tab',
-      'Enter',
-      'NumpadEnter',
-      'Slash',
-      'Numpad0',
-      'Period',
-      'NumpadDecimal',
-      'ArrowUp',
-      'ArrowDown',
-      'ArrowLeft',
-      'ArrowRight',
-    ];
+    const boundCodes = new Set([
+      ...Object.values(this.keyBindings.p1),
+      ...Object.values(this.keyBindings.p2),
+      this.keyBindings.pause,
+    ]);
     if (e.repeat) {
-      if (preventCodes.includes(e.code)) e.preventDefault();
+      if (boundCodes.has(e.code)) e.preventDefault();
       return;
     }
-    if (e.code === 'Escape' || e.code === 'KeyP') {
+    if (e.code === this.keyBindings.pause) {
+      e.preventDefault();
       if (this.phase === 'play' || this.phase === 'countdown' || this.phase === 'goal' || this.phase === 'pens') {
         if (this.paused) {
           this.setPaused(false);
@@ -440,27 +438,25 @@ export class GameEngine {
       return;
     }
     if (!this.inputEnabled || this.paused) return;
-    if (preventCodes.includes(e.code)) e.preventDefault();
+    if (boundCodes.has(e.code)) e.preventDefault();
     this.keys.add(e.code);
 
     const localMatch = this.playerCount === 2;
-    if (e.code === 'Space') this.shootQ[0] = true;
-    if (localMatch && (e.code === 'Enter' || e.code === 'NumpadEnter')) this.shootQ[1] = true;
-
-    if (e.code === 'KeyC' || e.code === 'KeyJ' || e.code === 'KeyX') this.passQ[0] = true;
-    if (localMatch && (e.code === 'Slash' || e.code === 'Numpad0')) this.passQ[1] = true;
-
-    if (e.code === 'KeyV') this.crossQ[0] = true;
-    if (localMatch && e.code === 'KeyM') this.crossQ[1] = true;
-    if (e.code === 'KeyF') this.curveQ[0] = true;
-    if (localMatch && e.code === 'KeyU') this.curveQ[1] = true;
-    if (e.code === 'KeyR') this.powerQ[0] = true;
-    if (localMatch && e.code === 'KeyO') this.powerQ[1] = true;
-    if (e.code === 'KeyE') this.tackleQ[0] = true;
-    if (localMatch && e.code === 'KeyI') this.tackleQ[1] = true;
-
-    if (e.code === 'KeyQ' || e.code === 'Tab') this.switchQ[0] = true;
-    if (localMatch && (e.code === 'Period' || e.code === 'NumpadDecimal')) this.switchQ[1] = true;
+    const { p1, p2 } = this.keyBindings;
+    if (e.code === p1.shoot) this.shootQ[0] = true;
+    if (localMatch && e.code === p2.shoot) this.shootQ[1] = true;
+    if (e.code === p1.pass) this.passQ[0] = true;
+    if (localMatch && e.code === p2.pass) this.passQ[1] = true;
+    if (e.code === p1.cross) this.crossQ[0] = true;
+    if (localMatch && e.code === p2.cross) this.crossQ[1] = true;
+    if (e.code === p1.curve) this.curveQ[0] = true;
+    if (localMatch && e.code === p2.curve) this.curveQ[1] = true;
+    if (e.code === p1.power) this.powerQ[0] = true;
+    if (localMatch && e.code === p2.power) this.powerQ[1] = true;
+    if (e.code === p1.tackle) this.tackleQ[0] = true;
+    if (localMatch && e.code === p2.tackle) this.tackleQ[1] = true;
+    if (e.code === p1.switch) this.switchQ[0] = true;
+    if (localMatch && e.code === p2.switch) this.switchQ[1] = true;
   };
 
   private onKeyUp = (e: KeyboardEvent) => {
@@ -578,6 +574,13 @@ export class GameEngine {
   setMuted(m: boolean) {
     this.sfx.setMuted(m);
   }
+  setKeyBindings(bindings: KeyboardBindings) {
+    this.keyBindings = cloneKeyBindings(bindings);
+    this.keys.clear();
+  }
+  setMatchDuration(duration: MatchDuration) {
+    this.matchDuration = duration;
+  }
   unlockAudio() {
     this.sfx.ensure();
   }
@@ -632,7 +635,7 @@ export class GameEngine {
     this.clearInputQueues();
     this.score = [0, 0];
     this.shots = [0, 0];
-    this.timeLeft = MATCH_TIME;
+    this.timeLeft = this.matchDuration;
     this.winner = -2;
     this.kickoffTeam = null;
     this.period = 'regular';
@@ -662,7 +665,7 @@ export class GameEngine {
     this.sfx.ensure();
     this.score = [0, 0];
     this.shots = [0, 0];
-    this.timeLeft = MATCH_TIME;
+    this.timeLeft = this.matchDuration;
     this.winner = -2;
     this.lastGoalTeam = -1;
     this.kickoffTeam = null;
@@ -1322,22 +1325,12 @@ export class GameEngine {
   private inputDir(team = 0) {
     let x = 0;
     let y = 0;
-    if (team === 0) {
-      if (this.keys.has('KeyW')) y -= 1;
-      if (this.keys.has('KeyS')) y += 1;
-      if (this.keys.has('KeyA')) x -= 1;
-      if (this.keys.has('KeyD')) x += 1;
-      if (this.playerCount === 1) {
-        if (this.keys.has('ArrowUp')) y -= 1;
-        if (this.keys.has('ArrowDown')) y += 1;
-        if (this.keys.has('ArrowLeft')) x -= 1;
-        if (this.keys.has('ArrowRight')) x += 1;
-      }
-    } else if (this.playerCount === 2) {
-      if (this.keys.has('ArrowUp')) y -= 1;
-      if (this.keys.has('ArrowDown')) y += 1;
-      if (this.keys.has('ArrowLeft')) x -= 1;
-      if (this.keys.has('ArrowRight')) x += 1;
+    const keys = this.keyBindings[team === 0 ? 'p1' : 'p2'];
+    if (team === 0 || this.playerCount === 2) {
+      if (this.keys.has(keys.up)) y -= 1;
+      if (this.keys.has(keys.down)) y += 1;
+      if (this.keys.has(keys.left)) x -= 1;
+      if (this.keys.has(keys.right)) x += 1;
     }
     const slot = team as 0 | 1;
     const stick = this.sticks[slot];
@@ -1361,9 +1354,7 @@ export class GameEngine {
 
   private humanControl(p: Player, dt: number) {
     const dir = this.inputDir(p.team);
-    const sprint = this.gamepadSprint[p.team as 0 | 1] || (this.playerCount === 2
-      ? this.keys.has(p.team === 0 ? 'ShiftLeft' : 'ShiftRight')
-      : this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
+    const sprint = this.gamepadSprint[p.team as 0 | 1] || this.keys.has(this.keyBindings[p.team === 0 ? 'p1' : 'p2'].sprint);
     const maxS = (sprint ? 352 : 296) * (dir.len || 0);
     const dvx = dir.x * maxS - p.vx;
     const dvy = dir.y * maxS - p.vy;
@@ -3323,6 +3314,7 @@ export class GameEngine {
       score: [...this.score],
       shots: [...this.shots],
       timeLeft: Math.max(0, this.timeLeft),
+      matchDuration: this.matchDuration,
       countdown: Math.max(0, Math.ceil(this.countdown)),
       lastGoalTeam: this.lastGoalTeam,
       winner: this.winner,

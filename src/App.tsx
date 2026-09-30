@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GameEngine, type Difficulty, type GameMode, type PlayerCount, type Snapshot, type TeamSize } from './game/engine';
+import { DEFAULT_MATCH_DURATION, GameEngine, MATCH_DURATIONS, type Difficulty, type GameMode, type MatchDuration, type PlayerCount, type Snapshot, type TeamSize } from './game/engine';
 import HUD from './components/HUD';
 import TouchControls from './components/TouchControls';
 import { MenuScreen, TeamSelectScreen, TournamentSetupScreen, TournamentScreen, PauseScreen, EndScreen } from './components/Menus';
+import SettingsScreen from './components/SettingsScreen';
+import { cloneKeyBindings, DEFAULT_KEY_BINDINGS, type KeyboardBindings, type PlayerKeyAction } from './game/keyboard';
 import { DEFAULT_TEAMS, type NationalTeamId, type TeamSelection } from './game/teams';
 import {
   createTournament,
@@ -13,6 +15,9 @@ import {
 import { STRINGS, isRTL, type Language } from './i18n';
 
 const LANG_KEY = 'ss3v3-lang';
+const MUTE_KEY = 'ss3v3-muted';
+const DURATION_KEY = 'ss3v3-match-duration';
+const KEY_BINDINGS_KEY = 'ss3v3-key-bindings';
 
 function loadLang(): Language {
   try {
@@ -21,11 +26,59 @@ function loadLang(): Language {
   } catch {
     /* ignore */
   }
-  const nav = window.navigator.language?.slice(0, 2);
-  return nav && nav in STRINGS ? (nav as Language) : 'it';
+  return 'en';
 }
 
-type Screen = 'menu' | 'teams' | 'tournamentSetup' | 'tournament' | 'playing' | 'paused' | 'over';
+function loadMuted() {
+  try {
+    return window.localStorage.getItem(MUTE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function loadMatchDuration(): MatchDuration {
+  try {
+    const value = Number(window.localStorage.getItem(DURATION_KEY));
+    if ((MATCH_DURATIONS as readonly number[]).includes(value)) return value as MatchDuration;
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_MATCH_DURATION;
+}
+
+function loadKeyBindings(): KeyboardBindings {
+  const bindings = cloneKeyBindings(DEFAULT_KEY_BINDINGS);
+  try {
+    const saved = window.localStorage.getItem(KEY_BINDINGS_KEY);
+    if (!saved) return bindings;
+    const parsed = JSON.parse(saved) as Partial<KeyboardBindings>;
+    for (const player of ['p1', 'p2'] as const) {
+      const playerSettings = parsed[player];
+      if (!playerSettings || typeof playerSettings !== 'object') continue;
+      for (const action of Object.keys(bindings[player]) as PlayerKeyAction[]) {
+        const code = playerSettings[action];
+        if (typeof code === 'string' && code.length > 0 && code.length < 40) bindings[player][action] = code;
+      }
+    }
+    if (typeof parsed.pause === 'string' && parsed.pause.length > 0 && parsed.pause.length < 40) {
+      bindings.pause = parsed.pause;
+    }
+  } catch {
+    /* ignore invalid or unavailable preferences */
+  }
+  return bindings;
+}
+
+function savePreference(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    /* ignore unavailable storage */
+  }
+}
+
+type Screen = 'menu' | 'settings' | 'teams' | 'tournamentSetup' | 'tournament' | 'playing' | 'paused' | 'over';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -43,11 +96,13 @@ export default function App() {
   const [tournament, setTournament] = useState<TournamentState | null>(null);
   const tournamentRef = useRef<TournamentState | null>(null);
   const [lang, setLangState] = useState<Language>(loadLang);
+  const [muted, setMuted] = useState(loadMuted);
+  const [matchDuration, setMatchDurationState] = useState<MatchDuration>(loadMatchDuration);
+  const [keyBindings, setKeyBindings] = useState<KeyboardBindings>(loadKeyBindings);
   const t = STRINGS[lang];
   const tRef = useRef(t);
   tRef.current = t;
   const [snap, setSnap] = useState<Snapshot | null>(null);
-  const [muted, setMuted] = useState(false);
   const [goalBanner, setGoalBanner] = useState<{ team: number; id: number } | null>(null);
   const [eventBanner, setEventBanner] = useState<{
     title: string;
@@ -67,6 +122,7 @@ export default function App() {
   );
 
   const screenRef = useRef<Screen>('menu');
+  const settingsReturnScreen = useRef<Screen>('menu');
   const menuGamepadState = useRef<{ index: number; buttons: boolean[]; direction: number }>({ index: -1, buttons: [], direction: 0 });
   screenRef.current = screen;
 
@@ -76,6 +132,9 @@ export default function App() {
     const engine = new GameEngine(canvas);
     engineRef.current = engine;
     engine.inputEnabled = false;
+    engine.setMuted(muted);
+    engine.setMatchDuration(matchDuration);
+    engine.setKeyBindings(keyBindings);
 
     const showEventBanner = (
       title: string,
@@ -178,10 +237,25 @@ export default function App() {
     engineRef.current?.setDemoTeamSize(teamSize);
   }, [teamSize]);
 
+  useEffect(() => {
+    engineRef.current?.setMuted(muted);
+  }, [muted]);
+
+  useEffect(() => {
+    engineRef.current?.setMatchDuration(matchDuration);
+  }, [matchDuration]);
+
+  useEffect(() => {
+    engineRef.current?.setKeyBindings(keyBindings);
+  }, [keyBindings]);
+
   const startGame = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
     engine.unlockAudio();
+    engine.setMuted(muted);
+    engine.setMatchDuration(matchDuration);
+    engine.setKeyBindings(keyBindings);
     engine.startMatch(difficulty, mode, playerCount, teams, teamSize);
     engine.inputEnabled = true;
     engine.setPaused(false);
@@ -189,9 +263,14 @@ export default function App() {
     setGoalBanner(null);
     setEventBanner(null);
     setScreen('playing');
-  }, [difficulty, mode, playerCount, teams, teamSize]);
+  }, [difficulty, keyBindings, matchDuration, mode, muted, playerCount, teams, teamSize]);
 
   const openTeamSelect = useCallback(() => setScreen('teams'), []);
+  const openSettings = useCallback(() => {
+    settingsReturnScreen.current = screenRef.current === 'paused' ? 'paused' : 'menu';
+    setScreen('settings');
+  }, []);
+  const closeSettings = useCallback(() => setScreen(settingsReturnScreen.current), []);
   const openTournamentSetup = useCallback(() => setScreen('tournamentSetup'), []);
   const beginTournament = useCallback((playerTeam: NationalTeamId) => {
     const nextCup = createTournament(playerTeam);
@@ -213,6 +292,9 @@ export default function App() {
     setTeams(matchTeams);
     setPlayerCount(1);
     engine.unlockAudio();
+    engine.setMuted(muted);
+    engine.setMatchDuration(matchDuration);
+    engine.setKeyBindings(keyBindings);
     engine.startMatch(difficulty, matchMode, 1, matchTeams, teamSize);
     engine.inputEnabled = true;
     engine.setPaused(false);
@@ -220,7 +302,7 @@ export default function App() {
     setGoalBanner(null);
     setEventBanner(null);
     setScreen('playing');
-  }, [difficulty, teamSize]);
+  }, [difficulty, keyBindings, matchDuration, muted, teamSize]);
   const continueTournament = useCallback(() => {
     setResult(null);
     setScreen('tournament');
@@ -272,21 +354,45 @@ export default function App() {
   }, []);
 
   const toggleMute = useCallback(() => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    engine.unlockAudio();
+    engineRef.current?.unlockAudio();
     const next = !muted;
-    engine.setMuted(next);
+    engineRef.current?.setMuted(next);
     setMuted(next);
+    savePreference(MUTE_KEY, String(next));
   }, [muted]);
 
   const setLang = useCallback((l: Language) => {
     setLangState(l);
-    try {
-      window.localStorage.setItem(LANG_KEY, l);
-    } catch {
-      /* ignore */
-    }
+    savePreference(LANG_KEY, l);
+  }, []);
+
+  const updateMatchDuration = useCallback((duration: MatchDuration) => {
+    setMatchDurationState(duration);
+    engineRef.current?.setMatchDuration(duration);
+    savePreference(DURATION_KEY, String(duration));
+  }, []);
+
+  const updateKeyBinding = useCallback((player: 'p1' | 'p2', action: PlayerKeyAction, code: string) => {
+    const next = cloneKeyBindings(keyBindings);
+    next[player][action] = code;
+    setKeyBindings(next);
+    engineRef.current?.setKeyBindings(next);
+    savePreference(KEY_BINDINGS_KEY, JSON.stringify(next));
+  }, [keyBindings]);
+
+  const updatePauseKey = useCallback((code: string) => {
+    const next = cloneKeyBindings(keyBindings);
+    next.pause = code;
+    setKeyBindings(next);
+    engineRef.current?.setKeyBindings(next);
+    savePreference(KEY_BINDINGS_KEY, JSON.stringify(next));
+  }, [keyBindings]);
+
+  const resetKeyBindings = useCallback(() => {
+    const next = cloneKeyBindings(DEFAULT_KEY_BINDINGS);
+    setKeyBindings(next);
+    engineRef.current?.setKeyBindings(next);
+    savePreference(KEY_BINDINGS_KEY, JSON.stringify(next));
   }, []);
 
   useEffect(() => {
@@ -337,7 +443,8 @@ export default function App() {
           target.click();
         }
         if (justPressed(1)) {
-          if (screen === 'teams' || screen === 'tournamentSetup') backToMenu();
+          if (screen === 'settings') closeSettings();
+          else if (screen === 'teams' || screen === 'tournamentSetup') backToMenu();
           else if (screen === 'paused') resumeGame();
           else if (screen === 'tournament' || screen === 'over') toMenu();
         }
@@ -348,7 +455,7 @@ export default function App() {
     };
     raf = window.requestAnimationFrame(pollMenuGamepad);
     return () => window.cancelAnimationFrame(raf);
-  }, [screen, backToMenu, resumeGame, toMenu]);
+  }, [screen, backToMenu, closeSettings, resumeGame, toMenu]);
 
   return (
     <div dir={isRTL(lang) ? 'rtl' : 'ltr'} className="relative h-full w-full overflow-hidden bg-[#02040a]">
@@ -363,6 +470,7 @@ export default function App() {
           playerCount={playerCount}
           teams={teams}
           lang={lang}
+          keyBindings={keyBindings}
           goalBanner={goalBanner}
           eventBanner={eventBanner}
           t={t}
@@ -381,11 +489,29 @@ export default function App() {
           setPlayerCount={setPlayerCount}
           teamSize={teamSize}
           setTeamSize={setTeamSize}
+          matchDuration={matchDuration}
           teams={teams}
           lang={lang}
-          setLang={setLang}
+          keyBindings={keyBindings}
           onStart={openTeamSelect}
           onTournament={openTournamentSetup}
+          onSettings={openSettings}
+          t={t}
+        />
+      )}
+      {screen === 'settings' && (
+        <SettingsScreen
+          lang={lang}
+          setLang={setLang}
+          muted={muted}
+          onToggleMute={toggleMute}
+          matchDuration={matchDuration}
+          setMatchDuration={updateMatchDuration}
+          keyBindings={keyBindings}
+          onChangeKeyBinding={updateKeyBinding}
+          onChangePauseKey={updatePauseKey}
+          onResetKeyBindings={resetKeyBindings}
+          onBack={closeSettings}
           t={t}
         />
       )}
@@ -426,6 +552,7 @@ export default function App() {
         <PauseScreen
           onResume={resumeGame}
           onRestart={tournament ? startTournamentMatch : startGame}
+          onSettings={openSettings}
           onMenu={toMenu}
           t={t}
         />

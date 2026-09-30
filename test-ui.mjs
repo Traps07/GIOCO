@@ -5,6 +5,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement as h } from 'react';
 import { STRINGS, LANGUAGES } from './src/i18n.js';
 import { MenuScreen, EndScreen } from './src/components/Menus.js';
+import SettingsScreen from './src/components/SettingsScreen.js';
+import { DEFAULT_KEY_BINDINGS } from './src/game/keyboard.js';
 import { DEFAULT_TEAMS } from './src/game/teams.js';
 import HUD from './src/components/HUD.js';
 
@@ -14,6 +16,7 @@ const snap = (over = {}) => ({
   score: [2, 1],
   shots: [4, 3],
   timeLeft: 42.4,
+  matchDuration: 90,
   countdown: 0,
   lastGoalTeam: 0,
   winner: -2,
@@ -68,12 +71,25 @@ for (const { id } of LANGUAGES) {
         setPlayerCount: noop,
         teamSize: 3,
         setTeamSize: noop,
+        matchDuration: 90,
         teams: [...DEFAULT_TEAMS],
         lang: id,
-        setLang: noop,
+        keyBindings: DEFAULT_KEY_BINDINGS,
         onStart: noop,
         onTournament: noop,
+        onSettings: noop,
         t,
+      }),
+    ),
+  );
+
+  check(`settings (${id})`, () =>
+    renderToStaticMarkup(
+      h(SettingsScreen, {
+        lang: id, setLang: noop, muted: false, onToggleMute: noop,
+        matchDuration: 90, setMatchDuration: noop, keyBindings: DEFAULT_KEY_BINDINGS,
+        onChangeKeyBinding: noop, onChangePauseKey: noop, onResetKeyBindings: noop,
+        onBack: noop, t,
       }),
     ),
   );
@@ -89,11 +105,13 @@ for (const { id } of LANGUAGES) {
         setPlayerCount: noop,
         teamSize: 3,
         setTeamSize: noop,
+        matchDuration: 90,
         teams: [...DEFAULT_TEAMS],
         lang: id,
-        setLang: noop,
+        keyBindings: DEFAULT_KEY_BINDINGS,
         onStart: noop,
         onTournament: noop,
+        onSettings: noop,
         t,
       }),
     ),
@@ -108,6 +126,7 @@ for (const { id } of LANGUAGES) {
         onPause: noop,
         playerCount: 2,
         teams: [...DEFAULT_TEAMS],
+        keyBindings: DEFAULT_KEY_BINDINGS,
         lang: id,
         goalBanner: null,
         eventBanner: null,
@@ -125,6 +144,7 @@ for (const { id } of LANGUAGES) {
         onPause: noop,
         playerCount: 2,
         teams: [...DEFAULT_TEAMS],
+        keyBindings: DEFAULT_KEY_BINDINGS,
         lang: id,
         goalBanner: null,
         eventBanner: null,
@@ -147,6 +167,7 @@ for (const { id } of LANGUAGES) {
         onPause: noop,
         playerCount: 2,
         teams: [...DEFAULT_TEAMS],
+        keyBindings: DEFAULT_KEY_BINDINGS,
         lang: id,
         goalBanner: null,
         eventBanner: null,
@@ -181,8 +202,8 @@ const twoP = renderToStaticMarkup(
     difficulty: 'normal', setDifficulty: noop,
     mode: 'match', setMode: noop,
     playerCount: 2, setPlayerCount: noop,
-    teamSize: 3, setTeamSize: noop, teams: [...DEFAULT_TEAMS],
-    lang: 'en', setLang: noop, onStart: noop, onTournament: noop, t: STRINGS.en,
+    teamSize: 3, setTeamSize: noop, matchDuration: 90, teams: [...DEFAULT_TEAMS],
+    lang: 'en', keyBindings: DEFAULT_KEY_BINDINGS, onStart: noop, onTournament: noop, onSettings: noop, t: STRINGS.en,
   }),
 );
 const oneP = renderToStaticMarkup(
@@ -190,12 +211,12 @@ const oneP = renderToStaticMarkup(
     difficulty: 'normal', setDifficulty: noop,
     mode: 'match', setMode: noop,
     playerCount: 1, setPlayerCount: noop,
-    teamSize: 3, setTeamSize: noop, teams: [...DEFAULT_TEAMS],
-    lang: 'en', setLang: noop, onStart: noop, onTournament: noop, t: STRINGS.en,
+    teamSize: 3, setTeamSize: noop, matchDuration: 90, teams: [...DEFAULT_TEAMS],
+    lang: 'en', keyBindings: DEFAULT_KEY_BINDINGS, onStart: noop, onTournament: noop, onSettings: noop, t: STRINGS.en,
   }),
 );
 const has = (html, s) => html.includes(s);
-if (has(twoP, '↑ ↓ ← →') && has(twoP, 'P2') && !has(oneP, '↑ ↓ ← →') && !has(oneP, 'P2 ·')) {
+if (has(twoP, '↑ ← ↓ →') && has(twoP, 'P2') && !has(oneP, '↑ ← ↓ →') && !has(oneP, 'P2 ·')) {
   console.log('PASS  il menu 2P mostra i comandi di P2, quello 1P no');
 } else {
   failures++;
@@ -206,6 +227,12 @@ if (has(twoP, STRINGS.en.diffNormal) && has(oneP, STRINGS.en.diffNormal)) {
 } else {
   failures++;
   console.log('FAIL  la difficoltà resta disponibile per i compagni IA');
+}
+if (!has(oneP, STRINGS.en.language) && has(oneP, STRINGS.en.settingsButton)) {
+  console.log('PASS  la scelta della lingua è stata spostata nelle impostazioni');
+} else {
+  failures++;
+  console.log('FAIL  la scelta della lingua è stata spostata nelle impostazioni');
 }
 if (has(twoP, STRINGS.en.gamepadHint) && has(oneP, STRINGS.en.gamepadHint)) {
   console.log('PASS  la legenda controller è visibile nelle modalità 1P e 2P');

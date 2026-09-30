@@ -1,5 +1,6 @@
 import { Volume2, VolumeX, Pause, Check, X } from 'lucide-react';
 import type { Snapshot, PensSnap, PlayerCount } from '../game/engine';
+import { formatKeyCode, type KeyboardBindings, type PlayerKeyBindings } from '../game/keyboard';
 import { getNationalTeam, type TeamSelection } from '../game/teams';
 import { fmt, type Language, type Strings } from '../i18n';
 
@@ -10,6 +11,7 @@ interface Props {
   onPause: () => void;
   playerCount: PlayerCount;
   teams: TeamSelection;
+  keyBindings: KeyboardBindings;
   lang: Language;
   goalBanner: { team: number; id: number } | null;
   eventBanner: { title: string; sub: string; tone: 'amber' | 'sky' | 'rose' | 'white'; id: number } | null;
@@ -21,6 +23,9 @@ const fmtTime = (s: number) => {
   const sec = Math.floor(s % 60);
   return `${m}:${String(sec).padStart(2, '0')}`;
 };
+
+const moveKeys = (keys: PlayerKeyBindings) =>
+  [keys.up, keys.left, keys.down, keys.right].map(formatKeyCode).join(' ');
 
 const TONE_CLASSES: Record<string, string> = {
   amber: 'text-amber-300',
@@ -128,14 +133,14 @@ function PensPanel({ pens, t, playerCount, teams, lang }: {
   );
 }
 
-export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, teams, lang, goalBanner, eventBanner, t }: Props) {
+export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, teams, keyBindings, lang, goalBanner, eventBanner, t }: Props) {
   if (!snap) return null;
   const homeTeam = getNationalTeam(teams[0]);
   const awayTeam = getNationalTeam(teams[1]);
   const inPens = snap.period === 'pens' && snap.pens;
   const inExtra = snap.period === 'extra';
   const urgent = snap.timeLeft <= 10 && snap.phase === 'play';
-  const progress = snap.timeLeft / (inExtra ? 30 : 90);
+  const progress = snap.timeLeft / (inExtra ? 30 : snap.matchDuration);
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 flex flex-col">
@@ -272,83 +277,83 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
           playerCount === 2 ? (
             <div className="flex max-w-[96vw] flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-2xl border border-amber-300/25 bg-black/50 px-5 py-2 text-[10px] font-medium tracking-wide text-amber-100/80 backdrop-blur-md">
               <span style={{ color: homeTeam.kit.primary }}>P1 · {homeTeam.flag} {homeTeam.names[lang]}</span>
-              <span><kbd>WASD</kbd> {t.hintAimUpDown} / {t.hintKeeperMove} · <kbd>Space</kbd> {t.hintKickPen} / {t.hintDive}</span>
+              <span><kbd>{moveKeys(keyBindings.p1)}</kbd> {t.hintAimUpDown} / {t.hintKeeperMove} · <kbd>{formatKeyCode(keyBindings.p1.shoot)}</kbd> {t.hintKickPen} / {t.hintDive}</span>
               <span style={{ color: awayTeam.kit.primary }}>P2 · {awayTeam.flag} {awayTeam.names[lang]}</span>
-              <span><kbd>↑ ↓ ← →</kbd> {t.hintAimUpDown} / {t.hintKeeperMove} · <kbd>Enter</kbd> {t.hintKickPen} / {t.hintDive}</span>
-              <span><kbd>Esc</kbd> {t.kPause}</span>
+              <span><kbd>{moveKeys(keyBindings.p2)}</kbd> {t.hintAimUpDown} / {t.hintKeeperMove} · <kbd>{formatKeyCode(keyBindings.p2.shoot)}</kbd> {t.hintKickPen} / {t.hintDive}</span>
+              <span><kbd>{formatKeyCode(keyBindings.pause)}</kbd> {t.kPause}</span>
             </div>
           ) : (
             <div className="flex items-center gap-4 rounded-full border border-amber-300/25 bg-black/50 px-6 py-2 text-[11px] font-medium tracking-wide text-amber-100/80 backdrop-blur-md">
               {snap.pens!.turn === 0 ? (
                 <>
-                  <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.hintAimUpDown}</span>
+                  <span><kbd>{moveKeys(keyBindings.p1)}</kbd> {t.hintAimUpDown}</span>
                   <span className="text-white/20">•</span>
-                  <span><kbd>Spazio</kbd> {t.hintKickPen}</span>
+                  <span><kbd>{formatKeyCode(keyBindings.p1.shoot)}</kbd> {t.hintKickPen}</span>
                 </>
               ) : (
                 <>
-                  <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.hintKeeperMove}</span>
+                  <span><kbd>{moveKeys(keyBindings.p1)}</kbd> {t.hintKeeperMove}</span>
                   <span className="text-white/20">•</span>
-                  <span><kbd>Spazio</kbd> {t.hintDive}</span>
+                  <span><kbd>{formatKeyCode(keyBindings.p1.shoot)}</kbd> {t.hintDive}</span>
                 </>
               )}
               <span className="text-white/20">•</span>
-              <span><kbd>Esc</kbd> {t.kPause}</span>
+              <span><kbd>{formatKeyCode(keyBindings.pause)}</kbd> {t.kPause}</span>
             </div>
           )
         ) : playerCount === 2 ? (
           <div className="grid w-full max-w-4xl grid-cols-1 gap-1.5 px-2 text-[10px] font-medium tracking-wide md:grid-cols-2">
             <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-xl border bg-black/50 px-3 py-2 text-white/65 backdrop-blur-md" style={{ borderColor: `${homeTeam.kit.primary}55` }}>
               <span className="font-display" style={{ color: homeTeam.kit.primary }}>P1 · {homeTeam.flag} {homeTeam.names[lang]}</span>
-              <span><kbd>WASD</kbd> {t.kMove}</span>
-              <span><kbd>Shift</kbd> {t.kSprint}</span>
-              <span><kbd>Space</kbd> {t.kShoot}</span>
-              <span><kbd>C</kbd> {t.kPass}</span>
-              <span><kbd>V</kbd> {t.kCross}</span>
-              <span><kbd>F</kbd> {t.kCurve}</span>
-              <span><kbd>R</kbd> {t.kPower}</span>
-              <span><kbd>E</kbd> {t.kTackle}</span>
-              {snap.teamSize > 1 && <span><kbd>Q</kbd> {t.kSwitch}</span>}
+              <span><kbd>{moveKeys(keyBindings.p1)}</kbd> {t.kMove}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.sprint)}</kbd> {t.kSprint}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.shoot)}</kbd> {t.kShoot}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.pass)}</kbd> {t.kPass}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.cross)}</kbd> {t.kCross}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.curve)}</kbd> {t.kCurve}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.power)}</kbd> {t.kPower}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.tackle)}</kbd> {t.kTackle}</span>
+              {snap.teamSize > 1 && <span><kbd>{formatKeyCode(keyBindings.p1.switch)}</kbd> {t.kSwitch}</span>}
             </div>
             <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-xl border bg-black/50 px-3 py-2 text-white/65 backdrop-blur-md" style={{ borderColor: `${awayTeam.kit.primary}55` }}>
               <span className="font-display" style={{ color: awayTeam.kit.primary }}>P2 · {awayTeam.flag} {awayTeam.names[lang]}</span>
-              <span><kbd>↑ ↓ ← →</kbd> {t.kMove}</span>
-              <span><kbd>RShift</kbd> {t.kSprint}</span>
-              <span><kbd>Enter</kbd> {t.kShoot}</span>
-              <span><kbd>/</kbd> {t.kPass}</span>
-              <span><kbd>M</kbd> {t.kCross}</span>
-              <span><kbd>U</kbd> {t.kCurve}</span>
-              <span><kbd>O</kbd> {t.kPower}</span>
-              <span><kbd>I</kbd> {t.kTackle}</span>
-              {snap.teamSize > 1 && <span><kbd>.</kbd> {t.kSwitch}</span>}
-              <span><kbd>Esc</kbd> {t.kPause}</span>
+              <span><kbd>{moveKeys(keyBindings.p2)}</kbd> {t.kMove}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.sprint)}</kbd> {t.kSprint}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.shoot)}</kbd> {t.kShoot}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.pass)}</kbd> {t.kPass}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.cross)}</kbd> {t.kCross}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.curve)}</kbd> {t.kCurve}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.power)}</kbd> {t.kPower}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.tackle)}</kbd> {t.kTackle}</span>
+              {snap.teamSize > 1 && <span><kbd>{formatKeyCode(keyBindings.p2.switch)}</kbd> {t.kSwitch}</span>}
+              <span><kbd>{formatKeyCode(keyBindings.pause)}</kbd> {t.kPause}</span>
             </div>
           </div>
         ) : (
           <div className="flex max-w-[96vw] flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-2xl border border-white/10 bg-black/40 px-4 py-2 text-[10px] font-medium tracking-wide text-white/55 backdrop-blur-md">
-            <span><kbd>WASD</kbd> / <kbd>Frecce</kbd> {t.kMove}</span>
+            <span><kbd>{moveKeys(keyBindings.p1)}</kbd> {t.kMove}</span>
             <span className="text-white/20">•</span>
-            <span><kbd>Shift</kbd> {t.kSprint}</span>
+            <span><kbd>{formatKeyCode(keyBindings.p1.sprint)}</kbd> {t.kSprint}</span>
             <span className="text-white/20">•</span>
-            <span><kbd>Spazio</kbd> {t.kShoot}</span>
+            <span><kbd>{formatKeyCode(keyBindings.p1.shoot)}</kbd> {t.kShoot}</span>
             <span className="text-white/20">•</span>
-            <span><kbd>C</kbd> {t.kPass}</span>
+            <span><kbd>{formatKeyCode(keyBindings.p1.pass)}</kbd> {t.kPass}</span>
             <span className="text-white/20">•</span>
-            <span><kbd>V</kbd> {t.kCross}</span>
+            <span><kbd>{formatKeyCode(keyBindings.p1.cross)}</kbd> {t.kCross}</span>
             <span className="text-white/20">•</span>
-            <span><kbd>F</kbd> {t.kCurve}</span>
+            <span><kbd>{formatKeyCode(keyBindings.p1.curve)}</kbd> {t.kCurve}</span>
             <span className="text-white/20">•</span>
-            <span><kbd>R</kbd> {t.kPower}</span>
+            <span><kbd>{formatKeyCode(keyBindings.p1.power)}</kbd> {t.kPower}</span>
             <span className="text-white/20">•</span>
-            <span><kbd>E</kbd> {t.kTackle}</span>
+            <span><kbd>{formatKeyCode(keyBindings.p1.tackle)}</kbd> {t.kTackle}</span>
             {snap.teamSize > 1 && (
               <>
                 <span className="text-white/20">•</span>
-                <span><kbd>Q</kbd> {t.kSwitch}</span>
+                <span><kbd>{formatKeyCode(keyBindings.p1.switch)}</kbd> {t.kSwitch}</span>
               </>
             )}
             <span className="text-white/20">•</span>
-            <span><kbd>Esc</kbd> {t.kPause}</span>
+            <span><kbd>{formatKeyCode(keyBindings.pause)}</kbd> {t.kPause}</span>
           </div>
         )}
         {!inPens && snap.phase === 'play' && (

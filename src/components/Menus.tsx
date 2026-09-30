@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Play, RotateCcw, Home, Trophy, Frown, Handshake, ChevronRight, ChevronLeft, Zap, Target, Timer, Languages, User, Users, Gamepad2 } from 'lucide-react';
-import type { Difficulty, DecidedBy, GameMode, PlayerCount, TeamSize } from '../game/engine';
+import { Play, RotateCcw, Home, Trophy, Frown, Handshake, ChevronRight, ChevronLeft, Zap, Target, Timer, User, Users, Gamepad2, Settings } from 'lucide-react';
+import type { Difficulty, DecidedBy, GameMode, MatchDuration, PlayerCount, TeamSize } from '../game/engine';
+import { formatKeyCode, type KeyboardBindings } from '../game/keyboard';
 import { getNationalTeam, NATIONAL_TEAMS, type NationalTeam, type NationalTeamId, type TeamKit, type TeamSelection } from '../game/teams';
 import { getActiveTournamentMatch, getGroupStandings, type TournamentGroup, type TournamentMatch, type TournamentState } from '../game/tournament';
-import { fmt, LANGUAGES, type Language, type Strings } from '../i18n';
+import { fmt, type Language, type Strings } from '../i18n';
 
 interface ScreenProps {
   t: Strings;
@@ -63,11 +64,13 @@ export function MenuScreen({
   setPlayerCount,
   teamSize,
   setTeamSize,
+  matchDuration,
   teams,
   lang,
-  setLang,
+  keyBindings,
   onStart,
   onTournament,
+  onSettings,
   t,
 }: ScreenProps & {
   difficulty: Difficulty;
@@ -78,11 +81,13 @@ export function MenuScreen({
   setPlayerCount: (count: PlayerCount) => void;
   teamSize: TeamSize;
   setTeamSize: (size: TeamSize) => void;
+  matchDuration: MatchDuration;
   teams: TeamSelection;
   lang: Language;
-  setLang: (l: Language) => void;
+  keyBindings: KeyboardBindings;
   onStart: () => void;
   onTournament: () => void;
+  onSettings: () => void;
 }) {
   const DIFF_INFO: { id: Difficulty; label: string; desc: string }[] = [
     { id: 'easy', label: t.diffEasy, desc: t.diffEasyDesc },
@@ -90,7 +95,7 @@ export function MenuScreen({
     { id: 'hard', label: t.diffHard, desc: t.diffHardDesc },
   ];
   const MODE_INFO: { id: GameMode; label: string; desc: string; icon: 'timer' | 'target' }[] = [
-    { id: 'match', label: t.modeMatch, desc: t.modeMatchDesc, icon: 'timer' },
+    { id: 'match', label: `${t.modeMatch} · ${matchDuration}s`, desc: t.modeMatchDesc, icon: 'timer' },
     { id: 'pens', label: t.modePens, desc: t.modePensDesc, icon: 'target' },
   ];
   const homeTeam = getNationalTeam(teams[0]);
@@ -104,7 +109,7 @@ export function MenuScreen({
         }`}>
           <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${mode === 'pens' ? 'bg-amber-300' : 'bg-sky-300'}`} />
           <span className={`font-display text-[10px] tracking-[0.4em] ${mode === 'pens' ? 'text-amber-200' : 'text-sky-200'}`}>
-            {mode === 'pens' ? t.badgePens : t.badgeMatch}
+            {mode === 'pens' ? t.badgePens : fmt(t.badgeMatch, { seconds: matchDuration })}
           </span>
         </div>
 
@@ -264,6 +269,12 @@ export function MenuScreen({
             <span className="mt-0.5 text-[9px] text-white/45">{t.tournamentButtonDesc}</span>
           </span>
         </button>
+        <button
+          onClick={onSettings}
+          className="mt-2 flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-2 text-[10px] font-display tracking-[0.18em] text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
+        >
+          <Settings size={14} /> {t.settingsButton}
+        </button>
 
         {playerCount === 2 ? (
           <div className="mt-5 grid w-full max-w-3xl grid-cols-1 gap-2 text-left sm:grid-cols-2">
@@ -274,9 +285,9 @@ export function MenuScreen({
               <span className="font-display text-[11px] tracking-widest" style={{ color: homeTeam.kit.primary }}>
                 P1 · {homeTeam.flag} {homeTeam.names[lang]}
               </span>
-              <span><kbd>WASD</kbd> {t.kMove} · <kbd>Shift</kbd> {t.kSprint}</span>
-              <span><kbd>Space</kbd> {t.kShoot} · <kbd>C</kbd> {t.kPass} · <kbd>V</kbd> {t.kCross} · <kbd>F</kbd> {t.kCurve}</span>
-              <span><kbd>R</kbd> {t.kPower} · <kbd>E</kbd> {t.kTackle}{teamSize > 1 && <> · <kbd>Q</kbd> {t.kSwitch}</>}</span>
+              <span><kbd>{[keyBindings.p1.up, keyBindings.p1.left, keyBindings.p1.down, keyBindings.p1.right].map(formatKeyCode).join(' ')}</kbd> {t.kMove} · <kbd>{formatKeyCode(keyBindings.p1.sprint)}</kbd> {t.kSprint}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.shoot)}</kbd> {t.kShoot} · <kbd>{formatKeyCode(keyBindings.p1.pass)}</kbd> {t.kPass} · <kbd>{formatKeyCode(keyBindings.p1.cross)}</kbd> {t.kCross} · <kbd>{formatKeyCode(keyBindings.p1.curve)}</kbd> {t.kCurve}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.power)}</kbd> {t.kPower} · <kbd>{formatKeyCode(keyBindings.p1.tackle)}</kbd> {t.kTackle}{teamSize > 1 && <> · <kbd>{formatKeyCode(keyBindings.p1.switch)}</kbd> {t.kSwitch}</>}</span>
             </div>
             <div
               className="flex flex-col gap-1.5 rounded-xl border px-4 py-3 text-[10px] text-white/60"
@@ -285,23 +296,23 @@ export function MenuScreen({
               <span className="font-display text-[11px] tracking-widest" style={{ color: awayTeam.kit.primary }}>
                 P2 · {awayTeam.flag} {awayTeam.names[lang]}
               </span>
-              <span><kbd>↑ ↓ ← →</kbd> {t.kMove} · <kbd>RShift</kbd> {t.kSprint}</span>
-              <span><kbd>Enter</kbd> {t.kShoot} · <kbd>/</kbd> {t.kPass} · <kbd>M</kbd> {t.kCross} · <kbd>U</kbd> {t.kCurve}</span>
-              <span><kbd>O</kbd> {t.kPower} · <kbd>I</kbd> {t.kTackle}{teamSize > 1 && <> · <kbd>.</kbd> {t.kSwitch}</>}</span>
+              <span><kbd>{[keyBindings.p2.up, keyBindings.p2.left, keyBindings.p2.down, keyBindings.p2.right].map(formatKeyCode).join(' ')}</kbd> {t.kMove} · <kbd>{formatKeyCode(keyBindings.p2.sprint)}</kbd> {t.kSprint}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.shoot)}</kbd> {t.kShoot} · <kbd>{formatKeyCode(keyBindings.p2.pass)}</kbd> {t.kPass} · <kbd>{formatKeyCode(keyBindings.p2.cross)}</kbd> {t.kCross} · <kbd>{formatKeyCode(keyBindings.p2.curve)}</kbd> {t.kCurve}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.power)}</kbd> {t.kPower} · <kbd>{formatKeyCode(keyBindings.p2.tackle)}</kbd> {t.kTackle}{teamSize > 1 && <> · <kbd>{formatKeyCode(keyBindings.p2.switch)}</kbd> {t.kSwitch}</>}</span>
             </div>
           </div>
         ) : (
           <div className="mt-7 hidden max-w-5xl flex-wrap justify-center gap-2 sm:flex">
             {[
-              ['WASD · Frecce', t.menuMove],
-              ['Shift', t.menuSprint],
-              ['Spazio', t.menuShoot],
-              ['C', t.menuPass],
-              ['V', t.menuCross],
-              ['F', t.menuCurve],
-              ['R', t.menuPower],
-              ['E', t.menuTackle],
-              ...(teamSize > 1 ? [['Q · Tab', t.menuSwitch]] : []),
+              [[keyBindings.p1.up, keyBindings.p1.left, keyBindings.p1.down, keyBindings.p1.right].map(formatKeyCode).join(' '), t.menuMove],
+              [formatKeyCode(keyBindings.p1.sprint), t.menuSprint],
+              [formatKeyCode(keyBindings.p1.shoot), t.menuShoot],
+              [formatKeyCode(keyBindings.p1.pass), t.menuPass],
+              [formatKeyCode(keyBindings.p1.cross), t.menuCross],
+              [formatKeyCode(keyBindings.p1.curve), t.menuCurve],
+              [formatKeyCode(keyBindings.p1.power), t.menuPower],
+              [formatKeyCode(keyBindings.p1.tackle), t.menuTackle],
+              ...(teamSize > 1 ? [[formatKeyCode(keyBindings.p1.switch), t.menuSwitch]] : []),
             ].map(([k, v]) => (
               <div key={k} className="flex min-w-20 flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-black/35 px-3 py-2.5">
                 <span className="font-display text-[11px] text-sky-200 tracking-wide">{k}</span>
@@ -316,32 +327,6 @@ export function MenuScreen({
           <span>{t.gamepadHint}</span>
         </div>
 
-        {/* selezione lingua */}
-        <div className="mt-6 flex flex-col items-center gap-2">
-          <span className="flex items-center gap-1.5 font-display text-[10px] tracking-[0.3em] text-white/40">
-            <Languages size={12} /> {t.language}
-          </span>
-          <div className="flex flex-wrap justify-center gap-1.5 max-w-md">
-            {LANGUAGES.map((l) => {
-              const active = lang === l.id;
-              return (
-                <button
-                  key={l.id}
-                  onClick={() => setLang(l.id)}
-                  title={l.name}
-                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] transition-all duration-150 ${
-                    active
-                      ? 'border-white/60 bg-white/15 text-white shadow-[0_0_16px_rgba(255,255,255,0.15)]'
-                      : 'border-white/10 bg-white/5 text-white/60 hover:border-white/25 hover:text-white/90'
-                  }`}
-                >
-                  <span className="text-sm leading-none">{l.flag}</span>
-                  <span>{l.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
         <p className="mt-5 text-[11px] text-white/35 sm:hidden">
           {playerCount === 2 ? t.playerDuoDesc : t.mobileHint}
         </p>
@@ -768,11 +753,13 @@ export function TournamentScreen({ tournament, lang, onPlayNext, onNewTournament
 export function PauseScreen({
   onResume,
   onRestart,
+  onSettings,
   onMenu,
   t,
 }: ScreenProps & {
   onResume: () => void;
   onRestart: () => void;
+  onSettings: () => void;
   onMenu: () => void;
 }) {
   return (
@@ -792,6 +779,12 @@ export function PauseScreen({
             className="flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/8 px-6 py-3 font-display text-sm tracking-[0.15em] text-white/85 transition hover:bg-white/15 active:scale-95"
           >
             <RotateCcw size={16} /> {t.btnRestart}
+          </button>
+          <button
+            onClick={onSettings}
+            className="flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/8 px-6 py-3 font-display text-sm tracking-[0.15em] text-white/85 transition hover:bg-white/15 active:scale-95"
+          >
+            <Settings size={16} /> {t.settingsButton}
           </button>
           <button
             onClick={onMenu}

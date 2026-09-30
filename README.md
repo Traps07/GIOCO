@@ -1,67 +1,71 @@
 # ⚽ Street Soccer
 
-Calcio arcade nel browser con **da 1 a 5 giocatori di movimento più un portiere fisso per squadra**, partite da 90 secondi, **supplementari con golden goal**, **rigori in prima persona** e **6 lingue** (italiano, inglese, tedesco, francese, spagnolo e arabo).
+An arcade football game that runs entirely in your browser. Play with **1–5 outfield players plus one fixed goalkeeper on each team**, enjoy 90-second matches, golden-goal extra time, first-person penalty shootouts, and six interface languages: English, Italian, German, French, Spanish, and Arabic.
 
-## ▶️ Per giocare subito
+## ▶️ Play now
 
-1. Scarica la cartella da GitHub (**Code → Download ZIP**) e decomprimila.
-2. Apri **`APRI-PER-GIOCARE.html`** nel browser (Chrome, Edge, Firefox o Safari).
+1. Download the repository from GitHub (**Code → Download ZIP**) and extract it.
+2. Open **`APRI-PER-GIOCARE.html`** in a browser (Chrome, Edge, Firefox, or Safari).
 
-Il file è autonomo e funziona offline; internet serve solo per caricare i font al primo avvio. `index.html` è invece il sorgente Vite e non è il file da aprire direttamente.
+The single-file game works offline; an internet connection is only needed to load the fonts the first time. `index.html` is the Vite source entry point and should not be opened directly.
 
-## 🎮 Modalità
+## 🎮 Game modes
 
-- **PARTITA 90s** — scegli **1v1, 2v2, 3v3, 4v4 o 5v5**; il portiere è sempre aggiuntivo e fisso. In caso di parità: supplementari e poi rigori.
-- **Campo** — dimensioni standard per 1v1 e 2v2; più ampio per 3v3, 4v4 e 5v5.
-- **SOLO RIGORI** — vai direttamente alla serie dal dischetto.
-- **TORNEO NAZIONALE** — 12 nazionali, 4 gruppi da 3, prime due ai quarti, poi semifinali e finale. Le partite del giocatore usano il formato selezionato.
-- **1 o 2 giocatori locali** — la scelta degli utenti è indipendente dal formato delle squadre.
-- Selezione di 12 nazionali con kit ispirati a colori e motivi delle maglie da Mondiale; tre livelli di difficoltà e sei lingue.
+- **Quick match** — choose **1v1, 2v2, 3v3, 4v4, or 5v5**. Each team always has an additional fixed goalkeeper. A tied match goes to golden-goal extra time and then penalties.
+- **Pitch size** — standard dimensions for 1v1 and 2v2; a wider, larger pitch for 3v3, 4v4, and 5v5.
+- **Penalty shootout** — jump straight to the spot-kick series.
+- **National tournament** — 12 national teams in 4 groups of 3. The top two teams from each group advance to the quarter-finals, followed by the semi-finals and final.
+- **Local multiplayer** — one or two people can play on the same keyboard; the number of local players is independent of the on-field team size.
+- Choose from 12 national teams with kits inspired by World Cup colours and shirt designs. Three difficulty levels and six languages are available.
 
-## ⚽ Possesso e azioni
+The Settings screen lets you mute game audio, remap keyboard controls, choose a match length of **60, 90, 120, or 180 seconds**, and change the interface language. English is the default for a new player profile. Extra time remains 30 seconds.
 
-I giocatori **controllano la palla quando la raccolgono**: non rimbalza via a ogni contatto. Gli avversari pressano e tentano contrasti, ma hanno una probabilità ridotta di strappare il possesso; se falliscono, il portatore conserva la palla. La CPU tenta i contrasti automaticamente; in locale si può intervenire con il comando dedicato.
+## ⚽ Possession and actions
 
-- **Passaggio**: mira con tasti o stick verso il compagno desiderato; il gioco cerca di servire lui anche se è più lontano. Se nessun compagno è nella direzione indicata, passa a quello più vicino. Il ricevente corre incontro al pallone.
-- **Cross**: pallone alto indirizzato verso l’area e i compagni in posizione da tiro.
-- **Tiro a giro**: resta efficace e segna nel **95% dei tentativi senza copertura**; portiere e giocatori di movimento possono murarlo se sulla traiettoria.
-- **Tiro di potenza**: conclusione dritta e rapidissima.
-- **Calcio d’angolo**: una parata del portiere può deviare il pallone oltre la linea di fondo e assegnare un corner alla squadra avversaria, anche nel formato 1v1.
-- **Ripresa del gioco**: dopo ogni gol, il calcio d’inizio e il possesso spettano alla squadra che lo ha subito.
+Players keep possession after collecting the ball rather than losing it on every touch. Opponents press and attempt tackles, but tackles have a reduced chance of winning the ball. The CPU also makes passes and supports attacks.
 
-## ⌨️ Comandi
+- **Pass** — point the movement keys or stick toward a teammate. The game tries to pass to the teammate in that direction, even if they are farther away. If nobody is there, it passes to the nearest teammate. The receiver runs toward the ball.
+- **Cross** — send a lofted ball into the box toward teammates in a shooting position.
+- **Curl shot** — a powerful curved shot that scores on 95% of uncovered attempts; the goalkeeper or an outfield player can still block its path.
+- **Power shot** — a fast, direct strike.
+- **Corner kick** — a goalkeeper save can deflect the ball over the goal line for a corner, including in 1v1.
+- **Kick-off** — after a goal, the team that conceded starts with possession.
 
-In modalità **1 giocatore**:
+## ⌨️ Default keyboard controls
 
-| Tasto | Azione |
+Every keyboard binding can be changed in **Settings**. These are the defaults:
+
+### One player
+
+| Key | Action |
 | --- | --- |
-| `WASD` / Frecce | Movimento |
-| `Shift` | Scatto |
-| `Spazio` | Tiro |
-| `C` | Passaggio |
+| `W` `A` `S` `D` | Move |
+| `Left Shift` | Sprint |
+| `Space` | Shoot |
+| `C` | Pass |
 | `V` | Cross |
-| `F` | Tiro a giro |
-| `R` | Tiro di potenza |
-| `E` | Contrasto |
-| `Q` / `Tab` | Cambia giocatore, solo dal 2v2 in su |
-| `Esc` / `P` | Pausa |
+| `F` | Curl shot |
+| `R` | Power shot |
+| `E` | Tackle |
+| `Q` | Switch player (2v2 and above) |
+| `Esc` | Pause / resume |
 
-In modalità **2 giocatori** (anche ai rigori):
+### Two players on one keyboard
 
-| Giocatore | Movimento | Scatto | Tiro | Passaggio | Cross | Giro | Potenza | Contrasto | Cambio |
+| Player | Movement | Sprint | Shoot | Pass | Cross | Curl | Power | Tackle | Switch |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **P1 · casa** | `WASD` | `Shift` sinistro | `Spazio` | `C` | `V` | `F` | `R` | `E` | `Q` / `Tab` |
-| **P2 · ospiti** | `↑ ↓ ← →` | `Shift` destro | `Invio` | `/` | `M` | `U` | `O` | `I` | `.` |
+| **P1 · Home** | `W` `A` `S` `D` | `Left Shift` | `Space` | `C` | `V` | `F` | `R` | `E` | `Q` |
+| **P2 · Away** | Arrow keys | `Right Shift` | `Enter` | `/` | `M` | `U` | `O` | `I` | `.` |
 
-Sono supportati i controller USB o Bluetooth riconosciuti dal browser tramite Gamepad API (Xbox, PlayStation, Switch e pad generici). Il gioco legge stick analogici e croce direzionale; in locale, i primi due controller collegati comandano P1 e P2. Mappatura standard: stick/D-pad movimento, `A/×` tiro, `B/○` passaggio, `X/□` cross, `Y/△` tiro a giro, `LB/L1` potenza, `RB/R1` contrasto, `RT/R2` scatto, `LT/L2` o Select cambio giocatore, Start pausa.
+### Controllers and touch
 
-Il cambio giocatore è disattivato in 1v1: ciascuno controlla l’unico giocatore di movimento della propria squadra. Su mobile sono disponibili joystick e pulsanti touch per passaggio, cross, tiro a giro, tiro di potenza e contrasto; in locale a 2 giocatori i joystick sono indipendenti.
+USB and Bluetooth controllers supported by the browser's Gamepad API work with Xbox, PlayStation, Switch, and generic gamepads. The default layout is: stick/D-pad to move, `A/×` to shoot, `B/○` to pass, `X/□` to cross, `Y/△` to curl, `LB/L1` for a power shot, `RB/R1` to tackle, `RT/R2` to sprint, `LT/L2` or Select to switch players, and Start to pause. Controller bindings are not changed by the keyboard remapping screen.
 
-Durante i rigori, movimento e azione servono a mirare/calciare o a spostare il guantone e tuffarsi.
+On mobile, use the on-screen joystick and action buttons. Two-player touch controls use independent joysticks.
 
-## 🛠️ Sviluppo
+## 🛠️ Development
 
-Richiede Node.js 18 o superiore:
+Requires Node.js 18 or later:
 
 ```bash
 npm install
@@ -70,10 +74,10 @@ npm run build
 npm test
 ```
 
-Per aggiornare il file giocabile autonomo dopo una modifica:
+To refresh the standalone game file after making changes:
 
 ```bash
 npm run build && cp dist/index.html APRI-PER-GIOCARE.html
 ```
 
-Tecnologie: React 19 · TypeScript · Vite · Tailwind CSS 4 · Canvas 2D · WebAudio.
+Built with React 19, TypeScript, Vite, Tailwind CSS 4, Canvas 2D, and Web Audio.
