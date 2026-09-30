@@ -1,9 +1,14 @@
 import { SFX } from './sound';
+import { cloneKeyBindings, DEFAULT_KEY_BINDINGS, type KeyboardBindings } from './keyboard';
+import { DEFAULT_TEAMS, getNationalTeam, type TeamKit, type TeamSelection } from './teams';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type GameMode = 'match' | 'pens';
-/** 'ai' = 1 giocatore contro la IA (squadra ROSSA). 'human' = 2 giocatori in locale. */
-export type Opponent = 'ai' | 'human';
+export type PlayerCount = 1 | 2;
+export type TeamSize = 1 | 2 | 3 | 4 | 5;
+export const MATCH_DURATIONS = [60, 90, 120, 180] as const;
+export type MatchDuration = (typeof MATCH_DURATIONS)[number];
+export const DEFAULT_MATCH_DURATION: MatchDuration = 90;
 export type Phase = 'demo' | 'countdown' | 'play' | 'goal' | 'pens' | 'over';
 export type Period = 'regular' | 'extra' | 'pens';
 export type PenKickResult = 'goal' | 'save' | 'miss' | 'post';
@@ -13,7 +18,7 @@ export type DecidedBy = 'regular' | 'golden' | 'pens';
 export interface PensSnap {
   score: [number, number];
   taken: [number, number];
-  turn: number; // 0 = tira il BLU, 1 = tira il ROSSO
+  turn: number; // 0 = squadra di casa, 1 = squadra ospite
   stage: PenStage;
   stageT: number;
   results: [Exclude<PenKickResult, 'post'>[], Exclude<PenKickResult, 'post'>[]];
@@ -25,17 +30,21 @@ export interface Snapshot {
   score: [number, number];
   shots: [number, number];
   timeLeft: number;
+  matchDuration: MatchDuration;
   countdown: number;
   lastGoalTeam: number;
   winner: number; // -2 = non finita, -1 = pareggio
   muted: boolean;
+  playerCount: PlayerCount;
+  teamSize: TeamSize;
   controlled: [number, number];
-  opponent: Opponent;
+  gamepadsConnected: number;
   pens: PensSnap | null;
 }
 
 export type EngineEvent =
   | { type: 'goal'; team: number; score: [number, number] }
+  | { type: 'corner'; team: number }
   | { type: 'extratime' }
   | { type: 'pensstart' }
   | { type: 'penResult'; result: PenKickResult; team: number }
@@ -43,67 +52,63 @@ export type EngineEvent =
   | { type: 'pause' }
   | { type: 'resume' };
 
-const W = 1200;
-const H = 700;
+const BASE_W = 1200;
+const BASE_H = 700;
+const LARGE_FIELD_W = 1380;
+const LARGE_FIELD_H = 780;
 const GOAL_HALF = 100;
 const GOAL_DEPTH = 32;
 const P_R = 17;
 const B_R = 9;
-const MATCH_TIME = 90;
 const EXTRA_TIME = 30;
 const PEN_ROUNDS = 5;
-const KICK_RANGE = P_R + B_R + 22;
+const GK_R = 23;
+const GK_X = 38;
+const GK_SPEED = 300;
+const BALL_GRAVITY = 980;
+const BALL_CARRY_OFFSET = P_R + B_R + 2;
+const TACKLE_RANGE = P_R * 2 + 16;
 
-const TEAM_COLORS = ['#38bdf8', '#fb7185'];
-const TEAM_GLOW = ['rgba(56,189,248,', 'rgba(251,113,133,'];
-
-// ---------- tastiera: due giocatori locali sullo stesso ----------
-// P1 (mano sinistra): WASD + frecce. P2 (mano destra): IJKL.
-// Gli insiemi sono disgiunti, quindi i due non si pestano mai i piedi.
-const KEYMAP: {
-  up: string[];
-  down: string[];
-  left: string[];
-  right: string[];
-  sprint: string[];
-  shoot: string[];
-  pass: string[];
-  switch: string[];
-}[] = [
-  {
-    up: ['KeyW', 'ArrowUp'],
-    down: ['KeyS', 'ArrowDown'],
-    left: ['KeyA', 'ArrowLeft'],
-    right: ['KeyD', 'ArrowRight'],
-    sprint: ['ShiftLeft'],
-    shoot: ['Space'],
-    pass: ['KeyC', 'KeyX'],
-    switch: ['KeyQ', 'Tab'],
-  },
-  {
-    up: ['KeyI'],
-    down: ['KeyK'],
-    left: ['KeyJ'],
-    right: ['KeyL'],
-    sprint: ['ShiftRight'],
-    shoot: ['Enter', 'Numpad0', 'Period'],
-    pass: ['KeyM', 'Numpad2'],
-    switch: ['Comma', 'Numpad3'],
-  },
-];
-
-const FORMATION: { x: number; y: number }[][] = [
-  [
-    { x: 80, y: 350 },
-    { x: 330, y: 235 },
-    { x: 330, y: 465 },
+const FORMATIONS: Record<TeamSize, { x: number; y: number }[]> = {
+  1: [{ x: 360, y: 350 }],
+  2: [
+    { x: 250, y: 270 },
+    { x: 390, y: 430 },
   ],
-  [
-    { x: W - 80, y: 350 },
-    { x: W - 330, y: 235 },
-    { x: W - 330, y: 465 },
+  3: [
+    { x: 205, y: 350 },
+    { x: 380, y: 250 },
+    { x: 380, y: 450 },
   ],
-];
+  4: [
+    { x: 175, y: 350 },
+    { x: 315, y: 230 },
+    { x: 315, y: 470 },
+    { x: 475, y: 350 },
+  ],
+  5: [
+    { x: 150, y: 350 },
+    { x: 275, y: 220 },
+    { x: 275, y: 480 },
+    { x: 435, y: 260 },
+    { x: 435, y: 440 },
+  ],
+};
+
+function formationFor(
+  team: number,
+  idx: number,
+  teamSize: TeamSize,
+  fieldWidth = BASE_W,
+  fieldHeight = BASE_H,
+) {
+  const position = FORMATIONS[teamSize][idx];
+  const verticalScale = fieldHeight / BASE_H;
+  return {
+    x: team === 0 ? position.x : fieldWidth - position.x,
+    y: fieldHeight / 2 + (position.y - BASE_H / 2) * verticalScale,
+  };
+}
 
 interface DiffCfg {
   speed: number;
@@ -123,6 +128,29 @@ const DEMO_CFG: DiffCfg = { speed: 195, shootRange: 340, shootErr: 0.14, passErr
 
 const dist = (x1: number, y1: number, x2: number, y2: number) => Math.hypot(x2 - x1, y2 - y1);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+const segmentCircleHit = (
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  centerX: number,
+  centerY: number,
+  radius: number,
+): number | null => {
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const fx = startX - centerX;
+  const fy = startY - centerY;
+  const c = fx * fx + fy * fy - radius * radius;
+  if (c <= 0) return 0;
+  const a = dx * dx + dy * dy;
+  if (a < 1e-8) return null;
+  const b = 2 * (fx * dx + fy * dy);
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) return null;
+  const t = (-b - Math.sqrt(discriminant)) / (2 * a);
+  return t >= 0 && t <= 1 ? t : null;
+};
 
 class Player {
   x = 0;
@@ -136,18 +164,27 @@ class Player {
   hasBall = false;
   kickCd = 0;
   holdT = 0;
+  tackleCd = 0;
+  tackleT = 0;
+  tackleResolved = false;
   number: number;
-  constructor(public team: number, public idx: number) {
-    const f = FORMATION[team][idx];
+  constructor(
+    public team: number,
+    public idx: number,
+    public teamSize: TeamSize,
+    private fieldWidth = BASE_W,
+    private fieldHeight = BASE_H,
+  ) {
+    const f = formationFor(team, idx, teamSize, fieldWidth, fieldHeight);
     this.x = f.x;
     this.y = f.y;
     this.tx = f.x;
     this.ty = f.y;
-    this.number = team === 0 ? [1, 7, 10][idx] : [1, 9, 11][idx];
+    this.number = team === 0 ? [4, 7, 10, 8, 11][idx] : [4, 9, 11, 7, 10][idx];
     this.faceX = team === 0 ? 1 : -1;
   }
   reset() {
-    const f = FORMATION[this.team][this.idx];
+    const f = formationFor(this.team, this.idx, this.teamSize, this.fieldWidth, this.fieldHeight);
     this.x = f.x;
     this.y = f.y;
     this.vx = 0;
@@ -155,8 +192,31 @@ class Player {
     this.hasBall = false;
     this.holdT = 0;
     this.kickCd = 0;
+    this.tackleCd = 0;
+    this.tackleT = 0;
+    this.tackleResolved = false;
     this.faceX = this.team === 0 ? 1 : -1;
     this.faceY = 0;
+  }
+}
+
+class FixedGoalkeeper {
+  readonly x: number;
+  y: number;
+  vy = 0;
+
+  constructor(
+    public team: number,
+    fieldWidth = BASE_W,
+    private fieldHeight = BASE_H,
+  ) {
+    this.x = team === 0 ? GK_X : fieldWidth - GK_X;
+    this.y = fieldHeight / 2;
+  }
+
+  reset() {
+    this.y = this.fieldHeight / 2;
+    this.vy = 0;
   }
 }
 
@@ -221,6 +281,19 @@ interface FPLayout {
   bottom: number;
 }
 
+interface CurveFlight {
+  team: number;
+  shooter: Player;
+  startX: number;
+  startY: number;
+  targetX: number;
+  targetY: number;
+  duration: number;
+  elapsed: number;
+  arc: number;
+  scores: boolean;
+}
+
 export class GameEngine {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -230,24 +303,42 @@ export class GameEngine {
   private disposed = false;
   inputEnabled = false;
 
+  private get fieldWidth() {
+    return this.teamSize >= 3 ? LARGE_FIELD_W : BASE_W;
+  }
+
+  private get fieldHeight() {
+    return this.teamSize >= 3 ? LARGE_FIELD_H : BASE_H;
+  }
+
   phase: Phase = 'demo';
   private players: Player[] = [];
-  /** indice del giocatore controllato *dentro* ciascuna squadra: [squadra 0, squadra 1] */
+  private goalkeepers: FixedGoalkeeper[] = [new FixedGoalkeeper(0), new FixedGoalkeeper(1)];
+  private playerCount: PlayerCount = 1;
+  private teamSize: TeamSize = 3;
+  private selectedTeams: TeamSelection = [...DEFAULT_TEAMS];
   private controlledIdx: [number, number] = [1, 1];
-  private opponent: Opponent = 'ai';
-  private ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, lastTouch: -1 };
+  private ball = { x: this.fieldWidth / 2, y: this.fieldHeight / 2, vx: 0, vy: 0, z: 0, vz: 0, curve: 0, lastTouch: -1, lastTouchWasKeeper: false };
+  private ballCarrier: Player | null = null;
+  private passReceiver: Player | null = null;
+  private recentKicker: Player | null = null;
+  private kickerGrace = 0;
+  private curveFlight: CurveFlight | null = null;
   private trail: { x: number; y: number }[] = [];
   private particles: Particle[] = [];
   private score: [number, number] = [0, 0];
   private shots: [number, number] = [0, 0];
-  private timeLeft = MATCH_TIME;
+  private matchDuration: MatchDuration = DEFAULT_MATCH_DURATION;
+  private timeLeft: number = DEFAULT_MATCH_DURATION;
   private countdown = 0;
   private countdownShown = -1;
   private goalT = 0;
   private lastGoalTeam = -1;
+  private kickoffTeam: number | null = null;
   private goalSide: -1 | 1 = 1;
   private winner = -2;
   private period: Period = 'regular';
+  private allowDraw = false;
   private pens: PensState | null = null;
   private fpFx: FPParticle[] = [];
   private fpTrail: { x: number; y: number; r: number }[] = [];
@@ -258,13 +349,25 @@ export class GameEngine {
   private goalFlash = 0;
 
   private keys = new Set<string>();
-  private sticks: { x: number; y: number; active: boolean }[] = [
+  private keyBindings: KeyboardBindings = cloneKeyBindings(DEFAULT_KEY_BINDINGS);
+  private sticks: [{ x: number; y: number; active: boolean }, { x: number; y: number; active: boolean }] = [
     { x: 0, y: 0, active: false },
     { x: 0, y: 0, active: false },
   ];
+  private gamepadAxes: [{ x: number; y: number }, { x: number; y: number }] = [
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ];
+  private gamepadSprint: [boolean, boolean] = [false, false];
+  private gamepadsConnected = 0;
+  private gamepadButtonState = new Map<number, boolean[]>();
   private shootQ: [boolean, boolean] = [false, false];
   private passQ: [boolean, boolean] = [false, false];
   private switchQ: [boolean, boolean] = [false, false];
+  private crossQ: [boolean, boolean] = [false, false];
+  private curveQ: [boolean, boolean] = [false, false];
+  private powerQ: [boolean, boolean] = [false, false];
+  private tackleQ: [boolean, boolean] = [false, false];
 
   private sfx = new SFX();
   private demo = true;
@@ -282,7 +385,7 @@ export class GameEngine {
     if (!ctx) throw new Error('no 2d context');
     this.ctx = ctx;
 
-    for (let t = 0; t < 2; t++) for (let i = 0; i < 3; i++) this.players.push(new Player(t, i));
+    this.configurePlayers(this.teamSize);
 
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
@@ -312,13 +415,18 @@ export class GameEngine {
 
   // ---------- input ----------
   private onKeyDown = (e: KeyboardEvent) => {
+    const boundCodes = new Set([
+      ...Object.values(this.keyBindings.p1),
+      ...Object.values(this.keyBindings.p2),
+      this.keyBindings.pause,
+    ]);
     if (e.repeat) {
-      if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code))
-        e.preventDefault();
+      if (boundCodes.has(e.code)) e.preventDefault();
       return;
     }
-    if (e.code === 'Escape' || e.code === 'KeyP') {
-      if (this.phase === 'play' || this.phase === 'countdown' || this.phase === 'goal') {
+    if (e.code === this.keyBindings.pause) {
+      e.preventDefault();
+      if (this.phase === 'play' || this.phase === 'countdown' || this.phase === 'goal' || this.phase === 'pens') {
         if (this.paused) {
           this.setPaused(false);
           this.emit({ type: 'resume' });
@@ -330,43 +438,148 @@ export class GameEngine {
       return;
     }
     if (!this.inputEnabled || this.paused) return;
-    if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
-      e.preventDefault();
-    }
+    if (boundCodes.has(e.code)) e.preventDefault();
     this.keys.add(e.code);
-    // lo stesso tasto può valere per P1 o P2: si accoda a tutte le mani che lo mappano
-    for (let slot = 0; slot < 2; slot++) {
-      if (this.slotEnabled(slot) && !this.isDemo()) {
-        if (KEYMAP[slot].shoot.includes(e.code)) this.shootQ[slot] = true;
-        if (KEYMAP[slot].pass.includes(e.code)) this.passQ[slot] = true;
-        if (KEYMAP[slot].switch.includes(e.code)) this.switchQ[slot] = true;
-      }
-    }
+
+    const localMatch = this.playerCount === 2;
+    const { p1, p2 } = this.keyBindings;
+    if (e.code === p1.shoot) this.shootQ[0] = true;
+    if (localMatch && e.code === p2.shoot) this.shootQ[1] = true;
+    if (e.code === p1.pass) this.passQ[0] = true;
+    if (localMatch && e.code === p2.pass) this.passQ[1] = true;
+    if (e.code === p1.cross) this.crossQ[0] = true;
+    if (localMatch && e.code === p2.cross) this.crossQ[1] = true;
+    if (e.code === p1.curve) this.curveQ[0] = true;
+    if (localMatch && e.code === p2.curve) this.curveQ[1] = true;
+    if (e.code === p1.power) this.powerQ[0] = true;
+    if (localMatch && e.code === p2.power) this.powerQ[1] = true;
+    if (e.code === p1.tackle) this.tackleQ[0] = true;
+    if (localMatch && e.code === p2.tackle) this.tackleQ[1] = true;
+    if (e.code === p1.switch) this.switchQ[0] = true;
+    if (localMatch && e.code === p2.switch) this.switchQ[1] = true;
   };
 
   private onKeyUp = (e: KeyboardEvent) => {
     this.keys.delete(e.code);
   };
 
-  setStick(slot: number, x: number, y: number, active: boolean) {
-    this.sticks[slot] = { x, y, active };
+  private togglePauseFromGamepad() {
+    if (!['play', 'countdown', 'goal', 'pens'].includes(this.phase)) return;
+    this.setPaused(!this.paused);
+    this.emit({ type: this.paused ? 'pause' : 'resume' });
   }
 
-  touchShoot(slot = 0) {
+  private pollGamepads() {
+    let pads: Gamepad[] = [];
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function') {
+        pads = Array.from(navigator.getGamepads()).filter((pad): pad is Gamepad => Boolean(pad?.connected));
+      }
+    } catch {
+      // Alcuni browser bloccano Gamepad API finché l'utente non interagisce con la pagina.
+    }
+
+    this.gamepadsConnected = pads.length;
+    this.gamepadAxes = [{ x: 0, y: 0 }, { x: 0, y: 0 }];
+    this.gamepadSprint = [false, false];
+    const currentButtonState = new Map<number, boolean[]>();
+    pads.sort((a, b) => a.index - b.index).slice(0, this.playerCount).forEach((pad, slot) => {
+      const buttons = Array.from(pad.buttons, (button) => Boolean(button && (button.pressed || button.value >= 0.5)));
+      const previous = this.gamepadButtonState.get(pad.index) ?? [];
+      const pressed = (index: number) => buttons[index] ?? false;
+      const justPressed = (index: number) => pressed(index) && !previous[index];
+      currentButtonState.set(pad.index, buttons);
+
+      let x = pad.axes[0] ?? 0;
+      let y = pad.axes[1] ?? 0;
+      if (Math.abs(x) < 0.18) x = 0;
+      if (Math.abs(y) < 0.18) y = 0;
+      x += (pressed(15) ? 1 : 0) - (pressed(14) ? 1 : 0);
+      y += (pressed(13) ? 1 : 0) - (pressed(12) ? 1 : 0);
+      this.gamepadAxes[slot as 0 | 1] = { x: clamp(x, -1, 1), y: clamp(y, -1, 1) };
+
+      if (!this.inputEnabled) return;
+      if (justPressed(9) && ['play', 'countdown', 'goal', 'pens'].includes(this.phase)) {
+        this.togglePauseFromGamepad();
+        return;
+      }
+      if (this.paused) return;
+
+      this.gamepadSprint[slot as 0 | 1] = pressed(7);
+      if (this.phase === 'play') {
+        if (justPressed(0)) this.shootQ[slot as 0 | 1] = true; // A / Cross
+        if (justPressed(1)) this.passQ[slot as 0 | 1] = true; // B / Circle
+        if (justPressed(2)) this.crossQ[slot as 0 | 1] = true; // X / Square
+        if (justPressed(3)) this.curveQ[slot as 0 | 1] = true; // Y / Triangle
+        if (justPressed(4)) this.powerQ[slot as 0 | 1] = true; // LB / L1
+        if (justPressed(5)) this.tackleQ[slot as 0 | 1] = true; // RB / R1
+        if (justPressed(6) || justPressed(8)) this.switchQ[slot as 0 | 1] = true; // LT / Select
+      } else if (this.phase === 'pens' && justPressed(0)) {
+        this.shootQ[slot as 0 | 1] = true;
+      }
+    });
+    this.gamepadButtonState = currentButtonState;
+  }
+
+  setStick(x: number, y: number, active: boolean): void;
+  setStick(slot: number, x: number, y: number, active: boolean): void;
+  setStick(a: number, b: number, c: number | boolean, d?: boolean) {
+    const slot = d === undefined ? 0 : clamp(Math.trunc(a), 0, 1);
+    const x = d === undefined ? a : b;
+    const y = d === undefined ? b : (c as number);
+    const active = d === undefined ? (c as boolean) : d;
+    this.sticks[slot as 0 | 1] = { x, y, active };
+  }
+
+  touchShoot(slot: 0 | 1 = 0) {
     if (this.inputEnabled && !this.paused) this.shootQ[slot] = true;
   }
-  touchPass(slot = 0) {
+  touchPass(slot: 0 | 1 = 0) {
     if (this.inputEnabled && !this.paused) this.passQ[slot] = true;
   }
-  touchSwitch(slot = 0) {
+  touchSwitch(slot: 0 | 1 = 0) {
     if (this.inputEnabled && !this.paused) this.switchQ[slot] = true;
+  }
+  touchCross(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.crossQ[slot] = true;
+  }
+  touchCurve(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.curveQ[slot] = true;
+  }
+  touchPower(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.powerQ[slot] = true;
+  }
+  touchTackle(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.tackleQ[slot] = true;
   }
 
   setPaused(p: boolean) {
     this.paused = p;
+    if (p) {
+      this.keys.clear();
+      this.sticks = [{ x: 0, y: 0, active: false }, { x: 0, y: 0, active: false }];
+      this.clearInputQueues();
+    }
+  }
+
+  private clearInputQueues() {
+    this.shootQ = [false, false];
+    this.passQ = [false, false];
+    this.switchQ = [false, false];
+    this.crossQ = [false, false];
+    this.curveQ = [false, false];
+    this.powerQ = [false, false];
+    this.tackleQ = [false, false];
   }
   setMuted(m: boolean) {
     this.sfx.setMuted(m);
+  }
+  setKeyBindings(bindings: KeyboardBindings) {
+    this.keyBindings = cloneKeyBindings(bindings);
+    this.keys.clear();
+  }
+  setMatchDuration(duration: MatchDuration) {
+    this.matchDuration = duration;
   }
   unlockAudio() {
     this.sfx.ensure();
@@ -375,34 +588,90 @@ export class GameEngine {
     return this.sfx.muted;
   }
 
+  private teamKit(team: number): TeamKit {
+    return getNationalTeam(this.selectedTeams[team]).kit;
+  }
+
+  setTeams(teams: TeamSelection) {
+    this.selectedTeams = [...teams];
+  }
+
+  setDemoTeamSize(teamSize: TeamSize) {
+    if (this.phase !== 'demo' || this.teamSize === teamSize) return;
+    this.configurePlayers(teamSize);
+    this.players.forEach((p) => p.reset());
+    this.goalkeepers.forEach((keeper) => keeper.reset());
+    this.newBall();
+  }
+
+  private configurePlayers(teamSize: TeamSize) {
+    this.releaseBall();
+    this.teamSize = teamSize;
+    this.players = [];
+    for (let team = 0; team < 2; team++) {
+      for (let idx = 0; idx < teamSize; idx++) {
+        this.players.push(new Player(team, idx, teamSize, this.fieldWidth, this.fieldHeight));
+      }
+    }
+    this.goalkeepers = [
+      new FixedGoalkeeper(0, this.fieldWidth, this.fieldHeight),
+      new FixedGoalkeeper(1, this.fieldWidth, this.fieldHeight),
+    ];
+    this.resetControlledPlayers();
+  }
+
+  private resetControlledPlayers() {
+    const initialPlayer = Math.min(1, this.teamSize - 1);
+    this.controlledIdx = [initialPlayer, initialPlayer];
+  }
+
   // ---------- flusso partita ----------
   startDemo() {
     this.phase = 'demo';
     this.demo = true;
+    this.playerCount = 1;
+    this.resetControlledPlayers();
+    this.keys.clear();
+    this.clearInputQueues();
     this.score = [0, 0];
     this.shots = [0, 0];
-    this.timeLeft = MATCH_TIME;
+    this.timeLeft = this.matchDuration;
     this.winner = -2;
+    this.kickoffTeam = null;
     this.period = 'regular';
+    this.allowDraw = false;
     this.pens = null;
     this.fpFx = [];
     this.fpTrail = [];
     this.players.forEach((p) => p.reset());
+    this.goalkeepers.forEach((keeper) => keeper.reset());
     this.newBall();
   }
 
-  startMatch(diff: Difficulty, mode: GameMode = 'match', opponent: Opponent = 'ai') {
+  startMatch(
+    diff: Difficulty,
+    mode: GameMode | 'group' = 'match',
+    playerCount: PlayerCount = 1,
+    teams: TeamSelection = DEFAULT_TEAMS,
+    teamSize: TeamSize = 3,
+  ) {
+    this.configurePlayers(teamSize);
     this.diff = diff;
-    this.opponent = opponent;
+    this.playerCount = playerCount;
+    this.selectedTeams = [...teams];
     this.demo = false;
+    this.keys.clear();
+    this.clearInputQueues();
     this.sfx.ensure();
     this.score = [0, 0];
     this.shots = [0, 0];
-    this.timeLeft = MATCH_TIME;
+    this.timeLeft = this.matchDuration;
     this.winner = -2;
     this.lastGoalTeam = -1;
-    this.controlledIdx = [1, 1];
+    this.kickoffTeam = null;
+    this.resetControlledPlayers();
     this.period = 'regular';
+    this.allowDraw = mode === 'group';
     this.pens = null;
     this.fpFx = [];
     this.fpTrail = [];
@@ -416,34 +685,146 @@ export class GameEngine {
 
   private kickoff() {
     this.players.forEach((p) => p.reset());
+    this.goalkeepers.forEach((keeper) => keeper.reset());
     this.newBall();
-    this.controlledIdx = [1, 1];
+    this.resetControlledPlayers();
+    if (this.kickoffTeam !== null) {
+      const kickoffTeam = this.kickoffTeam;
+      const takerIndex = Math.min(1, this.teamSize - 1);
+      const taker = this.players[kickoffTeam * this.teamSize + takerIndex];
+      const attackDirection = kickoffTeam === 0 ? 1 : -1;
+      taker.x = this.fieldWidth / 2 - attackDirection * BALL_CARRY_OFFSET;
+      taker.y = this.fieldHeight / 2;
+      taker.vx = 0;
+      taker.vy = 0;
+      taker.faceX = attackDirection;
+      taker.faceY = 0;
+      this.claimBall(taker);
+      this.kickoffTeam = null;
+    }
     this.countdown = 3.4;
     this.countdownShown = 4;
     this.phase = 'countdown';
     this.keys.clear();
+    this.clearInputQueues();
   }
 
   private newBall() {
-    this.ball.x = W / 2;
-    this.ball.y = H / 2;
+    this.releaseBall();
+    this.ball.x = this.fieldWidth / 2;
+    this.ball.y = this.fieldHeight / 2;
     this.ball.vx = 0;
     this.ball.vy = 0;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
     this.ball.lastTouch = -1;
+    this.ball.lastTouchWasKeeper = false;
     this.trail = [];
   }
 
+  private releaseBall(player?: Player) {
+    if (player && this.ballCarrier !== player) return;
+    this.curveFlight = null;
+    this.passReceiver = null;
+    this.recentKicker = null;
+    this.kickerGrace = 0;
+    if (this.ballCarrier) {
+      this.ballCarrier.hasBall = false;
+      this.ballCarrier.holdT = 0;
+    }
+    this.ballCarrier = null;
+  }
+
+  private placeBallAtCarrier(player: Player) {
+    const fx = player.faceX || (player.team === 0 ? 1 : -1);
+    const fy = player.faceY;
+    this.ball.x = clamp(player.x + fx * BALL_CARRY_OFFSET, B_R, this.fieldWidth - B_R);
+    this.ball.y = clamp(player.y + fy * BALL_CARRY_OFFSET, B_R, this.fieldHeight - B_R);
+    this.ball.vx = player.vx + fx * 38;
+    this.ball.vy = player.vy + fy * 38;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
+  }
+
+  private claimBall(player: Player) {
+    if (this.ballCarrier === player) return;
+    this.releaseBall();
+    this.ballCarrier = player;
+    if (player.team === 0 || this.playerCount === 2) this.controlledIdx[player.team] = player.idx;
+    player.hasBall = true;
+    player.holdT = 0;
+    player.kickCd = 0;
+    player.tackleT = 0;
+    player.tackleResolved = false;
+    this.ball.lastTouch = player.team;
+    this.ball.lastTouchWasKeeper = false;
+    this.placeBallAtCarrier(player);
+  }
+
+  private startTackle(player: Player, automated = false) {
+    if (player.tackleCd > 0 || !this.ballCarrier || this.ballCarrier.team === player.team) return;
+    player.tackleCd = automated ? 4 : 1.3;
+    player.tackleT = automated ? 0.16 : 0.18;
+    player.tackleResolved = false;
+    const dx = this.ballCarrier.x - player.x;
+    const dy = this.ballCarrier.y - player.y;
+    const d = Math.hypot(dx, dy) || 1;
+    player.faceX = dx / d;
+    player.faceY = dy / d;
+    const lunge = automated ? 85 : 120;
+    player.vx += (dx / d) * lunge;
+    player.vy += (dy / d) * lunge;
+  }
+
+  private resolveTackles() {
+    const carrier = this.ballCarrier;
+    if (!carrier) return;
+    for (const tackler of this.players) {
+      if (tackler.team === carrier.team || tackler.tackleT <= 0 || tackler.tackleResolved) continue;
+      const d = dist(tackler.x, tackler.y, carrier.x, carrier.y);
+      if (d > TACKLE_RANGE) continue;
+      tackler.tackleResolved = true;
+      const nx = (carrier.x - tackler.x) / (d || 1);
+      const ny = (carrier.y - tackler.y) / (d || 1);
+      const closing = (tackler.vx - carrier.vx) * nx + (tackler.vy - carrier.vy) * ny;
+      const success = clamp(0.1 + closing / 5000, 0.06, 0.24);
+      if (Math.random() < success) {
+        this.claimBall(tackler);
+        tackler.vx += nx * 55;
+        tackler.vy += ny * 55;
+        this.sfx.block();
+        this.shake = Math.min(this.shake + 2.5, 8);
+        this.spawnKick(this.ball.x, this.ball.y, nx, ny, this.teamKit(tackler.team).primary);
+      } else {
+        // Un contrasto fallito rallenta appena l'azione, ma non fa perdere il possesso.
+        carrier.vx += nx * 38;
+        carrier.vy += ny * 38;
+        tackler.vx -= nx * 24;
+        tackler.vy -= ny * 24;
+        this.placeBallAtCarrier(carrier);
+        this.sfx.block();
+        this.shake = Math.min(this.shake + 1, 8);
+      }
+      return;
+    }
+  }
+
   private goal(team: number) {
+    this.releaseBall();
+    this.ball.curve = 0;
     this.score[team]++;
     this.lastGoalTeam = team;
+    this.kickoffTeam = 1 - team;
     this.phase = 'goal';
     this.goalT = team === 0 ? 2.6 : 2.2;
     this.goalFlash = 1;
     this.goalSide = team === 0 ? 1 : -1;
     this.shake = 16;
     this.sfx.goal();
-    const gx = team === 0 ? W : 0;
-    this.spawnConfetti(gx, H / 2, team === 0 ? -1 : 1, 130);
+    const gx = team === 0 ? this.fieldWidth : 0;
+    this.spawnConfetti(gx, this.fieldHeight / 2, team === 0 ? -1 : 1, 130, team);
     this.emit({ type: 'goal', team, score: [...this.score] });
     if (this.demo) this.goalT = 1.6;
   }
@@ -463,7 +844,7 @@ export class GameEngine {
     this.timeLeft = 0;
     this.pens = null;
     this.sfx.whistle(true);
-    if (this.winner === 0) setTimeout(() => this.sfx.cheer(), 400);
+    if (this.winner >= 0) setTimeout(() => this.sfx.cheer(), 400);
     this.emit({
       type: 'end',
       winner: this.winner,
@@ -517,7 +898,10 @@ export class GameEngine {
     this.fpFx = [];
     this.fpTrail = [];
     this.players.forEach((p) => p.reset());
+    this.goalkeepers.forEach((keeper) => keeper.reset());
     this.newBall();
+    this.keys.clear();
+    this.clearInputQueues();
     this.sfx.whistle(true);
     this.emit({ type: 'pensstart' });
   }
@@ -544,6 +928,14 @@ export class GameEngine {
     this.fpTrail = [];
   }
 
+  private penShooterIsHuman() {
+    return this.playerCount === 2 || this.pens?.turn === 0;
+  }
+
+  private penKeeperIsHuman() {
+    return this.playerCount === 2 || this.pens?.turn === 1;
+  }
+
   // imprecisione della mira: cresce se temporeggi
   private penWobble(ps: PensState) {
     const mul = this.diff === 'easy' ? 0.85 : this.diff === 'hard' ? 1.15 : 1;
@@ -558,24 +950,27 @@ export class GameEngine {
     ps.outcomeDone = false;
     this.fpTrail = [];
 
-    if (ps.turn === 0) {
-      // tira il giocatore: destinazione = mirino + imprecisione
+    if (this.penShooterIsHuman()) {
+      // tiro umano: mira con imprecisione crescente se si aspetta troppo
       const w = this.penWobble(ps);
       ps.toX = clamp(ps.aimX + (Math.random() * 2 - 1) * w, -1.25, 1.25);
       ps.toY = clamp(ps.aimY + (Math.random() * 2 - 1) * w * 0.8, 0.02, 1.15);
       ps.kickDur = 0.62;
-      // il portiere IA sceglie dove tuffarsi (a volte legge la mira)
-      const readChance = this.diff === 'easy' ? 0.2 : this.diff === 'normal' ? 0.32 : 0.45;
-      if (Math.random() < readChance) {
-        ps.aiDiveX = clamp(ps.toX + (Math.random() - 0.5) * 0.34, -1, 1);
-        ps.aiDiveY = clamp(ps.toY + (Math.random() - 0.5) * 0.3, 0.1, 0.95);
-      } else {
-        const side = Math.random() < 0.5 ? -1 : 1;
-        ps.aiDiveX = side * (0.45 + Math.random() * 0.5);
-        ps.aiDiveY = Math.random() < 0.55 ? 0.25 + Math.random() * 0.25 : 0.68 + Math.random() * 0.3;
+
+      if (!this.penKeeperIsHuman()) {
+        // Il portiere IA sceglie dove tuffarsi (a volte legge la mira).
+        const readChance = this.diff === 'easy' ? 0.2 : this.diff === 'normal' ? 0.32 : 0.45;
+        if (Math.random() < readChance) {
+          ps.aiDiveX = clamp(ps.toX + (Math.random() - 0.5) * 0.34, -1, 1);
+          ps.aiDiveY = clamp(ps.toY + (Math.random() - 0.5) * 0.3, 0.1, 0.95);
+        } else {
+          const side = Math.random() < 0.5 ? -1 : 1;
+          ps.aiDiveX = side * (0.45 + Math.random() * 0.5);
+          ps.aiDiveY = Math.random() < 0.55 ? 0.25 + Math.random() * 0.25 : 0.68 + Math.random() * 0.3;
+        }
       }
     } else {
-      // tira l'IA: angolo segreto, ma la postura in rincorsa suggerisce il lato
+      // Rigore dell'IA: angolo segreto, ma la postura in rincorsa suggerisce il lato.
       const side = Math.random() < 0.5 ? -1 : 1;
       ps.toX = side * (0.35 + Math.random() * 0.6);
       ps.toY = 0.16 + Math.random() * 0.76;
@@ -595,14 +990,14 @@ export class GameEngine {
     // geometria del tiro: fuori o legno
     if (Math.abs(ps.toX) > 1.04 || ps.toY > 1.02) return 'miss';
     if (Math.abs(ps.toX) > 0.95 || ps.toY > 0.93) return 'post';
-    if (ps.turn === 0) {
-      // portiere IA: posizione raggiunta all'impatto
+    if (!this.penKeeperIsHuman()) {
+      // Portiere IA: posizione raggiunta all'impatto.
       const prog = clamp((ps.kickT - 0.03) / 0.4, 0, 1);
       const kx = ps.aiDiveX * prog;
       const ky = 0.45 + (ps.aiDiveY - 0.45) * prog;
       return dist(kx, ky, ps.toX, ps.toY) < 0.44 ? 'save' : 'goal';
     }
-    // guantone del giocatore
+    // Il guantone del portiere umano.
     const r = ps.diveT > 0 ? 0.5 : 0.32;
     return dist(ps.gloveX, ps.gloveY, ps.toX, ps.toY) <= r ? 'save' : 'goal';
   }
@@ -616,8 +1011,10 @@ export class GameEngine {
 
     // traiettoria di uscita della palla dopo l'impatto
     if (result === 'save') {
-      const dx = ps.toX - (ps.turn === 0 ? ps.aiDiveX : ps.gloveX);
-      const dy = ps.toY - (ps.turn === 0 ? ps.aiDiveY : ps.gloveY);
+      const keeperX = this.penKeeperIsHuman() ? ps.gloveX : ps.aiDiveX;
+      const keeperY = this.penKeeperIsHuman() ? ps.gloveY : ps.aiDiveY;
+      const dx = ps.toX - keeperX;
+      const dy = ps.toY - keeperY;
       ps.outX = clamp(ps.toX + dx * 1.6 + (Math.random() - 0.5) * 0.4, -1.4, 1.4);
       ps.outY = clamp(ps.toY + dy * 1.2 + 0.25, 0.05, 1.2);
     } else if (result === 'post') {
@@ -635,17 +1032,19 @@ export class GameEngine {
     ps.stageT = ps.resolveDur;
 
     // effetti particellari nel punto d'impatto
-    const attack = ps.turn === 0;
+    const attack = this.penShooterIsHuman();
     const L = attack ? this.fpLayoutA(this.vw, this.vh) : this.fpLayoutD(this.vw, this.vh);
     const pt = this.fpMap(L, ps.toX, ps.toY);
     if (result === 'goal') {
       this.sfx.goal();
       this.shake = 12;
-      this.fpBurst(pt.x, pt.y, ['#38bdf8', '#fb7185', '#fbbf24', '#ffffff', '#4ade80'], 70);
+      const scoringKit = this.teamKit(ps.turn);
+      this.fpBurst(pt.x, pt.y, [scoringKit.primary, scoringKit.secondary, scoringKit.accent, '#fbbf24', '#ffffff'], 70);
     } else if (result === 'save') {
       this.sfx.block();
       this.shake = Math.min(this.shake + 6, 12);
-      this.fpBurst(pt.x, pt.y, ['#ffffff', '#7dd3fc', '#bae6fd'], 30);
+      const goalkeeperKit = this.teamKit(1 - ps.turn);
+      this.fpBurst(pt.x, pt.y, [goalkeeperKit.primary, goalkeeperKit.secondary, '#ffffff'], 30);
     } else if (result === 'post') {
       this.sfx.block();
       this.shake = Math.min(this.shake + 7, 12);
@@ -658,15 +1057,15 @@ export class GameEngine {
 
   private penDecided(): boolean {
     const ps = this.pens!;
-    const [b, r] = ps.score;
-    const [bt, rt] = ps.taken;
-    if (bt < PEN_ROUNDS || rt < PEN_ROUNDS) {
-      const bLeft = Math.max(0, PEN_ROUNDS - bt);
-      const rLeft = Math.max(0, PEN_ROUNDS - rt);
-      return b > r + rLeft || r > b + bLeft;
+    const [homeScore, awayScore] = ps.score;
+    const [homeTaken, awayTaken] = ps.taken;
+    if (homeTaken < PEN_ROUNDS || awayTaken < PEN_ROUNDS) {
+      const homeLeft = Math.max(0, PEN_ROUNDS - homeTaken);
+      const awayLeft = Math.max(0, PEN_ROUNDS - awayTaken);
+      return homeScore > awayScore + awayLeft || awayScore > homeScore + homeLeft;
     }
     // morte subita: a parità di tiri effettuati, chi è avanti vince
-    return bt === rt && b !== r;
+    return homeTaken === awayTaken && homeScore !== awayScore;
   }
 
   private penAdvance() {
@@ -685,17 +1084,20 @@ export class GameEngine {
     const ps = this.pens!;
     ps.stageT -= dt;
     this.updateFpFx(dt);
-    const attack = ps.turn === 0;
-    // chi è "umano" in questo momento: in 2 giocatori tocca al giocatore del turno,
-    // in 1 giocatore l'unico umano (squadra BLU) tira e para sempre
-    const activeSlot = this.opponent === 'human' ? ps.turn : 0;
-    const dir = this.inputDir(activeSlot);
 
-    // il giocatore muove il guantone (quando difende), sempre tranne che a risultato mostrato
-    if (!attack && ps.stage !== 'resolve') {
-      const gx = dir.x;
-      const gy = -dir.y;
-      if (this.shootQ[activeSlot] && ps.diveT <= 0 && (Math.abs(gx) > 0.15 || Math.abs(gy) > 0.15)) {
+    const shooterTeam = ps.turn;
+    const keeperTeam = 1 - shooterTeam;
+    const humanShooter = this.penShooterIsHuman();
+    const humanKeeper = this.penKeeperIsHuman();
+    const neutralDir = { x: 0, y: 0, len: 0 };
+    const shooterDir = humanShooter ? this.inputDir(shooterTeam) : neutralDir;
+    const keeperDir = humanKeeper ? this.inputDir(keeperTeam) : neutralDir;
+
+    // In locale si possono preparare insieme: uno mira e l'altro muove il guantone.
+    if (humanKeeper && ps.stage !== 'resolve') {
+      const gx = keeperDir.x;
+      const gy = -keeperDir.y;
+      if (this.shootQ[keeperTeam] && ps.diveT <= 0 && (Math.abs(gx) > 0.15 || Math.abs(gy) > 0.15)) {
         ps.diveT = 0.38;
         ps.diveDx = gx;
         ps.diveDy = gy;
@@ -717,20 +1119,20 @@ export class GameEngine {
       if (ps.stageT <= 0) {
         ps.stage = 'aim';
         ps.aimT = 0;
-        ps.stageT = attack
+        ps.stageT = humanShooter
           ? 8 // tempo massimo per mirare
           : (this.diff === 'hard' ? 1.0 : this.diff === 'normal' ? 1.3 : 1.6) + Math.random() * 0.4;
-        if (attack) this.sfx.whistle(false);
+        if (humanShooter) this.sfx.whistle(false);
       }
       return;
     }
 
     if (ps.stage === 'aim') {
-      if (attack) {
+      if (humanShooter) {
         ps.aimT += dt;
-        ps.aimX = clamp(ps.aimX + dir.x * 1.5 * dt, -0.96, 0.96);
-        ps.aimY = clamp(ps.aimY - dir.y * 1.35 * dt, 0.05, 0.96);
-        if (this.shootQ[activeSlot]) {
+        ps.aimX = clamp(ps.aimX + shooterDir.x * 1.5 * dt, -0.96, 0.96);
+        ps.aimY = clamp(ps.aimY - shooterDir.y * 1.35 * dt, 0.05, 0.96);
+        if (this.shootQ[shooterTeam]) {
           this.penRelease();
           return;
         }
@@ -748,9 +1150,7 @@ export class GameEngine {
       return;
     }
 
-    if (ps.stage === 'resolve') {
-      if (ps.stageT <= 0) this.penAdvance();
-    }
+    if (ps.stage === 'resolve' && ps.stageT <= 0) this.penAdvance();
   }
 
   // ---------- update ----------
@@ -758,6 +1158,7 @@ export class GameEngine {
     if (this.disposed) return;
     const dt = clamp((t - this.lastT) / 1000, 0, 0.033);
     this.lastT = t;
+    this.pollGamepads();
     if (!this.paused) this.update(dt);
     this.render();
     this.raf = requestAnimationFrame(this.frame);
@@ -767,11 +1168,17 @@ export class GameEngine {
     this.time += dt;
     this.shake = Math.max(0, this.shake - dt * 40 - this.shake * 4 * dt);
     this.goalFlash = Math.max(0, this.goalFlash - dt * 1.6);
+    this.kickerGrace = Math.max(0, this.kickerGrace - dt);
+    if (this.kickerGrace === 0) this.recentKicker = null;
     this.updateParticles(dt);
-    this.players.forEach((p) => (p.kickCd = Math.max(0, p.kickCd - dt)));
+    this.players.forEach((p) => {
+      p.kickCd = Math.max(0, p.kickCd - dt);
+      p.tackleCd = Math.max(0, p.tackleCd - dt);
+      p.tackleT = Math.max(0, p.tackleT - dt);
+    });
 
     if (this.phase === 'countdown') {
-      this.clearQueues();
+      this.clearInputQueues();
       this.countdown -= dt;
       const c = Math.ceil(this.countdown);
       if (c !== this.countdownShown && c > 0) {
@@ -786,16 +1193,17 @@ export class GameEngine {
     }
 
     if (this.phase === 'goal') {
-      this.clearQueues();
+      this.clearInputQueues();
       this.goalT -= dt;
       // palla che si assesta in rete
       this.ball.vx *= Math.exp(-4 * dt);
       this.ball.vy *= Math.exp(-4 * dt);
-      this.ball.x = clamp(this.ball.x + this.ball.vx * dt, -GOAL_DEPTH + 7, W + GOAL_DEPTH - 7);
-      this.ball.y = clamp(this.ball.y + this.ball.vy * dt, H / 2 - GOAL_HALF + 8, H / 2 + GOAL_HALF - 8);
+      this.ball.x = clamp(this.ball.x + this.ball.vx * dt, -GOAL_DEPTH + 7, this.fieldWidth + GOAL_DEPTH - 7);
+      this.ball.y = clamp(this.ball.y + this.ball.vy * dt, this.fieldHeight / 2 - GOAL_HALF + 8, this.fieldHeight / 2 + GOAL_HALF - 8);
       if (this.goalT <= 0) {
         if (this.demo) {
           this.players.forEach((p) => p.reset());
+          this.goalkeepers.forEach((keeper) => keeper.reset());
           this.newBall();
           this.phase = 'demo';
         } else if (this.period === 'extra') {
@@ -811,7 +1219,7 @@ export class GameEngine {
 
     if (this.phase === 'pens') {
       this.updatePens(dt);
-      this.clearQueues();
+      this.clearInputQueues();
       return;
     }
 
@@ -822,7 +1230,7 @@ export class GameEngine {
         this.lastWholeSec = whole;
         if (whole <= 5 && whole > 0) this.sfx.count(false);
         if (whole <= 0) {
-          if (this.period === 'regular' && this.score[0] === this.score[1]) {
+          if (this.period === 'regular' && this.score[0] === this.score[1] && !this.allowDraw) {
             this.startExtraTime();
           } else if (this.period === 'extra') {
             this.startPens();
@@ -835,38 +1243,47 @@ export class GameEngine {
     }
 
     const isDemo = this.phase === 'demo';
-    const twoPlayer = this.opponent === 'human';
 
-    // ---------- controlli ----------
+    // La squadra umana segue sempre il compagno che ha appena conquistato il pallone.
+    if (this.ballCarrier && (this.ballCarrier.team === 0 || this.playerCount === 2)) {
+      this.controlledIdx[this.ballCarrier.team] = this.ballCarrier.idx;
+    }
+
+    // ---------- controlli e possesso ----------
     for (const p of this.players) {
-      p.hasBall = false;
-      if (this.isHumanPlayer(p) && this.phase === 'play') {
+      p.hasBall = this.ballCarrier === p;
+      const hasHumanTeam = p.team === 0 || this.playerCount === 2;
+      const isHuman = !isDemo && hasHumanTeam && p.idx === this.controlledIdx[p.team];
+      const autoReceivingPass = !this.ballCarrier && this.passReceiver === p;
+      if (isHuman && this.phase === 'play' && !autoReceivingPass) {
         this.humanControl(p, dt);
       } else {
-        // in 2 giocatori la squadra ROSSA non è mai IA; squadre non umane usano la IA
-        // a velocità pari, così i due hanno davvero la stessa squadra di compagni
-        const mates = twoPlayer ? DIFFS.normal : p.team === 1 ? DIFFS[this.diff] : { ...DIFFS.normal, speed: 262 };
-        const cfg = isDemo ? DEMO_CFG : mates;
+        const cfg = isDemo
+          ? DEMO_CFG
+          : this.playerCount === 2
+            ? DIFFS[this.diff]
+            : p.team === 1
+              ? DIFFS[this.diff]
+              : { ...DIFFS.normal, speed: 262 };
         this.aiControl(p, dt, cfg);
       }
       this.integratePlayer(p, dt);
     }
 
     this.separatePlayers();
-
-    for (const p of this.players) this.contactBall(p, dt);
-
+    this.resolveTackles();
+    this.updateGoalkeepers(dt);
     this.updateBall(dt, isDemo);
-
-    // dribble magnet
-    for (const p of this.players) {
-      if (!p.hasBall || p.kickCd > 0) continue;
-      const bs = Math.hypot(this.ball.vx, this.ball.vy);
-      if (bs > 260) continue;
-      const k = Math.min(1, 12 * dt);
-      this.ball.vx += (p.vx * 1.02 + p.faceX * 46 - this.ball.vx) * k;
-      this.ball.vy += (p.vy * 1.02 + p.faceY * 46 - this.ball.vy) * k;
-      p.holdT += dt;
+    if (!this.ballCarrier && (this.phase === 'play' || isDemo)) {
+      for (const p of this.players) {
+        this.contactBall(p, dt);
+        if (this.ballCarrier) break;
+      }
+    }
+    if (this.ballCarrier && (this.phase === 'play' || isDemo)) {
+      this.ballCarrier.hasBall = true;
+      this.ballCarrier.holdT += dt;
+      this.placeBallAtCarrier(this.ballCarrier);
     }
 
     // trail palla
@@ -878,66 +1295,54 @@ export class GameEngine {
       this.trail.shift();
     }
 
-    // queue input uomini
+    // Elaborazione degli input: ogni persona gestisce una squadra e può cambiare giocatore.
     if (this.phase === 'play' && !isDemo) {
-      for (let slot = 0; slot < 2; slot++) {
-        if (!this.slotEnabled(slot)) continue;
-        const me = this.getControlled(slot);
-        if (this.switchQ[slot]) {
-          this.controlledIdx[slot] = (this.controlledIdx[slot] + 1) % 3;
+      const teams = this.playerCount === 2 ? [0, 1] : [0];
+      for (const team of teams) {
+        if (this.switchQ[team] && this.teamSize > 1 && this.ballCarrier?.team !== team) {
+          this.controlledIdx[team] = (this.controlledIdx[team] + 1) % this.teamSize;
           this.sfx.swap();
         }
-        const near = me.kickCd <= 0 && dist(me.x, me.y, this.ball.x, this.ball.y) < KICK_RANGE;
-        if (this.shootQ[slot] && near) {
-          this.shoot(me, 0.05);
-        }
-        if (this.passQ[slot] && near) {
-          this.pass(me, 0.05, true);
-        }
+      }
+      for (const team of teams) {
+        const me = this.getControlled(team);
+        if (this.tackleQ[team]) this.startTackle(me);
+        if (this.ballCarrier !== me || me.kickCd > 0) continue;
+        if (this.powerQ[team]) this.powerShot(me);
+        else if (this.curveQ[team]) this.curveShot(me);
+        else if (this.crossQ[team]) this.cross(me, 0.04, true);
+        else if (this.shootQ[team]) this.shoot(me, 0.05);
+        else if (this.passQ[team]) this.pass(me, 0.05, true);
       }
     }
-    this.clearQueues();
+    this.clearInputQueues();
   }
 
-  private clearQueues() {
-    this.shootQ[0] = false;
-    this.shootQ[1] = false;
-    this.passQ[0] = false;
-    this.passQ[1] = false;
-    this.switchQ[0] = false;
-    this.switchQ[1] = false;
+  private getControlled(team = 0) {
+    return this.players[team * this.teamSize + this.controlledIdx[team]];
   }
 
-  /** lo slot 1 (P2, squadra ROSSA) esiste solo in modalità 2 giocatori */
-  private slotEnabled(slot: number) {
-    return slot === 0 || this.opponent === 'human';
-  }
-
-  private isDemo() {
-    return this.phase === 'demo';
-  }
-
-  /** il giocatore umano che sta toccando la palla in un dato momento */
-  private isHumanPlayer(p: Player) {
-    return !this.demo && this.slotEnabled(p.team) && p.idx === this.controlledIdx[p.team];
-  }
-
-  private getControlled(team: number) {
-    return this.players[team * 3 + this.controlledIdx[team]];
-  }
-
-  private inputDir(slot: number) {
-    const km = KEYMAP[slot];
+  private inputDir(team = 0) {
     let x = 0;
     let y = 0;
-    if (km.up.some((k) => this.keys.has(k))) y -= 1;
-    if (km.down.some((k) => this.keys.has(k))) y += 1;
-    if (km.left.some((k) => this.keys.has(k))) x -= 1;
-    if (km.right.some((k) => this.keys.has(k))) x += 1;
-    const st = this.sticks[slot];
-    if (st.active && (Math.abs(st.x) > 0.12 || Math.abs(st.y) > 0.12)) {
-      x = st.x;
-      y = st.y;
+    const keys = this.keyBindings[team === 0 ? 'p1' : 'p2'];
+    if (team === 0 || this.playerCount === 2) {
+      if (this.keys.has(keys.up)) y -= 1;
+      if (this.keys.has(keys.down)) y += 1;
+      if (this.keys.has(keys.left)) x -= 1;
+      if (this.keys.has(keys.right)) x += 1;
+    }
+    const slot = team as 0 | 1;
+    const stick = this.sticks[slot];
+    if (stick.active && (Math.abs(stick.x) > 0.12 || Math.abs(stick.y) > 0.12)) {
+      x = stick.x;
+      y = stick.y;
+    } else {
+      const gamepad = this.gamepadAxes[slot];
+      if (Math.abs(gamepad.x) > 0.12 || Math.abs(gamepad.y) > 0.12) {
+        x = gamepad.x;
+        y = gamepad.y;
+      }
     }
     const l = Math.hypot(x, y);
     if (l > 1) {
@@ -949,7 +1354,7 @@ export class GameEngine {
 
   private humanControl(p: Player, dt: number) {
     const dir = this.inputDir(p.team);
-    const sprint = KEYMAP[p.team].sprint.some((k) => this.keys.has(k));
+    const sprint = this.gamepadSprint[p.team as 0 | 1] || this.keys.has(this.keyBindings[p.team === 0 ? 'p1' : 'p2'].sprint);
     const maxS = (sprint ? 352 : 296) * (dir.len || 0);
     const dvx = dir.x * maxS - p.vx;
     const dvy = dir.y * maxS - p.vy;
@@ -973,114 +1378,128 @@ export class GameEngine {
   }
 
   private ownGoalX(team: number) {
-    return team === 0 ? 0 : W;
+    return team === 0 ? 0 : this.fieldWidth;
   }
   private oppGoalX(team: number) {
-    return team === 0 ? W : 0;
+    return team === 0 ? this.fieldWidth : 0;
   }
 
   private aiControl(p: Player, dt: number, cfg: DiffCfg) {
     const ball = this.ball;
     const ownX = this.ownGoalX(p.team);
     const oppX = this.oppGoalX(p.team);
-    const isKeeper = p.idx === 0;
     const opps = this.players.filter((q) => q.team !== p.team);
-    const myTeamPossession = ball.lastTouch === p.team;
-    const meHas = dist(p.x, p.y, ball.x, ball.y) < P_R + B_R + 3;
+    const form = formationFor(p.team, p.idx, this.teamSize, this.fieldWidth, this.fieldHeight);
+    const carrier = this.ballCarrier;
+    const meHas = carrier === p;
     let tx = p.tx;
     let ty = p.ty;
     let maxS = cfg.speed;
 
-    // chi è il più vicino al pallone nella mia squadra (escluso portiere salvo emergenze)
-    const field = this.players.filter((q) => q.team === p.team && q.idx !== 0);
-    const sorted = [...field].sort(
-      (a, b) => dist(a.x, a.y, ball.x, ball.y) - dist(b.x, b.y, ball.x, ball.y),
-    );
-    const chaser = sorted[0];
-    // il pallone è "libero" se nessun giocatore lo sta toccando
-    const loose = !this.players.some(
-      (q) => dist(q.x, q.y, ball.x, ball.y) < P_R + B_R + 6,
-    );
+    // Il giocatore più vicino pressa il portatore o attacca il pallone libero.
+    const field = this.players.filter((q) => q.team === p.team);
+    const targetX = carrier?.x ?? ball.x;
+    const targetY = carrier?.y ?? ball.y;
+    const chaser = [...field].sort(
+      (a, b) => dist(a.x, a.y, targetX, targetY) - dist(b.x, b.y, targetX, targetY),
+    )[0];
 
     if (meHas) {
-      // ---- ho la palla ----
-      const dGoal = dist(ball.x, ball.y, oppX, H / 2);
+      const dGoal = dist(p.x, p.y, oppX, this.fieldHeight / 2);
       const pressure = Math.min(...opps.map((o) => dist(o.x, o.y, p.x, p.y)));
-      const dOwn = dist(p.x, p.y, ownX, H / 2);
+      const dOwn = dist(p.x, p.y, ownX, this.fieldHeight / 2);
 
-      if (p.kickCd <= 0 && p.holdT > cfg.minHold * (isKeeper ? 1.6 : 1)) {
-        if (isKeeper || dOwn < 240) {
-          // rinvio
-          if (pressure < 120 || p.holdT > 1.6) this.clear(p);
+      const aiActionHold = Math.min(cfg.minHold, 0.42);
+      if (p.kickCd <= 0 && p.holdT > aiActionHold) {
+        const passDistance = Math.max(250, cfg.shootRange * 0.72);
+        if (this.teamSize > 1 && Math.abs(p.y - this.fieldHeight / 2) > 145 && dGoal < 700 && pressure > 65 && p.holdT > 0.35) {
+          this.aiCross(p, cfg);
+        } else if (this.teamSize > 1 && dGoal > passDistance) {
+          // Passare è la prima scelta anche nella propria metà: non spazzare via palloni innocui.
+          this.aiPass(p, cfg);
+        } else if (dOwn < 240) {
+          if (this.teamSize === 1 && (pressure < 140 || p.holdT > 1.3)) this.clear(p);
         } else if (dGoal < cfg.shootRange) {
-          this.aiShoot(p, cfg);
-        } else if (pressure < 100 || p.holdT > 1.7) {
+          if (Math.abs(p.y - this.fieldHeight / 2) > 115 && pressure > 90) this.aiCurveShot(p);
+          else this.aiShoot(p, cfg);
+        } else if (pressure < 130 || p.holdT > 0.9) {
           this.aiPass(p, cfg);
         }
       }
-      // dribbling verso la porta con curvatura
-      const gy = H / 2 + Math.sin(this.time * 1.3 + p.idx * 2.1) * 90;
-      const dx = oppX - ball.x;
-      const dy = gy - ball.y;
+
+      const gy = this.fieldHeight / 2 + Math.sin(this.time * 1.3 + p.idx * 2.1) * 90;
+      const dx = oppX - p.x;
+      const dy = gy - p.y;
       const dl = Math.hypot(dx, dy) || 1;
       let sideX = 0;
       let sideY = 0;
       if (pressure < 130) {
-        // aggira il difensore
         const op = opps.reduce((a, b) =>
           dist(a.x, a.y, p.x, p.y) < dist(b.x, b.y, p.x, p.y) ? a : b,
         );
         sideX = -(op.y - p.y) * 0.5;
         sideY = (op.x - p.x) * 0.5;
       }
-      tx = ball.x + (dx / dl) * 70 + sideX;
-      ty = ball.y + (dy / dl) * 70 + sideY;
-      maxS = cfg.speed * 0.92;
-    } else if (isKeeper) {
-      // ---- portiere ----
-      const gx = ownX;
-      const dx = ball.x - gx;
-      const dy = ball.y - H / 2;
-      const d = Math.hypot(dx, dy) || 1;
-      const ballComing =
-        Math.sign(ball.vx) === (p.team === 0 ? -1 : 1) && Math.abs(ball.vx) > 220;
-      let hold = clamp(d * (ballComing ? 0.55 : 0.34), 42, 250);
-      if (d < 170) hold = d; // uscita
-      tx = gx + (dx / d) * hold;
-      tx = p.team === 0 ? clamp(tx, 46, 270) : clamp(tx, W - 270, W - 46);
-      ty = clamp(H / 2 + (dy / d) * hold, H / 2 - 190, H / 2 + 190);
-      maxS = cfg.speed * 1.05;
-    } else if (p === chaser && (!myTeamPossession || loose)) {
-      // ---- presso il pallone ----
-      tx = ball.x + ball.vx * 0.22;
-      ty = ball.y + ball.vy * 0.22;
-      maxS = cfg.speed * 1.06;
-    } else if (!myTeamPossession && ball.lastTouch !== p.team) {
-      // ---- copertura difensiva ----
-      const gx = ownX;
-      const dx = ball.x - gx;
-      const dy = ball.y - H / 2;
-      const wob = p.idx === 1 ? -120 : 120;
-      tx = gx + dx * 0.38;
-      ty = H / 2 + dy * 0.55 + wob * 0.4;
-      tx = p.team === 0 ? clamp(tx, 90, W * 0.62) : clamp(tx, W * 0.38, W - 90);
-      ty = clamp(ty, 70, H - 70);
-    } else {
-      // ---- supporto in attacco ----
-      const form = FORMATION[p.team][p.idx];
-      const dir = p.team === 0 ? 1 : -1;
-      const spread = p.idx === 1 ? -1 : 1;
-      const adv = clamp(p.team === 0 ? ball.x - form.x : form.x - ball.x, 0, 260);
-      tx = form.x + dir * (60 + adv * 0.5);
-      ty = clamp(ball.y + spread * 190, 90, H - 90);
-      // non sovrapporsi al portatore
-      const carrier = this.players.find(
-        (q) => q.team === p.team && q !== p && dist(q.x, q.y, ball.x, ball.y) < P_R + B_R + 4,
-      );
-      if (carrier && dist(tx, ty, carrier.x, carrier.y) < 150) {
-        ty = carrier.y + spread * 220;
+      const advance = 190 + clamp((520 - dGoal) * 0.14, 0, 110);
+      tx = p.x + (dx / dl) * advance + sideX;
+      ty = p.y + (dy / dl) * 105 + sideY;
+      maxS = cfg.speed * 1.24;
+    } else if (!carrier && this.passReceiver === p) {
+      // Il ricevente corre sul pallone in arrivo, non anticipa una corsa in avanti.
+      tx = ball.x;
+      ty = ball.y;
+      maxS = cfg.speed * 1.4;
+    } else if (carrier && carrier.team === p.team) {
+      const direction = p.team === 0 ? 1 : -1;
+      const lane = Math.sign(form.y - this.fieldHeight / 2) || (p.idx % 2 === 0 ? -1 : 1);
+      const forwardRun = p.idx % 2 === 0 ? 220 : 290;
+      const supportX = carrier.x + direction * forwardRun;
+      const supportY = carrier.y + lane * (p.idx % 2 === 0 ? 145 : 205);
+      tx = clamp(supportX, 70, this.fieldWidth - 70);
+      ty = clamp(supportY, 70, this.fieldHeight - 70);
+      maxS = cfg.speed * 1.3;
+    } else if (carrier && carrier.team !== p.team) {
+      if (p === chaser) {
+        const lead = 0.12;
+        tx = carrier.x + carrier.vx * lead;
+        ty = carrier.y + carrier.vy * lead;
+        maxS = cfg.speed * 1.12;
+        if (dist(p.x, p.y, carrier.x, carrier.y) < TACKLE_RANGE - 8 && p.tackleCd <= 0) {
+          this.startTackle(p, true);
+        }
+      } else {
+        const dx = carrier.x - ownX;
+        const dy = carrier.y - this.fieldHeight / 2;
+        const wob = Math.sign(form.y - this.fieldHeight / 2) * 115;
+        tx = ownX + dx * 0.38;
+        ty = this.fieldHeight / 2 + dy * 0.5 + wob * 0.42;
+        tx = p.team === 0 ? clamp(tx, 90, this.fieldWidth * 0.62) : clamp(tx, this.fieldWidth * 0.38, this.fieldWidth - 90);
+        ty = clamp(ty, 70, this.fieldHeight - 70);
       }
-      ty = clamp(ty, 80, H - 80);
+    } else if (!carrier && p === chaser) {
+      tx = ball.x + ball.vx * 0.18;
+      ty = ball.y + ball.vy * 0.18;
+      maxS = cfg.speed * 1.06;
+    } else if (!carrier && ball.lastTouch !== p.team) {
+      const dx = ball.x - ownX;
+      const dy = ball.y - this.fieldHeight / 2;
+      const wob = Math.sign(form.y - this.fieldHeight / 2) * 120;
+      tx = ownX + dx * 0.38;
+      ty = this.fieldHeight / 2 + dy * 0.55 + wob * 0.4;
+      tx = p.team === 0 ? clamp(tx, 90, this.fieldWidth * 0.62) : clamp(tx, this.fieldWidth * 0.38, this.fieldWidth - 90);
+      ty = clamp(ty, 70, this.fieldHeight - 70);
+    } else {
+      const dir = p.team === 0 ? 1 : -1;
+      const spread = Math.sign(form.y - this.fieldHeight / 2);
+      const adv = clamp(p.team === 0 ? targetX - form.x : form.x - targetX, 0, 260);
+      tx = form.x + dir * (60 + adv * 0.5);
+      ty = clamp(targetY + spread * 190, 90, this.fieldHeight - 90);
+      const teammateCarrier = carrier?.team === p.team && carrier !== p ? carrier : null;
+      if (teammateCarrier && dist(tx, ty, teammateCarrier.x, teammateCarrier.y) < 150) {
+        const supportSide = spread || (teammateCarrier.y < this.fieldHeight / 2 ? 1 : -1);
+        ty = teammateCarrier.y + supportSide * 220;
+      }
+      ty = clamp(ty, 80, this.fieldHeight - 80);
     }
 
     p.tx = tx;
@@ -1111,13 +1530,34 @@ export class GameEngine {
     }
   }
 
+  private updateGoalkeepers(dt: number) {
+    if (dt <= 0) return;
+
+    for (const keeper of this.goalkeepers) {
+      const ballComing = keeper.team === 0 ? this.ball.vx < -80 : this.ball.vx > 80;
+      const crossingTime = ballComing ? (keeper.x - this.ball.x) / this.ball.vx : -1;
+      let targetY = this.fieldHeight / 2 + (this.ball.y - this.fieldHeight / 2) * 0.18;
+
+      if (crossingTime >= 0 && crossingTime < 1.1) {
+        // Anticipa il tiro solo quando arriva verso la porta, lasciando un breve tempo di reazione.
+        const leadTime = Math.max(0, crossingTime - 0.1);
+        targetY = this.ball.y + this.ball.vy * leadTime;
+      }
+
+      targetY = clamp(targetY, this.fieldHeight / 2 - GOAL_HALF + GK_R * 0.55, this.fieldHeight / 2 + GOAL_HALF - GK_R * 0.55);
+      const step = clamp(targetY - keeper.y, -GK_SPEED * dt, GK_SPEED * dt);
+      keeper.y += step;
+      keeper.vy = step / dt;
+    }
+  }
+
   private integratePlayer(p: Player, dt: number) {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     p.vx *= Math.exp(-0.4 * dt);
     p.vy *= Math.exp(-0.4 * dt);
-    p.x = clamp(p.x, P_R, W - P_R);
-    p.y = clamp(p.y, P_R, H - P_R);
+    p.x = clamp(p.x, P_R, this.fieldWidth - P_R);
+    p.y = clamp(p.y, P_R, this.fieldHeight - P_R);
   }
 
   private separatePlayers() {
@@ -1148,94 +1588,335 @@ export class GameEngine {
         }
       }
     }
+    for (const p of this.players) {
+      p.x = clamp(p.x, P_R, this.fieldWidth - P_R);
+      p.y = clamp(p.y, P_R, this.fieldHeight - P_R);
+    }
   }
 
-  private contactBall(p: Player, dt: number) {
-    const ball = this.ball;
-    const dx = ball.x - p.x;
-    const dy = ball.y - p.y;
+  private contactBall(p: Player, _dt: number) {
+    if (this.ballCarrier || this.ball.z > 24 || this.curveFlight) return;
+    if (p === this.recentKicker && this.kickerGrace > 0) return;
+    const dx = this.ball.x - p.x;
+    const dy = this.ball.y - p.y;
     const d = Math.hypot(dx, dy);
-    const min = P_R + B_R;
-    if (d < min && d > 0.01) {
-      const nx = dx / d;
-      const ny = dy / d;
-      ball.x = p.x + nx * (min + 0.5);
-      ball.y = p.y + ny * (min + 0.5);
-      const rvx = ball.vx - p.vx;
-      const rvy = ball.vy - p.vy;
-      const approach = rvx * nx + rvy * ny;
-      if (approach < 0) {
-        ball.vx -= nx * approach * 1.35;
-        ball.vy -= ny * approach * 1.35;
-      }
-      ball.vx += p.vx * 0.18;
-      ball.vy += p.vy * 0.18;
-      p.hasBall = true;
-      ball.lastTouch = p.team;
-      void dt;
+    if (d < P_R + B_R + 7) {
+      // Un contatto controllabile diventa possesso: il pallone non rimbalza più via.
+      this.claimBall(p);
+      this.sfx.pass();
     }
+  }
+
+  private contactGoalkeeper(keeper: FixedGoalkeeper, isDemo: boolean) {
+    const ball = this.ball;
+    if (ball.z > 26) return;
+    const dx = ball.x - keeper.x;
+    const dy = ball.y - keeper.y;
+    const d = Math.hypot(dx, dy);
+    const min = GK_R + B_R;
+    if (d >= min) return;
+
+    if (this.ballCarrier) this.releaseBall(this.ballCarrier);
+
+    const faceX = keeper.team === 0 ? 1 : -1;
+    const incoming = keeper.team === 0 ? ball.vx < -20 : ball.vx > 20;
+    const impact = clamp(dy / GK_R, -1, 1);
+    let nx = d > 0.01 ? dx / d : faceX;
+    let ny = d > 0.01 ? dy / d : 0;
+
+    if (incoming) {
+      const cornerDeflection = !isDemo && Math.abs(impact) > 0.68 && Math.random() < 0.48;
+      if (cornerDeflection) {
+        // Una parata laterale può deviare il pallone oltre la linea di fondo.
+        nx = -faceX;
+        ny = Math.sign(impact || 1);
+        ball.x = keeper.x - faceX * (min + 0.5);
+        ball.y = keeper.y + dy;
+        ball.vx = -faceX * Math.max(190, Math.abs(ball.vx) * 0.2);
+        ball.vy = Math.sign(impact || 1) * Math.max(520, Math.abs(ball.vy) * 0.72);
+      } else {
+        // La parata ordinaria respinge il pallone verso il campo.
+        nx = faceX;
+        ny = impact * 0.45;
+        ball.x = keeper.x + faceX * (min + 0.5);
+        ball.y = keeper.y + dy;
+        ball.vx = faceX * Math.max(190, Math.abs(ball.vx) * 0.58);
+        ball.vy = ball.vy * 0.38 + keeper.vy * 0.35 + impact * 180;
+      }
+    } else {
+      ball.x = keeper.x + nx * (min + 0.5);
+      ball.y = keeper.y + ny * (min + 0.5);
+      const relativeVx = ball.vx;
+      const relativeVy = ball.vy - keeper.vy;
+      const approach = relativeVx * nx + relativeVy * ny;
+      if (approach < 0) {
+        ball.vx -= nx * approach * 1.65;
+        ball.vy = keeper.vy + relativeVy - ny * approach * 1.65;
+      }
+    }
+
+    ball.z = 0;
+    ball.vz = 0;
+    ball.curve = 0;
+    ball.lastTouch = keeper.team;
+    ball.lastTouchWasKeeper = true;
+    if (!isDemo) this.sfx.block();
+    this.shake = Math.min(this.shake + 2.5, 10);
+    this.spawnKick(ball.x, ball.y, nx, ny, this.teamKit(keeper.team).primary);
+  }
+
+  private awardCorner(team: number, leftEnd: boolean, y: number) {
+    const top = y < this.fieldHeight / 2;
+    const taker = this.players
+      .filter((p) => p.team === team)
+      .reduce((best, p) => {
+        const cornerX = leftEnd ? 0 : this.fieldWidth;
+        const cornerY = top ? 0 : this.fieldHeight;
+        return dist(p.x, p.y, cornerX, cornerY) < dist(best.x, best.y, cornerX, cornerY) ? p : best;
+      });
+
+    this.releaseBall();
+    taker.x = team === 0 ? this.fieldWidth - 48 : 48;
+    taker.y = top ? 48 : this.fieldHeight - 48;
+    taker.vx = 0;
+    taker.vy = 0;
+    taker.faceX = team === 0 ? 1 : -1;
+    taker.faceY = top ? 0.5 : -0.5;
+    this.controlledIdx[team] = taker.idx;
+    this.claimBall(taker);
+    this.ball.lastTouch = team;
+    this.ball.lastTouchWasKeeper = false;
+    this.emit({ type: 'corner', team });
+  }
+
+  private updateCurveFlight(dt: number) {
+    const flight = this.curveFlight;
+    if (!flight) return;
+    const previousProgress = clamp(flight.elapsed / flight.duration, 0, 1);
+    flight.elapsed = Math.min(flight.duration, flight.elapsed + dt);
+    const progress = clamp(flight.elapsed / flight.duration, 0, 1);
+    const previousX = this.ball.x;
+    const previousY = this.ball.y;
+    const sweep = Math.sin(Math.PI * progress);
+    const nextX = flight.startX + (flight.targetX - flight.startX) * progress;
+    const nextY = clamp(
+      flight.startY + (flight.targetY - flight.startY) * progress + flight.arc * sweep,
+      B_R,
+      this.fieldHeight - B_R,
+    );
+    const nextVx = dt > 0 ? (nextX - previousX) / dt : 0;
+    const nextVy = dt > 0 ? (nextY - previousY) / dt : 0;
+    let hitT = Number.POSITIVE_INFINITY;
+    let hitPlayer: Player | null = null;
+    let hitKeeper: FixedGoalkeeper | null = null;
+
+    // Il tiro è basso: ogni giocatore lungo la traiettoria può murarlo, non solo il portiere.
+    for (const player of this.players) {
+      if (player === flight.shooter) continue;
+      const t = segmentCircleHit(previousX, previousY, nextX, nextY, player.x, player.y, P_R + B_R + 4);
+      if (t !== null && t < hitT) {
+        hitT = t;
+        hitPlayer = player;
+        hitKeeper = null;
+      }
+    }
+    for (const keeper of this.goalkeepers) {
+      if (keeper.team === flight.team) continue;
+      const t = segmentCircleHit(previousX, previousY, nextX, nextY, keeper.x, keeper.y, GK_R + B_R + 4);
+      if (t !== null && t < hitT) {
+        hitT = t;
+        hitPlayer = null;
+        hitKeeper = keeper;
+      }
+    }
+
+    if (Number.isFinite(hitT)) {
+      const impactX = previousX + (nextX - previousX) * hitT;
+      const impactY = previousY + (nextY - previousY) * hitT;
+      const impactProgress = previousProgress + (progress - previousProgress) * hitT;
+      this.ball.x = impactX;
+      this.ball.y = impactY;
+      this.ball.z = Math.sin(Math.PI * impactProgress) * 7;
+      this.ball.vx = nextVx;
+      this.ball.vy = nextVy;
+      this.ball.vz = 0;
+      this.ball.curve = 0;
+      this.curveFlight = null;
+
+      if (hitKeeper) {
+        const dx = impactX - hitKeeper.x;
+        const dy = impactY - hitKeeper.y;
+        const d = Math.hypot(dx, dy) || 1;
+        this.ball.x = hitKeeper.x + (dx / d) * (GK_R + B_R - 0.5);
+        this.ball.y = hitKeeper.y + (dy / d) * (GK_R + B_R - 0.5);
+        this.contactGoalkeeper(hitKeeper, false);
+        // Il 5% di parate previsto dal tiro a giro continua a diventare corner.
+        if (!flight.scores) this.awardCorner(flight.team, flight.team === 1, this.ball.y);
+        return;
+      }
+
+      if (hitPlayer) {
+        const dx = this.ball.x - hitPlayer.x;
+        const dy = this.ball.y - hitPlayer.y;
+        const d = Math.hypot(dx, dy);
+        const speed = Math.hypot(this.ball.vx, this.ball.vy) || 1;
+        const nx = d > 0.01 ? dx / d : -this.ball.vx / speed;
+        const ny = d > 0.01 ? dy / d : -this.ball.vy / speed;
+        this.ball.x = hitPlayer.x + nx * (P_R + B_R + 0.5);
+        this.ball.y = hitPlayer.y + ny * (P_R + B_R + 0.5);
+        const approach = this.ball.vx * nx + this.ball.vy * ny;
+        if (approach < 0) {
+          this.ball.vx -= approach * 1.35 * nx;
+          this.ball.vy -= approach * 1.35 * ny;
+        }
+        this.ball.z = 0;
+        this.ball.lastTouch = hitPlayer.team;
+        this.ball.lastTouchWasKeeper = false;
+        this.sfx.block();
+        this.shake = Math.min(this.shake + 2.5, 10);
+        this.spawnKick(this.ball.x, this.ball.y, nx, ny, this.teamKit(hitPlayer.team).primary);
+        return;
+      }
+    }
+
+    this.ball.x = nextX;
+    this.ball.y = nextY;
+    this.ball.z = sweep * 7;
+    this.ball.vx = nextVx;
+    this.ball.vy = nextVy;
+    this.ball.vz = 0;
+
+    if (progress < 1) return;
+    this.curveFlight = null;
+    this.ball.x = flight.targetX;
+    this.ball.y = flight.targetY;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
+    if (flight.scores) {
+      this.goal(flight.team);
+      return;
+    }
+
+    // Il 5% restante è una parata reale con corner per chi ha tirato.
+    const keeper = this.goalkeepers[1 - flight.team];
+    const faceX = keeper.team === 0 ? 1 : -1;
+    const impactSide = Math.sign(flight.targetY - this.fieldHeight / 2) || 1;
+    this.ball.x = keeper.x + faceX * (GK_R + B_R - 9);
+    this.ball.y = clamp(keeper.y + impactSide * GK_R * 0.78, B_R, this.fieldHeight - B_R);
+    this.ball.vx = -faceX * 820;
+    this.ball.vy = impactSide * 180;
+    this.ball.lastTouch = flight.team;
+    this.ball.lastTouchWasKeeper = false;
+    this.contactGoalkeeper(keeper, false);
+    this.awardCorner(flight.team, flight.team === 1, this.ball.y);
   }
 
   private updateBall(dt: number, isDemo: boolean) {
+    if (this.curveFlight && !isDemo) {
+      this.updateCurveFlight(dt);
+      return;
+    }
     const ball = this.ball;
-    ball.x += ball.vx * dt;
-    ball.y += ball.vy * dt;
-    const drag = Math.exp(-0.5 * dt);
-    ball.vx *= drag;
-    ball.vy *= drag;
-    if (Math.hypot(ball.vx, ball.vy) < 6) {
-      ball.vx = 0;
-      ball.vy = 0;
+    const carriedAtStart = this.ballCarrier !== null;
+    if (this.ballCarrier) {
+      this.placeBallAtCarrier(this.ballCarrier);
+    } else {
+      const speed = Math.hypot(ball.vx, ball.vy);
+      if (ball.curve && speed > 1) {
+        const nx = -ball.vy / speed;
+        const ny = ball.vx / speed;
+        ball.vx += nx * ball.curve * dt;
+        ball.vy += ny * ball.curve * dt;
+        ball.curve *= Math.exp(-3.6 * dt);
+      }
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+      if (ball.z > 0 || ball.vz > 0) {
+        ball.z += ball.vz * dt;
+        ball.vz -= BALL_GRAVITY * dt;
+        if (ball.z <= 0) {
+          ball.z = 0;
+          ball.vz = 0;
+        }
+      }
+      const drag = Math.exp(-(ball.z > 0 || ball.vz > 0 ? 0.08 : 0.5) * dt);
+      ball.vx *= drag;
+      ball.vy *= drag;
+      if (Math.hypot(ball.vx, ball.vy) < 6) {
+        ball.vx = 0;
+        ball.vy = 0;
+      }
+
+      // pareti laterali
+      if (ball.y < B_R) {
+        ball.y = B_R;
+        ball.vy = Math.abs(ball.vy) * 0.62;
+      } else if (ball.y > this.fieldHeight - B_R) {
+        ball.y = this.fieldHeight - B_R;
+        ball.vy = -Math.abs(ball.vy) * 0.62;
+      }
     }
 
-    // pareti alto/basso
-    if (ball.y < B_R) {
-      ball.y = B_R;
-      ball.vy = Math.abs(ball.vy) * 0.62;
-    } else if (ball.y > H - B_R) {
-      ball.y = H - B_R;
-      ball.vy = -Math.abs(ball.vy) * 0.62;
+    for (const keeper of this.goalkeepers) this.contactGoalkeeper(keeper, isDemo);
+    if (this.ballCarrier) {
+      this.placeBallAtCarrier(this.ballCarrier);
+      return;
+    }
+    // Se il portiere ha fermato un portatore, la respinta parte dal punto del contatto.
+    if (carriedAtStart) {
+      ball.z = 0;
+      ball.vz = 0;
     }
 
-    const inMouth = Math.abs(ball.y - H / 2) < GOAL_HALF - 4;
+    const inMouth = Math.abs(ball.y - this.fieldHeight / 2) < GOAL_HALF - 4;
 
-    // gol?
+    // Gol o calcio d'angolo dopo una deviazione del portiere.
     if (inMouth) {
       if (ball.x < 0) {
         this.goal(1);
         return;
       }
-      if (ball.x > W) {
+      if (ball.x > this.fieldWidth) {
         this.goal(0);
         return;
       }
-    } else {
+    } else if (ball.x < 0 || ball.x > this.fieldWidth) {
+      const defendingTeam = ball.x < 0 ? 0 : 1;
+      if (
+        !isDemo &&
+        ball.lastTouchWasKeeper &&
+        ball.lastTouch === defendingTeam
+      ) {
+        this.awardCorner(1 - defendingTeam, ball.x < 0, ball.y);
+        return;
+      }
       if (ball.x < B_R) {
         ball.x = B_R;
         ball.vx = Math.abs(ball.vx) * 0.62;
-      } else if (ball.x > W - B_R) {
-        ball.x = W - B_R;
+      } else {
+        ball.x = this.fieldWidth - B_R;
         ball.vx = -Math.abs(ball.vx) * 0.62;
       }
     }
 
     // dentro la porta (prima del gol vero e proprio)
-    if (Math.abs(ball.y - H / 2) < GOAL_HALF) {
+    if (Math.abs(ball.y - this.fieldHeight / 2) < GOAL_HALF) {
       if (ball.x < -GOAL_DEPTH + B_R) {
         ball.x = -GOAL_DEPTH + B_R;
         ball.vx = Math.abs(ball.vx) * 0.5;
-      } else if (ball.x > W + GOAL_DEPTH - B_R) {
-        ball.x = W + GOAL_DEPTH - B_R;
+      } else if (ball.x > this.fieldWidth + GOAL_DEPTH - B_R) {
+        ball.x = this.fieldWidth + GOAL_DEPTH - B_R;
         ball.vx = -Math.abs(ball.vx) * 0.5;
       }
     }
 
     // pali
     const posts = [
-      { x: 0, y: H / 2 - GOAL_HALF },
-      { x: 0, y: H / 2 + GOAL_HALF },
-      { x: W, y: H / 2 - GOAL_HALF },
-      { x: W, y: H / 2 + GOAL_HALF },
+      { x: 0, y: this.fieldHeight / 2 - GOAL_HALF },
+      { x: 0, y: this.fieldHeight / 2 + GOAL_HALF },
+      { x: this.fieldWidth, y: this.fieldHeight / 2 - GOAL_HALF },
+      { x: this.fieldWidth, y: this.fieldHeight / 2 + GOAL_HALF },
     ];
     for (const post of posts) {
       const dx = ball.x - post.x;
@@ -1257,74 +1938,226 @@ export class GameEngine {
     }
   }
 
-  // ---------- calci ----------
-  private shoot(p: Player, errRange: number) {
-    const oppX = this.oppGoalX(p.team);
-    const dir = this.slotEnabled(p.team) && !this.demo ? this.inputDir(p.team) : { x: 0, y: 0, len: 0 };
-    const aimY = H / 2 + (dir.len > 0.2 ? dir.y * 80 : (Math.random() - 0.5) * 130) + (Math.random() - 0.5) * errRange * 300;
-    const dx = oppX - p.x;
-    const dy = aimY - p.y;
+  // ---------- calci e passaggi ----------
+  private shootAim(p: Player, spread: number) {
+    const dir = this.inputDir(p.team);
+    const aimY = this.fieldHeight / 2 + (dir.len > 0.2 ? dir.y * 80 : (Math.random() - 0.5) * 130) + (Math.random() - 0.5) * spread * 300;
+    const dx = this.oppGoalX(p.team) - this.ball.x;
+    const dy = aimY - this.ball.y;
     const dl = Math.hypot(dx, dy) || 1;
+    return { x: dx / dl, y: dy / dl };
+  }
+
+  private shoot(p: Player, errRange: number) {
+    if (this.ballCarrier !== p) return;
+    const dir = this.shootAim(p, errRange);
     const power = 820 + Math.random() * 60;
-    this.ball.vx = (dx / dl) * power + p.vx * 0.25;
-    this.ball.vy = (dy / dl) * power + p.vy * 0.25;
+    this.releaseBall(p);
+    this.ball.vx = dir.x * power + p.vx * 0.25;
+    this.ball.vy = dir.y * power + p.vy * 0.25;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
     this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
     p.kickCd = 0.3;
-    p.hasBall = false;
-    p.holdT = 0;
     this.shots[p.team]++;
     this.shake = Math.min(this.shake + 5, 14);
     this.sfx.kick(1);
-    this.spawnKick(p.x + (dx / dl) * 22, p.y + (dy / dl) * 22, dx / dl, dy / dl, TEAM_COLORS[p.team]);
+    this.spawnKick(this.ball.x, this.ball.y, dir.x, dir.y, this.teamKit(p.team).primary);
+  }
+
+  private powerShot(p: Player) {
+    if (this.ballCarrier !== p) return;
+    const dir = this.shootAim(p, 0.015);
+    const power = 1460;
+    this.releaseBall(p);
+    this.ball.vx = dir.x * power + p.vx * 0.35;
+    this.ball.vy = dir.y * power + p.vy * 0.35;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
+    this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
+    p.kickCd = 0.42;
+    this.shots[p.team]++;
+    this.shake = Math.min(this.shake + 8, 16);
+    this.sfx.kick(1.65);
+    this.spawnKick(this.ball.x, this.ball.y, dir.x, dir.y, this.teamKit(p.team).accent);
+  }
+
+  private curveShot(p: Player) {
+    if (this.ballCarrier !== p) return;
+    const steer = this.inputDir(p.team);
+    const defaultOffset = p.y < this.fieldHeight / 2 ? GOAL_HALF * 0.52 : -GOAL_HALF * 0.52;
+    const targetOffset = steer.len > 0.2
+      ? clamp(steer.y, -1, 1) * (GOAL_HALF - B_R - 10)
+      : defaultOffset;
+    const scores = Math.random() < 0.95;
+    const direction = p.team === 0 ? 1 : -1;
+    const goalX = this.oppGoalX(p.team);
+    const keeper = this.goalkeepers[1 - p.team];
+    const keeperFaceX = keeper.team === 0 ? 1 : -1;
+    const targetY = scores
+      ? this.fieldHeight / 2 + targetOffset
+      : clamp(keeper.y + Math.sign(targetOffset || 1) * GK_R * 0.78, B_R, this.fieldHeight - B_R);
+    const targetX = scores
+      ? goalX + direction * (GOAL_DEPTH + 6)
+      : keeper.x + keeperFaceX * (GK_R + B_R - 9);
+    const startX = this.ball.x;
+    const startY = this.ball.y;
+    const duration = clamp(Math.abs(targetX - startX) / 1460, 0.38, 1.25);
+    const arc = (p.y < this.fieldHeight / 2 ? 1 : -1) * 72;
+
+    this.releaseBall(p);
+    this.ball.vx = (targetX - startX) / duration;
+    this.ball.vy = (targetY - startY) / duration;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
+    this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
+    this.curveFlight = { team: p.team, shooter: p, startX, startY, targetX, targetY, duration, elapsed: 0, arc, scores };
+    p.kickCd = 0.38;
+    this.shots[p.team]++;
+    this.shake = Math.min(this.shake + 7, 16);
+    this.sfx.kick(1.5);
+    this.spawnKick(this.ball.x, this.ball.y, direction, 0, this.teamKit(p.team).accent);
   }
 
   private pass(p: Player, errRange: number, humanSwitch: boolean) {
+    if (this.ballCarrier !== p) return;
     const mates = this.players.filter((q) => q.team === p.team && q !== p);
-    const dir = this.slotEnabled(p.team) && !this.demo ? this.inputDir(p.team) : { x: p.faceX, y: p.faceY, len: 1 };
-    const useDir = dir.len > 0.2 ? dir : { x: p.faceX, y: p.faceY, len: 1 };
+    if (mates.length === 0) {
+      this.clear(p);
+      return;
+    }
+    const nearestMate = mates.reduce((closest, candidate) => {
+      const candidateDistance = (candidate.x - p.x) ** 2 + (candidate.y - p.y) ** 2;
+      const closestDistance = (closest.x - p.x) ** 2 + (closest.y - p.y) ** 2;
+      return candidateDistance < closestDistance ? candidate : closest;
+    });
+    let best = nearestMate;
 
-    let best: Player | null = null;
-    let bestScore = -Infinity;
-    for (const m of mates) {
-      const dx = m.x - p.x;
-      const dy = m.y - p.y;
-      const d = Math.hypot(dx, dy) || 1;
-      const align = (dx / d) * useDir.x + (dy / d) * useDir.y;
-      const forward = p.team === 0 ? m.x / W : (W - m.x) / W;
-      const openness = Math.min(
-        ...this.players.filter((o) => o.team !== p.team).map((o) => dist(o.x, o.y, m.x, m.y)),
-      );
-      let s = align * 1.6 + openness / 200 + d / 600;
-      if (dir.len <= 0.2) s = forward * 2 + openness / 200;
-      if (s > bestScore) {
-        bestScore = s;
-        best = m;
+    // Per il passaggio umano, usa la direzione dei comandi per scegliere il compagno mirato.
+    // Se nessuno è nel cono davanti al giocatore, resta il ripiego sul più vicino.
+    if (humanSwitch) {
+      const aim = this.inputDir(p.team);
+      const aimLength = Math.hypot(aim.x, aim.y);
+      if (aim.len > 0.2 && aimLength > 0) {
+        const aimX = aim.x / aimLength;
+        const aimY = aim.y / aimLength;
+        const minAlignment = Math.SQRT1_2; // cono di mira di 45 gradi
+        let bestAlignment = minAlignment;
+        let bestDistance = Infinity;
+
+        for (const candidate of mates) {
+          const dx = candidate.x - p.x;
+          const dy = candidate.y - p.y;
+          const candidateDistance = Math.hypot(dx, dy);
+          if (candidateDistance <= 1) continue;
+          const alignment = (dx * aimX + dy * aimY) / candidateDistance;
+          if (alignment < minAlignment) continue;
+          if (
+            alignment > bestAlignment + 1e-6 ||
+            (Math.abs(alignment - bestAlignment) <= 1e-6 && candidateDistance < bestDistance)
+          ) {
+            best = candidate;
+            bestAlignment = alignment;
+            bestDistance = candidateDistance;
+          }
+        }
       }
     }
-    if (!best) return;
     const d = dist(p.x, p.y, best.x, best.y);
-    const power = clamp(400 + d * 0.62, 420, 700);
-    const lead = (d / power) * 0.72;
-    let tx = best.x + best.vx * lead + (Math.random() - 0.5) * errRange * 220;
-    let ty = best.y + best.vy * lead + (Math.random() - 0.5) * errRange * 220;
+    const power = clamp(420 + d * 0.66, 430, 760);
+    const lead = humanSwitch ? 0 : (d / power) * 0.72;
+    const noiseX = humanSwitch ? 0 : (Math.random() - 0.5) * errRange * 220;
+    const noiseY = humanSwitch ? 0 : (Math.random() - 0.5) * errRange * 220;
+    const tx = best.x + best.vx * lead + noiseX;
+    const ty = best.y + best.vy * lead + noiseY;
+    const fromPlayerX = tx - p.x;
+    const fromPlayerY = ty - p.y;
+    const playerToTarget = Math.hypot(fromPlayerX, fromPlayerY) || 1;
+    const dirX = fromPlayerX / playerToTarget;
+    const dirY = fromPlayerY / playerToTarget;
+
+    // Sul passaggio manuale il ricevente non prosegue per inerzia oltre il pallone.
+    if (humanSwitch) {
+      best.vx = 0;
+      best.vy = 0;
+    }
+    this.releaseBall(p);
+    // Avvia il pallone dal lato del passaggio, mai attraverso il corpo del calciatore.
+    const launchOffset = P_R + B_R + 14;
+    this.ball.x = clamp(p.x + dirX * launchOffset, B_R, this.fieldWidth - B_R);
+    this.ball.y = clamp(p.y + dirY * launchOffset, B_R, this.fieldHeight - B_R);
     const dx = tx - this.ball.x;
     const dy = ty - this.ball.y;
     const dl = Math.hypot(dx, dy) || 1;
     this.ball.vx = (dx / dl) * power;
     this.ball.vy = (dy / dl) * power;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
     this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
+    this.passReceiver = best;
+    this.recentKicker = p;
+    this.kickerGrace = 0.14;
     p.kickCd = 0.25;
-    p.holdT = 0;
     this.sfx.pass();
     this.spawnKick(this.ball.x, this.ball.y, dx / dl, dy / dl, '#ffffff');
-    // il passaggio aggancia automaticamente il ricevitore: in 2 giocatori vale
-    // per entrambe le squadre, in 1 giocatore solo per quella comandata a mano
-    if (humanSwitch && this.slotEnabled(p.team)) {
+    if (humanSwitch) {
       this.controlledIdx[p.team] = best.idx;
       this.sfx.swap();
     }
-    void tx;
-    void ty;
+  }
+
+  private cross(p: Player, errRange: number, humanSwitch: boolean) {
+    if (this.ballCarrier !== p) return;
+    const dir = this.inputDir(p.team);
+    const towardGoal = p.team === 0 ? 1 : -1;
+    const mates = this.players.filter((q) => q.team === p.team && q !== p);
+    const boxX = this.oppGoalX(p.team) - towardGoal * 145;
+    let targetY = dir.len > 0.2
+      ? this.fieldHeight / 2 + dir.y * 185
+      : p.y < this.fieldHeight / 2
+        ? this.fieldHeight / 2 + 95
+        : this.fieldHeight / 2 - 95;
+    let targetX = boxX;
+
+    if (mates.length > 0) {
+      const receiver = mates.reduce((best, mate) => {
+        const boxDistance = dist(mate.x, mate.y, boxX, targetY);
+        const openness = Math.min(...this.players.filter((q) => q.team !== p.team).map((q) => dist(q.x, q.y, mate.x, mate.y)));
+        const bestDistance = dist(best.x, best.y, boxX, targetY);
+        const bestOpen = Math.min(...this.players.filter((q) => q.team !== p.team).map((q) => dist(q.x, q.y, best.x, best.y)));
+        return boxDistance - openness * 0.16 < bestDistance - bestOpen * 0.16 ? mate : best;
+      });
+      targetX = clamp(receiver.x + receiver.vx * 0.2, p.team === 0 ? this.fieldWidth - 300 : 160, p.team === 0 ? this.fieldWidth - 80 : 300);
+      targetY = clamp(receiver.y + receiver.vy * 0.2, this.fieldHeight / 2 - 210, this.fieldHeight / 2 + 210);
+      if (dir.len > 0.2) targetY = clamp(targetY + dir.y * 45, this.fieldHeight / 2 - 220, this.fieldHeight / 2 + 220);
+      if (humanSwitch) this.controlledIdx[p.team] = receiver.idx;
+    }
+
+    targetY += (Math.random() - 0.5) * errRange * 180;
+    const dx = targetX - this.ball.x;
+    const dy = targetY - this.ball.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const flight = clamp(d / 700, 0.58, 1.05);
+    this.releaseBall(p);
+    this.ball.vx = dx / flight;
+    this.ball.vy = dy / flight;
+    this.ball.z = 0;
+    this.ball.vz = BALL_GRAVITY * flight * 0.5;
+    this.ball.curve = 0;
+    this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
+    p.kickCd = 0.28;
+    this.sfx.kick(1.15);
+    this.spawnKick(this.ball.x, this.ball.y, dx / d, dy / d, '#d8f4ff');
+    if (humanSwitch && mates.length > 0) this.sfx.swap();
   }
 
   private aiShoot(p: Player, cfg: DiffCfg) {
@@ -1332,22 +2165,34 @@ export class GameEngine {
   }
 
   private aiPass(p: Player, cfg: DiffCfg) {
-    this.pass.call(this, p, cfg.passErr, false);
+    this.pass.call(this, p, Math.min(cfg.passErr, 0.06), false);
+  }
+
+  private aiCross(p: Player, cfg: DiffCfg) {
+    this.cross.call(this, p, cfg.passErr * 0.7, false);
+  }
+
+  private aiCurveShot(p: Player) {
+    this.curveShot.call(this, p);
   }
 
   private clear(p: Player) {
     const oppX = this.oppGoalX(p.team);
     const side = Math.random() > 0.5 ? 0.22 : 0.78;
     const dx = oppX - p.x;
-    const dy = H * side - p.y;
+    const dy = this.fieldHeight * side - p.y;
     const dl = Math.hypot(dx, dy) || 1;
+    this.releaseBall(p);
     this.ball.vx = (dx / dl) * 680;
     this.ball.vy = (dy / dl) * 680;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
     this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
     p.kickCd = 0.35;
-    p.holdT = 0;
     this.sfx.kick(0.8);
-    this.spawnKick(this.ball.x, this.ball.y, dx / dl, dy / dl, TEAM_COLORS[p.team]);
+    this.spawnKick(this.ball.x, this.ball.y, dx / dl, dy / dl, this.teamKit(p.team).primary);
   }
 
   // ---------- particelle ----------
@@ -1370,8 +2215,9 @@ export class GameEngine {
     }
   }
 
-  private spawnConfetti(x: number, y: number, dirX: number, n: number) {
-    const colors = ['#38bdf8', '#fb7185', '#fbbf24', '#ffffff', '#4ade80', '#e879f9'];
+  private spawnConfetti(x: number, y: number, dirX: number, n: number, team: number) {
+    const kit = this.teamKit(team);
+    const colors = [kit.primary, kit.secondary, kit.accent, '#fbbf24', '#ffffff'];
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const s = 80 + Math.random() * 420;
@@ -1432,7 +2278,7 @@ export class GameEngine {
   }
 
   private fpBall(ps: PensState, vw: number, vh: number) {
-    const attack = ps.turn === 0;
+    const attack = this.penShooterIsHuman();
     const L = attack ? this.fpLayoutA(vw, vh) : this.fpLayoutD(vw, vh);
     const end = this.fpMap(L, ps.toX, ps.toY);
     const start = attack
@@ -1482,7 +2328,7 @@ export class GameEngine {
     const shx = (Math.random() - 0.5) * this.shake;
     const shy = (Math.random() - 0.5) * this.shake;
     ctx.translate(shx, shy);
-    if (ps.turn === 0) this.drawFPAttack(ctx, vw, vh, ps);
+    if (this.penShooterIsHuman()) this.drawFPAttack(ctx, vw, vh, ps);
     else this.drawFPDefend(ctx, vw, vh, ps);
     this.drawFpFx(ctx);
     ctx.restore();
@@ -1675,18 +2521,22 @@ export class GameEngine {
     this.drawPitchFP(ctx, vw, vh, L.horizon, L.bottom - L.gh * 0.16, L.gw * 0.78);
     this.drawGoalBackFP(ctx, L);
 
-    // portiere IA
-    const prog =
-      ps.stage === 'kick' || ps.stage === 'resolve'
+    // Portiere IA oppure secondo giocatore, con guantone nella posizione scelta.
+    const humanKeeper = this.penKeeperIsHuman();
+    const diveX = humanKeeper ? ps.gloveX : ps.aiDiveX;
+    const diveY = humanKeeper ? ps.gloveY : ps.aiDiveY;
+    const prog = humanKeeper
+      ? ps.stage === 'kick' || ps.stage === 'resolve' ? 1 : 0.55
+      : ps.stage === 'kick' || ps.stage === 'resolve'
         ? 1 - Math.pow(1 - clamp(ps.kickT / 0.42, 0, 1), 3)
         : 0;
     const kh = L.gh * 0.98;
-    const tgt = this.fpMap(L, ps.aiDiveX, ps.aiDiveY);
+    const tgt = this.fpMap(L, diveX, diveY);
     const hipX0 = L.cx;
     const hipY0 = L.bottom - kh * 0.52;
     const hipX = hipX0 + (tgt.x - hipX0) * 0.82 * prog;
     const hipY = hipY0 + (tgt.y - hipY0 - L.gh * 0.08) * 0.82 * prog + (prog === 0 ? Math.sin(this.time * 2.2) * 2 : 0);
-    const lean = (ps.aiDiveX !== 0 ? Math.sign(ps.aiDiveX) : 0) * prog * 0.7;
+    const lean = (diveX !== 0 ? Math.sign(diveX) : 0) * prog * 0.7;
     // ombra
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
@@ -1698,7 +2548,7 @@ export class GameEngine {
     const rl = Math.hypot(rdx, rdy) || 1;
     const rmax = kh * 0.52;
     const reach = { x: (rdx / rl) * Math.min(rl, rmax), y: (rdy / rl) * Math.min(rl, rmax) };
-    this.drawFigure(ctx, hipX, hipY, kh, TEAM_COLORS[1], lean, 0, reach);
+    this.drawFigure(ctx, hipX, hipY, kh, this.teamKit(1 - ps.turn).primary, lean, 0, reach);
 
     // palla
     const b = this.fpBall(ps, vw, vh);
@@ -1804,6 +2654,7 @@ export class GameEngine {
 
     // rigorista IA: la postura in rincorsa suggerisce il lato del tiro
     const kh2 = vh * 0.145;
+    const goalkeeperKit = this.teamKit(1 - ps.turn);
     const kFeet = vh * 0.415;
     const leanP =
       ps.stage === 'aim'
@@ -1815,7 +2666,7 @@ export class GameEngine {
     const run = ps.stage === 'aim' || ps.stage === 'intro' ? this.time * 16 : 0;
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath(); ctx.ellipse(L.cx, kFeet + 4, 22, 5, 0, 0, Math.PI * 2); ctx.fill();
-    this.drawFigure(ctx, L.cx, kFeet - kh2 * 0.5, kh2, TEAM_COLORS[1], leanK, leanP > 0.15 ? run : 0, null);
+    this.drawFigure(ctx, L.cx, kFeet - kh2 * 0.5, kh2, this.teamKit(ps.turn).primary, leanK, leanP > 0.15 ? run : 0, null);
 
     // palla
     const b = this.fpBall(ps, vw, vh);
@@ -1837,7 +2688,7 @@ export class GameEngine {
       const sl = Math.hypot(sx, sy) || 1;
       for (let i = 1; i <= 3; i++) {
         ctx.globalAlpha = 0.16 / i;
-        ctx.fillStyle = '#7dd3fc';
+        ctx.fillStyle = goalkeeperKit.primary;
         ctx.beginPath();
         ctx.ellipse(g.x - (sx / sl) * i * 16, g.y - (sy / sl) * i * 16, gr * 0.9, gr * 0.7, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -1849,12 +2700,12 @@ export class GameEngine {
     ctx.translate(g.x, g.y);
     ctx.rotate(ps.diveDx * 0.3 * (ps.diveT > 0 ? 1 : 0));
     ctx.scale(divePulse, divePulse);
-    ctx.shadowColor = 'rgba(125,211,252,0.9)';
+    ctx.shadowColor = goalkeeperKit.glow;
     ctx.shadowBlur = 16;
     ctx.fillStyle = '#f8fafc';
     ctx.beginPath(); ctx.ellipse(0, 0, gr, gr * 0.74, 0, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = '#38bdf8';
+    ctx.fillStyle = goalkeeperKit.primary;
     ctx.beginPath(); ctx.ellipse(0, gr * 0.52, gr * 0.62, gr * 0.3, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = 'rgba(3,16,36,0.55)';
     ctx.lineWidth = 2;
@@ -1987,9 +2838,9 @@ export class GameEngine {
     }
 
     const margin = 34;
-    const s = Math.min((vw - margin * 2) / W, (vh - margin * 2) / H);
-    const ox = (vw - W * s) / 2;
-    const oy = (vh - H * s) / 2 + 8;
+    const s = Math.min((vw - margin * 2) / this.fieldWidth, (vh - margin * 2) / this.fieldHeight);
+    const ox = (vw - this.fieldWidth * s) / 2;
+    const oy = (vh - this.fieldHeight * s) / 2 + 8;
 
     const shakeX = (Math.random() - 0.5) * this.shake;
     const shakeY = (Math.random() - 0.5) * this.shake;
@@ -2008,9 +2859,15 @@ export class GameEngine {
       ctx.ellipse(p.x + 3, p.y + 7, P_R * 0.95, P_R * 0.5, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    for (const keeper of this.goalkeepers) {
+      ctx.fillStyle = 'rgba(0,0,0,0.42)';
+      ctx.beginPath();
+      ctx.ellipse(keeper.x + 4, keeper.y + 9, GK_R * 1.05, GK_R * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = `rgba(0,0,0,${0.3 * Math.exp(-this.ball.z / 120)})`;
     ctx.beginPath();
-    ctx.ellipse(this.ball.x + 2, this.ball.y + 6, B_R, B_R * 0.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(this.ball.x + 2, this.ball.y + 6, B_R + this.ball.z * 0.04, B_R * 0.5 + this.ball.z * 0.015, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // scia palla
@@ -2025,17 +2882,18 @@ export class GameEngine {
     }
 
     for (const p of this.players) this.drawPlayer(ctx, p);
+    for (const keeper of this.goalkeepers) this.drawGoalkeeper(ctx, keeper);
     this.drawBall(ctx);
     this.drawParticles(ctx);
 
     // flash gol
     if (this.goalFlash > 0) {
-      const gx = this.goalSide === 1 ? W : 0;
-      const fg = ctx.createRadialGradient(gx, H / 2, 0, gx, H / 2, 420);
+      const gx = this.goalSide === 1 ? this.fieldWidth : 0;
+      const fg = ctx.createRadialGradient(gx, this.fieldHeight / 2, 0, gx, this.fieldHeight / 2, 420);
       fg.addColorStop(0, `rgba(255,255,255,${this.goalFlash * 0.45})`);
       fg.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = fg;
-      ctx.fillRect(-60, H / 2 - 430, W + 120, 860);
+      ctx.fillRect(-60, this.fieldHeight / 2 - 430, this.fieldWidth + 120, 860);
     }
 
     ctx.restore();
@@ -2055,20 +2913,20 @@ export class GameEngine {
     ctx.save();
     // base + strisce erba
     ctx.fillStyle = '#0c4a30';
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, this.fieldWidth, this.fieldHeight);
     const bands = 12;
     for (let i = 0; i < bands; i++) {
       if (i % 2 === 0) {
         ctx.fillStyle = 'rgba(255,255,255,0.025)';
-        ctx.fillRect((i * W) / bands, 0, W / bands, H);
+        ctx.fillRect((i * this.fieldWidth) / bands, 0, this.fieldWidth / bands, this.fieldHeight);
       }
     }
-    const sheen = ctx.createLinearGradient(0, 0, 0, H);
+    const sheen = ctx.createLinearGradient(0, 0, 0, this.fieldHeight);
     sheen.addColorStop(0, 'rgba(190,235,255,0.05)');
     sheen.addColorStop(0.5, 'rgba(0,0,0,0)');
     sheen.addColorStop(1, 'rgba(0,20,10,0.16)');
     ctx.fillStyle = sheen;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, this.fieldWidth, this.fieldHeight);
 
     // linee
     ctx.strokeStyle = 'rgba(240,252,255,0.85)';
@@ -2076,37 +2934,37 @@ export class GameEngine {
     ctx.shadowColor = 'rgba(160,230,255,0.55)';
     ctx.shadowBlur = 7;
     ctx.beginPath();
-    ctx.strokeRect(0, 0, W, H);
-    ctx.moveTo(W / 2, 0);
-    ctx.lineTo(W / 2, H);
-    ctx.moveTo(W / 2 + 92, H / 2);
-    ctx.arc(W / 2, H / 2, 92, 0, Math.PI * 2);
+    ctx.strokeRect(0, 0, this.fieldWidth, this.fieldHeight);
+    ctx.moveTo(this.fieldWidth / 2, 0);
+    ctx.lineTo(this.fieldWidth / 2, this.fieldHeight);
+    ctx.moveTo(this.fieldWidth / 2 + 92, this.fieldHeight / 2);
+    ctx.arc(this.fieldWidth / 2, this.fieldHeight / 2, 92, 0, Math.PI * 2);
     ctx.stroke();
     ctx.beginPath();
-    ctx.strokeRect(0, H / 2 - 160, 150, 320);
-    ctx.strokeRect(W - 150, H / 2 - 160, 150, 320);
-    ctx.strokeRect(0, H / 2 - 95, 62, 190);
-    ctx.strokeRect(W - 62, H / 2 - 95, 62, 190);
+    ctx.strokeRect(0, this.fieldHeight / 2 - 160, 150, 320);
+    ctx.strokeRect(this.fieldWidth - 150, this.fieldHeight / 2 - 160, 150, 320);
+    ctx.strokeRect(0, this.fieldHeight / 2 - 95, 62, 190);
+    ctx.strokeRect(this.fieldWidth - 62, this.fieldHeight / 2 - 95, 62, 190);
     ctx.beginPath();
-    ctx.arc(112, H / 2, 78, -Math.PI / 3.1, Math.PI / 3.1);
+    ctx.arc(112, this.fieldHeight / 2, 78, -Math.PI / 3.1, Math.PI / 3.1);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(W - 112, H / 2, 78, Math.PI - Math.PI / 3.1, Math.PI + Math.PI / 3.1);
+    ctx.arc(this.fieldWidth - 112, this.fieldHeight / 2, 78, Math.PI - Math.PI / 3.1, Math.PI + Math.PI / 3.1);
     ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.fillStyle = 'rgba(240,252,255,0.9)';
     ctx.beginPath();
-    ctx.arc(W / 2, H / 2, 5, 0, Math.PI * 2);
-    ctx.arc(112, H / 2, 4, 0, Math.PI * 2);
-    ctx.arc(W - 112, H / 2, 4, 0, Math.PI * 2);
+    ctx.arc(this.fieldWidth / 2, this.fieldHeight / 2, 5, 0, Math.PI * 2);
+    ctx.arc(112, this.fieldHeight / 2, 4, 0, Math.PI * 2);
+    ctx.arc(this.fieldWidth - 112, this.fieldHeight / 2, 4, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 
   private drawGoals(ctx: CanvasRenderingContext2D) {
     for (const side of [-1, 1]) {
-      const gx = side === -1 ? 0 : W;
-      const x0 = side === -1 ? -GOAL_DEPTH : W;
+      const gx = side === -1 ? 0 : this.fieldWidth;
+      const x0 = side === -1 ? -GOAL_DEPTH : this.fieldWidth;
       ctx.save();
       // rete
       ctx.strokeStyle = 'rgba(220,240,255,0.28)';
@@ -2114,10 +2972,10 @@ export class GameEngine {
       ctx.beginPath();
       for (let i = 0; i <= GOAL_DEPTH; i += 7) {
         const x = x0 + i;
-        ctx.moveTo(x, H / 2 - GOAL_HALF);
-        ctx.lineTo(x, H / 2 + GOAL_HALF);
+        ctx.moveTo(x, this.fieldHeight / 2 - GOAL_HALF);
+        ctx.lineTo(x, this.fieldHeight / 2 + GOAL_HALF);
       }
-      for (let y = H / 2 - GOAL_HALF; y <= H / 2 + GOAL_HALF; y += 7) {
+      for (let y = this.fieldHeight / 2 - GOAL_HALF; y <= this.fieldHeight / 2 + GOAL_HALF; y += 7) {
         ctx.moveTo(x0, y);
         ctx.lineTo(x0 + GOAL_DEPTH, y);
       }
@@ -2126,14 +2984,14 @@ export class GameEngine {
       ctx.strokeStyle = 'rgba(255,255,255,0.9)';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(gx, H / 2 - GOAL_HALF);
-      ctx.lineTo(x0 + (side === -1 ? 0 : GOAL_DEPTH), H / 2 - GOAL_HALF);
-      ctx.lineTo(x0 + (side === -1 ? 0 : GOAL_DEPTH), H / 2 + GOAL_HALF);
-      ctx.lineTo(gx, H / 2 + GOAL_HALF);
+      ctx.moveTo(gx, this.fieldHeight / 2 - GOAL_HALF);
+      ctx.lineTo(x0 + (side === -1 ? 0 : GOAL_DEPTH), this.fieldHeight / 2 - GOAL_HALF);
+      ctx.lineTo(x0 + (side === -1 ? 0 : GOAL_DEPTH), this.fieldHeight / 2 + GOAL_HALF);
+      ctx.lineTo(gx, this.fieldHeight / 2 + GOAL_HALF);
       ctx.stroke();
       // pali
       ctx.fillStyle = '#ffffff';
-      for (const py of [H / 2 - GOAL_HALF, H / 2 + GOAL_HALF]) {
+      for (const py of [this.fieldHeight / 2 - GOAL_HALF, this.fieldHeight / 2 + GOAL_HALF]) {
         ctx.beginPath();
         ctx.arc(gx, py, 5, 0, Math.PI * 2);
         ctx.fill();
@@ -2142,9 +3000,162 @@ export class GameEngine {
     }
   }
 
+  private drawKitPattern(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, kit: TeamKit) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    if (kit.pattern === 'vertical') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r * 0.48, y - r, r * 0.32, r * 2);
+      ctx.fillRect(x + r * 0.16, y - r, r * 0.32, r * 2);
+      if (kit.trim) {
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = kit.trim;
+        ctx.fillRect(x - r * 0.7, y - r, r * 0.06, r * 2);
+        ctx.fillRect(x + r * 0.64, y - r, r * 0.06, r * 2);
+        ctx.globalAlpha = 1;
+      }
+    } else if (kit.pattern === 'horizontal') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r, y - r * 0.28, r * 2, r * 0.56);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r, y + r * 0.28, r * 2, r * 0.16);
+    } else if (kit.pattern === 'sash') {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(-r * 1.7, -r * 0.28, r * 3.4, r * 0.56);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(-r * 1.7, r * 0.18, r * 3.4, r * 0.12);
+      ctx.restore();
+    } else if (kit.pattern === 'chevron') {
+      ctx.fillStyle = kit.secondary;
+      ctx.beginPath();
+      ctx.moveTo(x - r, y - r * 0.2);
+      ctx.lineTo(x, y + r * 0.2);
+      ctx.lineTo(x + r, y - r * 0.2);
+      ctx.lineTo(x + r, y + r * 0.14);
+      ctx.lineTo(x, y + r * 0.54);
+      ctx.lineTo(x - r, y + r * 0.14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = kit.accent;
+      ctx.beginPath();
+      ctx.moveTo(x - r, y + r * 0.18);
+      ctx.lineTo(x, y + r * 0.54);
+      ctx.lineTo(x + r, y + r * 0.18);
+      ctx.lineTo(x + r, y + r * 0.31);
+      ctx.lineTo(x, y + r * 0.68);
+      ctx.lineTo(x - r, y + r * 0.31);
+      ctx.closePath();
+      ctx.fill();
+      if (kit.trim) {
+        ctx.fillStyle = kit.trim;
+        ctx.beginPath();
+        ctx.moveTo(x - r, y + r * 0.35);
+        ctx.lineTo(x, y + r * 0.69);
+        ctx.lineTo(x + r, y + r * 0.35);
+        ctx.lineTo(x + r, y + r * 0.47);
+        ctx.lineTo(x, y + r * 0.82);
+        ctx.lineTo(x - r, y + r * 0.47);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (kit.pattern === 'pinstripe') {
+      ctx.globalAlpha = 0.42;
+      ctx.fillStyle = kit.secondary;
+      const stripe = Math.max(1.5, r * 0.12);
+      for (let offset = -3; offset <= 3; offset++) {
+        ctx.fillRect(x + offset * r * 0.3, y - r, stripe, r * 2);
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x + r * 0.62, y - r, r * 0.38, r * 2);
+    } else if (kit.pattern === 'waves') {
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = kit.secondary;
+      ctx.lineWidth = Math.max(1.2, r * 0.1);
+      for (let row = -1; row <= 2; row++) {
+        ctx.beginPath();
+        for (let step = 0; step <= 8; step++) {
+          const px = x - r + (step / 8) * r * 2;
+          const py = y + row * r * 0.42 + Math.sin((step / 8) * Math.PI * 2) * r * 0.1;
+          if (step === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    } else if (kit.pattern === 'panels') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r, y - r, r * 0.28, r * 2);
+      ctx.fillRect(x + r * 0.72, y - r, r * 0.28, r * 2);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r * 0.18, y + r * 0.48, r * 0.36, r * 0.13);
+    } else if (kit.pattern === 'tonal') {
+      ctx.globalAlpha = 0.28;
+      ctx.strokeStyle = kit.secondary;
+      ctx.lineWidth = Math.max(1, r * 0.08);
+      for (let offset = -2; offset <= 2; offset++) {
+        ctx.beginPath();
+        ctx.moveTo(x - r, y + offset * r * 0.38);
+        ctx.lineTo(x + r, y + offset * r * 0.38 - r * 0.48);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    } else if (kit.pattern === 'checks') {
+      const cell = Math.max(5, r * 0.42);
+      ctx.fillStyle = kit.secondary;
+      for (let row = -2; row <= 2; row++) {
+        for (let col = -2; col <= 2; col++) {
+          if ((row + col) % 2 === 0) {
+            ctx.fillRect(x + col * cell, y + row * cell, cell, cell);
+          }
+        }
+      }
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - 2, y - r, 4, r * 2);
+    } else if (kit.pattern === 'cross') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r * 0.18, y - r, r * 0.36, r * 2);
+      ctx.fillRect(x - r, y - r * 0.18, r * 2, r * 0.36);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r, y + r * 0.3, r * 2, r * 0.12);
+    } else {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r * 0.18, y - r, r * 0.36, r * 2);
+      ctx.fillStyle = kit.accent;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // piccolo colletto a contrasto, come dettaglio comune della divisa
+    ctx.fillStyle = kit.accent;
+    ctx.fillRect(x - r * 0.28, y - r * 0.78, r * 0.56, Math.max(2, r * 0.14));
+    ctx.restore();
+  }
+
   private drawPlayer(ctx: CanvasRenderingContext2D, p: Player) {
-    const color = TEAM_COLORS[p.team];
-    const isHuman = this.isHumanPlayer(p);
+    const kit = this.teamKit(p.team);
+    const color = kit.primary;
+    const isHuman =
+      this.phase !== 'demo' &&
+      (p.team === 0 || this.playerCount === 2) &&
+      p.idx === this.controlledIdx[p.team];
+
+    if (p.tackleT > 0) {
+      ctx.save();
+      ctx.strokeStyle = `rgba(251,191,36,${0.45 + p.tackleT * 2})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, P_R + 8 + (0.22 - p.tackleT) * 22, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     if (isHuman) {
       const pulse = 1 + Math.sin(this.time * 6) * 0.08;
@@ -2166,7 +3177,7 @@ export class GameEngine {
     }
 
     ctx.save();
-    ctx.shadowColor = TEAM_GLOW[p.team] + '0.8)';
+    ctx.shadowColor = kit.glow;
     ctx.shadowBlur = isHuman ? 22 : 14;
     const grad = ctx.createRadialGradient(p.x - 5, p.y - 7, 2, p.x, p.y, P_R + 2);
     grad.addColorStop(0, '#ffffff');
@@ -2176,13 +3187,14 @@ export class GameEngine {
     ctx.beginPath();
     ctx.arc(p.x, p.y, P_R, 0, Math.PI * 2);
     ctx.fill();
+    this.drawKitPattern(ctx, p.x, p.y, P_R, kit);
     ctx.shadowBlur = 0;
     ctx.strokeStyle = 'rgba(2,8,20,0.65)';
     ctx.lineWidth = 3;
     ctx.stroke();
 
     // indicatore direzione
-    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ctx.strokeStyle = kit.secondary;
     ctx.lineWidth = 3;
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -2190,23 +3202,78 @@ export class GameEngine {
     ctx.lineTo(p.x + p.faceX * (P_R + 1), p.y + p.faceY * (P_R + 1));
     ctx.stroke();
 
-    // numero
-    ctx.fillStyle = 'rgba(3,10,25,0.85)';
+    // numero in contrasto con la maglia
     ctx.font = '800 13px "Archivo Black", "Arial Black", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+    ctx.strokeText(String(p.number), p.x, p.y + 0.5);
+    ctx.fillStyle = kit.secondary;
     ctx.fillText(String(p.number), p.x, p.y + 0.5);
+    ctx.restore();
+  }
+
+  private drawGoalkeeper(ctx: CanvasRenderingContext2D, keeper: FixedGoalkeeper) {
+    const kit = this.teamKit(keeper.team);
+    const { x, y } = keeper;
+
+    ctx.save();
+    ctx.shadowColor = kit.glow;
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(x, y, GK_R + 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    const grad = ctx.createRadialGradient(x - 6, y - 8, 2, x, y, GK_R + 1);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.28, kit.primary);
+    grad.addColorStop(1, kit.primary);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, GK_R, 0, Math.PI * 2);
+    ctx.fill();
+    this.drawKitPattern(ctx, x, y, GK_R, kit);
+
+    ctx.strokeStyle = 'rgba(2,8,20,0.85)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(x, y, GK_R, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Guanti e numero 1 distinguono il portiere dai tre giocatori di movimento.
+    ctx.fillStyle = '#f8fafc';
+    ctx.strokeStyle = 'rgba(15,23,42,0.85)';
+    ctx.lineWidth = 1.5;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(x + side * GK_R * 0.68, y + 5, 4.5, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.font = '900 14px "Archivo Black", "Arial Black", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    ctx.strokeText('1', x, y + 0.5);
+    ctx.fillStyle = kit.secondary;
+    ctx.fillText('1', x, y + 0.5);
     ctx.restore();
   }
 
   private drawBall(ctx: CanvasRenderingContext2D) {
     const b = this.ball;
+    const drawY = b.y - b.z;
+    const radius = B_R + Math.min(5, b.z * 0.025);
     ctx.save();
-    ctx.shadowColor = 'rgba(255,255,255,0.7)';
-    ctx.shadowBlur = 10;
+    ctx.shadowColor = 'rgba(255,255,255,0.85)';
+    ctx.shadowBlur = 10 + b.z * 0.08;
     ctx.fillStyle = '#f8fafc';
     ctx.beginPath();
-    ctx.arc(b.x, b.y, B_R, 0, Math.PI * 2);
+    ctx.arc(b.x, drawY, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
     ctx.strokeStyle = 'rgba(15,23,42,0.4)';
@@ -2217,7 +3284,7 @@ export class GameEngine {
     for (let i = 0; i < 3; i++) {
       const a = (i * Math.PI * 2) / 3 + spin;
       ctx.beginPath();
-      ctx.arc(b.x + Math.cos(a) * B_R * 0.5, b.y + Math.sin(a) * B_R * 0.5, 1.6, 0, Math.PI * 2);
+      ctx.arc(b.x + Math.cos(a) * radius * 0.5, drawY + Math.sin(a) * radius * 0.5, 1.6, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
@@ -2247,12 +3314,15 @@ export class GameEngine {
       score: [...this.score],
       shots: [...this.shots],
       timeLeft: Math.max(0, this.timeLeft),
+      matchDuration: this.matchDuration,
       countdown: Math.max(0, Math.ceil(this.countdown)),
       lastGoalTeam: this.lastGoalTeam,
       winner: this.winner,
       muted: this.sfx.muted,
-      controlled: [this.controlledIdx[0], this.controlledIdx[1]],
-      opponent: this.opponent,
+      playerCount: this.playerCount,
+      teamSize: this.teamSize,
+      controlled: [...this.controlledIdx],
+      gamepadsConnected: this.gamepadsConnected,
       pens: ps
         ? {
             score: [...ps.score],

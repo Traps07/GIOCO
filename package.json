@@ -7,10 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "npm run test:2p && npm run test:ui && npm run test:soak",
+    "test": "npm run test:2p && npm run test:ui && npm run test:gameplay && npm run test:soak",
     "test:2p": "esbuild test-2p.mjs --bundle --platform=node --format=esm --outfile=.test-bundle.mjs --log-level=warning && node .test-bundle.mjs",
     "test:soak": "esbuild test-soak.mjs --bundle --platform=node --format=esm --outfile=.soak-bundle.mjs --log-level=warning && node .soak-bundle.mjs",
-    "test:ui": "esbuild test-ui.mjs --bundle --platform=node --format=cjs --outfile=.ui-bundle.cjs --log-level=warning --loader:.css=empty && node .ui-bundle.cjs"
+    "test:ui": "esbuild test-ui.mjs --bundle --platform=node --format=cjs --outfile=.ui-bundle.cjs --log-level=warning --loader:.css=empty && node .ui-bundle.cjs",
+    "test:gameplay": "esbuild test-gameplay.mjs --bundle --platform=node --format=esm --outfile=.gameplay-bundle.mjs --log-level=warning && node .gameplay-bundle.mjs"
   },
   "dependencies": {
     "clsx": "2.1.1",

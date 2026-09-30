@@ -1,67 +1,83 @@
-# ⚽ Street Soccer 3v3
+# ⚽ Street Soccer
 
-Calcio 3 contro 3 che gira interamente nel browser: partite lampo da 90 secondi, **supplementari con golden goal**, **calci di rigore in prima persona**, **modalità 2 giocatori in locale** e **6 lingue** (Italiano, English, Deutsch, Français, Español, العربية).
+An arcade football game that runs entirely in your browser. Play with **1–5 outfield players plus one fixed goalkeeper on each team**, enjoy 90-second matches, golden-goal extra time, first-person penalty shootouts, and six interface languages: English, Italian, German, French, Spanish, and Arabic.
 
-## ▶️ Per giocare SUBITO (senza installare niente)
+## ▶️ Play now
 
-1. Scarica la cartella da GitHub (**Code → Download ZIP**) e decomprimila.
-2. Apri con doppio click il file **`APRI-PER-GIOCARE.html`** nel browser (Chrome, Edge, Firefox, Safari).
+1. Download the repository from GitHub (**Code → Download ZIP**) and extract it.
+2. Open **`APRI-PER-GIOCARE.html`** in a browser (Chrome, Edge, Firefox, or Safari).
 
-> ⚠️ **Attenzione**: aprire `index.html` mostra una **pagina bianca**. È normale!
-> Quello è il file sorgente che punta al codice TypeScript (`/src/main.tsx`), che il
-> browser non sa eseguire. Il gioco vero e proprio, già "compilato" in un unico
-> file autonomo, è **`APRI-PER-GIOCARE.html`** — quello va aprire.
+The single-file game works offline; an internet connection is only needed to load the fonts the first time. `index.html` is the Vite source entry point and should not be opened directly.
 
-Funziona anche offline e su smartphone/tablet: serve internet solo per caricare i font all'inizio
-(in mancanza, il gioco usa i font di sistema).
+## 🎮 Game modes
 
-## 🎮 Modalità e comandi
+- **Quick match** — choose **1v1, 2v2, 3v3, 4v4, or 5v5**. Each team always has an additional fixed goalkeeper. A tied match goes to golden-goal extra time and then penalties.
+- **Pitch size** — standard dimensions for 1v1 and 2v2; a wider, larger pitch for 3v3, 4v4, and 5v5.
+- **Penalty shootout** — jump straight to the spot-kick series.
+- **National tournament** — 12 national teams in 4 groups of 3. The top two teams from each group advance to the quarter-finals, followed by the semi-finals and final.
+- **Local multiplayer** — one or two people can play on the same keyboard; the number of local players is independent of the on-field team size.
+- Choose from 12 national teams with kits inspired by World Cup colours and shirt designs. Three difficulty levels and six languages are available.
 
-- **PARTITA 90s** — partita completa; in caso di parità: tempi supplementari (golden goal) e poi rigori
-- **SOLO RIGORI** — direttamente alla serie dal dischetto (meglio di 5 + morte subita)
-- **1 GIOCATORE** — guidi la squadra BLU contro la IA. Difficoltà: FACILE / NORMALE / DIFFICILE
-- **2 GIOCATORI** — due persone sullo stesso dispositivo, una metà campo ciascuna.
-  La difficoltà non si applica: non c'è IA. Selettore lingua nel menu.
+The Settings screen lets you mute game audio, remap keyboard controls, choose a match length of **60, 90, 120, or 180 seconds**, and change the interface language. English is the default for a new player profile. Extra time remains 30 seconds.
 
-### Comandi
+## ⚽ Possession and actions
 
-| | Giocatore 1 | Giocatore 2 |
-| --- | --- | --- |
-| Movimento | `WASD` / Frecce | `I` `J` `K` `L` |
-| Scatto | `Shift` sinistro | `Shift` destro |
-| Tiro | `Spazio` | `Invio` (o `Numpad 0`) |
-| Passaggio | `C` | `M` (o `Numpad 2`) |
-| Cambia giocatore | `Q` / `Tab` | `,` (o `Numpad 3`) |
-| Nei rigori | mira / guantone | mira / guantone |
+Players keep possession after collecting the ball rather than losing it on every touch. Opponents press and attempt tackles, but tackles have a reduced chance of winning the ball. The CPU also makes passes and supports attacks.
 
-Pausa: `Esc` / `P` (vale per entrambi).
+- **Pass** — point the movement keys or stick toward a teammate. The game tries to pass to the teammate in that direction, even if they are farther away. If nobody is there, it passes to the nearest teammate. The receiver runs toward the ball.
+- **Cross** — send a lofted ball into the box toward teammates in a shooting position.
+- **Curl shot** — a powerful curved shot that scores on 95% of uncovered attempts; the goalkeeper or an outfield player can still block its path.
+- **Power shot** — a fast, direct strike.
+- **Corner kick** — a goalkeeper save can deflect the ball over the goal line for a corner, including in 1v1.
+- **Kick-off** — after a goal, the team that conceded starts with possession.
 
-Le due tastiere sono completamente disgiunte: le mani non si pestano i piedi.
-Ogni giocatore comanda un calciatore della propria squadra, gli altri due proseguono da soli.
+## ⌨️ Default keyboard controls
 
-Su mobile: joystick a sinistra e pulsanti a destra. In 2 giocatori lo schermo si divide
-a metà — P1 a sinistra, P2 a destra, ciascuno con joystick e pulsanti nel proprio mezzo.
+Every keyboard binding can be changed in **Settings**. These are the defaults:
 
-## 🛠️ Per sviluppatori (modificare il gioco)
+### One player
 
-Richiede [Node.js](https://nodejs.org/) (versione 18+):
+| Key | Action |
+| --- | --- |
+| `W` `A` `S` `D` | Move |
+| `Left Shift` | Sprint |
+| `Space` | Shoot |
+| `C` | Pass |
+| `V` | Cross |
+| `F` | Curl shot |
+| `R` | Power shot |
+| `E` | Tackle |
+| `Q` | Switch player (2v2 and above) |
+| `Esc` | Pause / resume |
+
+### Two players on one keyboard
+
+| Player | Movement | Sprint | Shoot | Pass | Cross | Curl | Power | Tackle | Switch |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **P1 · Home** | `W` `A` `S` `D` | `Left Shift` | `Space` | `C` | `V` | `F` | `R` | `E` | `Q` |
+| **P2 · Away** | Arrow keys | `Right Shift` | `Enter` | `/` | `M` | `U` | `O` | `I` | `.` |
+
+### Controllers and touch
+
+USB and Bluetooth controllers supported by the browser's Gamepad API work with Xbox, PlayStation, Switch, and generic gamepads. The default layout is: stick/D-pad to move, `A/×` to shoot, `B/○` to pass, `X/□` to cross, `Y/△` to curl, `LB/L1` for a power shot, `RB/R1` to tackle, `RT/R2` to sprint, `LT/L2` or Select to switch players, and Start to pause. Controller bindings are not changed by the keyboard remapping screen.
+
+On mobile, use the on-screen joystick and action buttons. Two-player touch controls use independent joysticks.
+
+## 🛠️ Development
+
+Requires Node.js 18 or later:
 
 ```bash
-npm install      # installa le dipendenze (solo la prima volta)
-npm run dev      # avvia il gioco in sviluppo su http://localhost:5173
-npm run build    # genera dist/index.html (file unico con tutto dentro)
-npm test         # gira i test headless del motore (input 1P/2P e ciclo partita)
+npm install
+npm run dev
+npm run build
+npm test
 ```
 
-I test in `test-2p.mjs` e `test-soak.mjs` esercitano il motore vero in Node, con
-canvas e audio finti: verificano che P1 e P2 restino indipendenti, che i tasti di
-P2 restino inerti in 1 giocatore e che una partita 2 giocatori arrivi al fischio
-finale senza incasinarsi.
-
-Per aggiornare il file giocabile dopo una modifica:
+To refresh the standalone game file after making changes:
 
 ```bash
 npm run build && cp dist/index.html APRI-PER-GIOCARE.html
 ```
 
-Tecnologie: React 19 · TypeScript · Vite · Tailwind CSS 4 · Canvas 2D · WebAudio.
+Built with React 19, TypeScript, Vite, Tailwind CSS 4, Canvas 2D, and Web Audio.

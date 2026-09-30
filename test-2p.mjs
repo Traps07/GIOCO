@@ -97,7 +97,7 @@ const pos = (p) => ({ x: Math.round(p.x), y: Math.round(p.y) });
 
 // =====================================================================
 console.log('\n--- 2 GIOCATORI: P1 e P2 si muovono indipendenti ---');
-eng.startMatch('normal', 'match', 'human');
+eng.startMatch('normal', 'match', 2);
 step(eng, 4); // supera il countdown
 check('partita in 2 giocatori entra in play', eng.phase === 'play', `phase=${eng.phase}`);
 
@@ -106,15 +106,15 @@ const p2before = pos(team(eng, 1, eng.controlledIdx[1]));
 
 // P1 spinge a destra, P2 spinge a sinistra
 key('KeyD');
-key('KeyJ');
+key('ArrowLeft');
 step(eng, 0.5);
 const p1after = pos(team(eng, 0, eng.controlledIdx[0]));
 const p2after = pos(team(eng, 1, eng.controlledIdx[1]));
 key('KeyD', 'keyup');
-key('KeyJ', 'keyup');
+key('ArrowLeft', 'keyup');
 
 check('P1 (WASD) si muove a destra', p1after.x > p1before.x + 20, `${p1before.x} -> ${p1after.x}`);
-check('P2 (IJKL) si muove a sinistra', p2after.x < p2before.x - 20, `${p2before.x} -> ${p2after.x}`);
+check('P2 (frecce) si muove a sinistra', p2after.x < p2before.x - 20, `${p2before.x} -> ${p2after.x}`);
 
 // i due non devono condividere lo stesso giocatore
 check(
@@ -141,38 +141,42 @@ const c0 = eng.controlledIdx[0];
 const c1 = eng.controlledIdx[1];
 key('KeyQ'); // P1 switcha
 step(eng, 0.1);
-key('Comma'); // P2 switcha
+key('Period'); // P2 switcha
 step(eng, 0.1);
 check('cambio giocatore indipendente per squadra', eng.controlledIdx[0] !== c0 && eng.controlledIdx[1] !== c1,
   `P1 ${c0}->${eng.controlledIdx[0]}, P2 ${c1}->${eng.controlledIdx[1]}`);
 
 // =====================================================================
 console.log('\n--- 1 GIOCATORE: P2 non deve avere comando ---');
-eng.startMatch('normal', 'match', 'ai');
+eng.startMatch('normal', 'match', 1);
 step(eng, 4);
 check('partita 1 giocatore in play', eng.phase === 'play', `phase=${eng.phase}`);
 
 const solo = team(eng, 0, eng.controlledIdx[0]);
 const b0 = { x: solo.x, y: solo.y };
-key('KeyJ'); // tasto di P2: non deve muovere nessuno
-key('KeyK');
-key('KeyL');
-key('KeyI');
+key('KeyI'); // tasti azione P2: inerti senza secondo giocatore
+key('KeyO');
+key('KeyU');
+key('KeyM');
+key('Enter');
+key('Slash');
 step(eng, 0.5);
 const b1 = { x: solo.x, y: solo.y };
-key('KeyJ', 'keyup');
-key('KeyK', 'keyup');
-key('KeyL', 'keyup');
 key('KeyI', 'keyup');
+key('KeyO', 'keyup');
+key('KeyU', 'keyup');
+key('KeyM', 'keyup');
+key('Enter', 'keyup');
+key('Slash', 'keyup');
 check('i tasti di P2 sono inerti in 1 giocatore', Math.abs(b1.x - b0.x) < 1 && Math.abs(b1.y - b0.y) < 1,
   `spostamento=${Math.round(Math.hypot(b1.x - b0.x, b1.y - b0.y))}px`);
 
 // la squadra ROSSA resta IA anche se qualcuno preme i tasti di P2
-check('snapshot dichiara opponent=ai', eng.getSnapshot().opponent === 'ai');
+check('snapshot dichiara un solo giocatore locale', eng.getSnapshot().playerCount === 1);
 
 // =====================================================================
 console.log('\n--- RIGORI: in 2 giocatori ciascuno para il proprio turno ---');
-eng.startMatch('normal', 'pens', 'human');
+eng.startMatch('normal', 'pens', 2);
 step(eng, 0.2);
 check('serie di rigori avviata in 2 giocatori', eng.pens !== null && eng.phase === 'pens', `phase=${eng.phase}`);
 
@@ -187,32 +191,32 @@ const aimMoved = pens0.aimX > aim0.x;
 key('KeyD', 'keyup');
 check('P1 può mirare quando tocca a lui', aimMoved, `aimX ${aim0.x.toFixed(2)} -> ${pens0.aimX.toFixed(2)}`);
 
-// ora tocca a P2 (che para): deve muovere il guantone con IJKL
-pens0.turn = 1;
+// P1 tira: P2 difende e muove il guantone con le frecce
+pens0.turn = 0;
 pens0.stage = 'aim';
 pens0.stageT = 5;
 const glove0 = { x: pens0.gloveX, y: pens0.gloveY };
-key('KeyJ'); // P2 muove il guantone a sinistra
+key('ArrowLeft'); // P2 muove il guantone a sinistra
 step(eng, 0.3);
 const gloveMoved = pens0.gloveX < glove0.x - 0.1;
-key('KeyJ', 'keyup');
+key('ArrowLeft', 'keyup');
 check('P2 può muovere il guantone quando tocca a lui', gloveMoved,
   `gloveX ${glove0.x.toFixed(2)} -> ${pens0.gloveX.toFixed(2)}`);
 
 // in 1 giocatore P2 non deve poter parare: il guantone resta fermo
-eng.startMatch('normal', 'pens', 'ai');
+eng.startMatch('normal', 'pens', 1);
 step(eng, 0.2);
 const ps1 = eng.pens;
 ps1.turn = 1;
 ps1.stage = 'aim';
 ps1.stageT = 5;
 const g0 = { x: ps1.gloveX, y: ps1.gloveY };
-key('KeyJ'); // tasto di P2
+key('Slash'); // azione esclusiva di P2, inerte per P1
 step(eng, 0.3);
 const p2Inert = Math.abs(ps1.gloveX - g0.x) < 0.01;
 check('in 1 giocatore i tasti P2 non muovono il guantone', p2Inert,
   `gloveX ${g0.x.toFixed(2)} -> ${ps1.gloveX.toFixed(2)}`);
-key('KeyJ', 'keyup');
+key('Slash', 'keyup');
 
 // ...ma l'unico umano (P1) deve poter parare con i tasti suoi
 key('KeyA');
