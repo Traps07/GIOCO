@@ -194,6 +194,8 @@ for (let attempt = 0; attempt < 100; attempt++) {
   engine.startMatch('normal', 'match', 1, undefined, 3);
   engine.phase = 'play';
   const shooter = engine.players[0];
+  for (const player of engine.players) if (player !== shooter) player.y = 20;
+  engine.goalkeepers[1].y = 20;
   engine.claimBall(shooter);
   Math.random = () => attempt < 95 ? 0.94 : 0.96;
   engine.curveShot(shooter);
@@ -203,8 +205,50 @@ for (let attempt = 0; attempt < 100; attempt++) {
   curveGoals += engine.score[0];
 }
 Math.random = originalRandom;
-assert.equal(curveGoals, 95, 'esattamente 95 tiri su 100 entrano in rete');
+assert.equal(curveGoals, 95, 'esattamente 95 tiri su 100 entrano in rete se nessuno copre la traiettoria');
 assert.equal(events.filter((event) => event.type === 'corner').length - cornersBeforeCurve, 5, 'le 5 parate sul tiro a giro danno corner');
+
+// Il tiro a giro viene murato da un giocatore piazzato sulla traiettoria.
+engine.startMatch('normal', 'match', 1, undefined, 3);
+engine.phase = 'play';
+const blockedShooter = engine.players[0];
+for (const player of engine.players) if (player !== blockedShooter) player.y = 20;
+engine.goalkeepers[1].y = 20;
+engine.claimBall(blockedShooter);
+Math.random = () => 0.94;
+engine.curveShot(blockedShooter);
+const blockedFlight = engine.curveFlight;
+const blocker = engine.players[3];
+const blockProgress = 0.5;
+blocker.x = blockedFlight.startX + (blockedFlight.targetX - blockedFlight.startX) * blockProgress;
+blocker.y = blockedFlight.startY + (blockedFlight.targetY - blockedFlight.startY) * blockProgress + blockedFlight.arc;
+engine.updateBall(blockedFlight.duration * blockProgress, false);
+Math.random = originalRandom;
+assert.equal(engine.curveFlight, null, 'il difensore interrompe la traiettoria del tiro a giro');
+assert.equal(engine.score[0], 0, 'il tiro murato non entra in rete');
+assert.equal(engine.ball.lastTouch, blocker.team, 'la palla rimbalza sul giocatore che ha fatto muro');
+assert.ok(Math.hypot(engine.ball.x - blocker.x, engine.ball.y - blocker.y) > 25, 'la palla viene respinta fuori dal corpo del difensore');
+
+// Anche il portiere intercetta il tiro quando è sulla traiettoria.
+engine.startMatch('normal', 'match', 1, undefined, 3);
+engine.phase = 'play';
+const keeperShooter = engine.players[0];
+for (const player of engine.players) if (player !== keeperShooter) player.y = 20;
+engine.claimBall(keeperShooter);
+Math.random = () => 0.94;
+engine.curveShot(keeperShooter);
+const keeperFlight = engine.curveFlight;
+const coveringKeeper = engine.goalkeepers[1];
+const keeperProgress = (coveringKeeper.x - keeperFlight.startX) / (keeperFlight.targetX - keeperFlight.startX);
+coveringKeeper.y = keeperFlight.startY
+  + (keeperFlight.targetY - keeperFlight.startY) * keeperProgress
+  + keeperFlight.arc * Math.sin(Math.PI * keeperProgress);
+engine.updateBall(keeperFlight.duration * keeperProgress, false);
+Math.random = originalRandom;
+assert.equal(engine.curveFlight, null, 'il portiere interrompe la traiettoria del tiro a giro');
+assert.equal(engine.score[0], 0, 'il tiro coperto dal portiere non entra in rete');
+assert.equal(engine.ball.lastTouch, coveringKeeper.team, 'la parata registra il portiere come ultimo tocco');
+assert.ok(engine.ball.x < coveringKeeper.x, 'il portiere respinge la palla verso il campo');
 
 // Il 5% salvato non dà corner nel formato 1v1.
 engine.startMatch('normal', 'match', 1, undefined, 1);
@@ -321,6 +365,27 @@ assert.ok(engine.ball.vx < 0, 'il comando passa verso il compagno vicino anche p
 engine.update(1 / 60);
 assert.equal(engine.ballCarrier, liveNearest, 'il passaggio all’indietro supera il giocatore che ha calciato e raggiunge il ricevente');
 
+// Dopo un passaggio il ricevente corre automaticamente verso il pallone, anche se lo stick punta altrove.
+engine.startMatch('normal', 'match', 1, undefined, 3);
+engine.phase = 'play';
+const receivePasser = engine.players[0];
+const receivingMate = engine.players[1];
+const receiveFartherMate = engine.players[2];
+receivePasser.x = 500;
+receivePasser.y = 350;
+receivingMate.x = 420;
+receivingMate.y = 350;
+receiveFartherMate.x = 850;
+receiveFartherMate.y = 350;
+engine.claimBall(receivePasser);
+engine.setStick(0, -1, 0, true); // direzione opposta al pallone in arrivo
+const receiverStartX = receivingMate.x;
+engine.pass(receivePasser, 0, true);
+for (let frame = 0; frame < 8 && engine.ballCarrier !== receivingMate; frame++) engine.update(1 / 60);
+engine.setStick(0, 0, 0, false);
+assert.equal(engine.ballCarrier, receivingMate, 'il compagno controllato corre incontro al passaggio e lo riceve automaticamente');
+assert.ok(receivingMate.x > receiverStartX, 'il ricevente segue la palla anche con lo stick puntato dalla parte opposta');
+
 // Cross e tiro di potenza mantengono le traiettorie dedicate.
 engine.startMatch('normal', 'match', 2, undefined, 3);
 const skillPlayer = engine.players[0];
@@ -372,4 +437,4 @@ assert.equal(events.filter((event) => event.type === 'corner').length, before1v1
 assert.ok(engine.ball.x >= 0, 'nel formato 1v1 la palla viene rimessa in gioco');
 
 engine.dispose();
-console.log('PASS: possesso, tackle più bilanciati, pad multipli, tiro a giro 95%, cross, potenza e corner.');
+console.log('PASS: possesso, ricezione automatica, tackle bilanciati, tiro a giro murabile, cross, potenza e corner.');

@@ -112,6 +112,29 @@ const DEMO_CFG: DiffCfg = { speed: 195, shootRange: 340, shootErr: 0.14, passErr
 
 const dist = (x1: number, y1: number, x2: number, y2: number) => Math.hypot(x2 - x1, y2 - y1);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+const segmentCircleHit = (
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  centerX: number,
+  centerY: number,
+  radius: number,
+): number | null => {
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const fx = startX - centerX;
+  const fy = startY - centerY;
+  const c = fx * fx + fy * fy - radius * radius;
+  if (c <= 0) return 0;
+  const a = dx * dx + dy * dy;
+  if (a < 1e-8) return null;
+  const b = 2 * (fx * dx + fy * dy);
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) return null;
+  const t = (-b - Math.sqrt(discriminant)) / (2 * a);
+  return t >= 0 && t <= 1 ? t : null;
+};
 
 class Player {
   x = 0;
@@ -233,6 +256,7 @@ interface FPLayout {
 
 interface CurveFlight {
   team: number;
+  shooter: Player;
   startX: number;
   startY: number;
   targetX: number;
@@ -261,6 +285,7 @@ export class GameEngine {
   private controlledIdx: [number, number] = [1, 1];
   private ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, z: 0, vz: 0, curve: 0, lastTouch: -1, lastTouchWasKeeper: false };
   private ballCarrier: Player | null = null;
+  private passReceiver: Player | null = null;
   private recentKicker: Player | null = null;
   private kickerGrace = 0;
   private curveFlight: CurveFlight | null = null;
@@ -644,6 +669,7 @@ export class GameEngine {
   private releaseBall(player?: Player) {
     if (player && this.ballCarrier !== player) return;
     this.curveFlight = null;
+    this.passReceiver = null;
     this.recentKicker = null;
     this.kickerGrace = 0;
     if (this.ballCarrier) {
@@ -1170,7 +1196,8 @@ export class GameEngine {
       p.hasBall = this.ballCarrier === p;
       const hasHumanTeam = p.team === 0 || this.playerCount === 2;
       const isHuman = !isDemo && hasHumanTeam && p.idx === this.controlledIdx[p.team];
-      if (isHuman && this.phase === 'play') {
+      const autoReceivingPass = !this.ballCarrier && this.passReceiver === p;
+      if (isHuman && this.phase === 'play' && !autoReceivingPass) {
         this.humanControl(p, dt);
       } else {
         const cfg = isDemo
@@ -1371,6 +1398,12 @@ export class GameEngine {
       tx = p.x + (dx / dl) * advance + sideX;
       ty = p.y + (dy / dl) * 105 + sideY;
       maxS = cfg.speed * 1.24;
+    } else if (!carrier && this.passReceiver === p) {
+      // Il ricevente corre sul pallone in arrivo, non continua la corsa di supporto in avanti.
+      const lead = clamp(dist(p.x, p.y, ball.x, ball.y) / Math.max(cfg.speed * 8, 1), 0, 0.12);
+      tx = ball.x + ball.vx * lead;
+      ty = ball.y + ball.vy * lead;
+      maxS = cfg.speed * 1.25;
     } else if (carrier && carrier.team === p.team) {
       const direction = p.team === 0 ? 1 : -1;
       const lane = Math.sign(form.y - H / 2) || (p.idx % 2 === 0 ? -1 : 1);
@@ -1614,20 +1647,100 @@ export class GameEngine {
   private updateCurveFlight(dt: number) {
     const flight = this.curveFlight;
     if (!flight) return;
+    const previousProgress = clamp(flight.elapsed / flight.duration, 0, 1);
     flight.elapsed = Math.min(flight.duration, flight.elapsed + dt);
     const progress = clamp(flight.elapsed / flight.duration, 0, 1);
     const previousX = this.ball.x;
     const previousY = this.ball.y;
     const sweep = Math.sin(Math.PI * progress);
-    this.ball.x = flight.startX + (flight.targetX - flight.startX) * progress;
-    this.ball.y = clamp(
+    const nextX = flight.startX + (flight.targetX - flight.startX) * progress;
+    const nextY = clamp(
       flight.startY + (flight.targetY - flight.startY) * progress + flight.arc * sweep,
       B_R,
       H - B_R,
     );
+    const nextVx = dt > 0 ? (nextX - previousX) / dt : 0;
+    const nextVy = dt > 0 ? (nextY - previousY) / dt : 0;
+    let hitT = Number.POSITIVE_INFINITY;
+    let hitPlayer: Player | null = null;
+    let hitKeeper: FixedGoalkeeper | null = null;
+
+    // Il tiro è basso: ogni giocatore lungo la traiettoria può murarlo, non solo il portiere.
+    for (const player of this.players) {
+      if (player === flight.shooter) continue;
+      const t = segmentCircleHit(previousX, previousY, nextX, nextY, player.x, player.y, P_R + B_R);
+      if (t !== null && t < hitT) {
+        hitT = t;
+        hitPlayer = player;
+        hitKeeper = null;
+      }
+    }
+    for (const keeper of this.goalkeepers) {
+      if (keeper.team === flight.team) continue;
+      const t = segmentCircleHit(previousX, previousY, nextX, nextY, keeper.x, keeper.y, GK_R + B_R);
+      if (t !== null && t < hitT) {
+        hitT = t;
+        hitPlayer = null;
+        hitKeeper = keeper;
+      }
+    }
+
+    if (Number.isFinite(hitT)) {
+      const impactX = previousX + (nextX - previousX) * hitT;
+      const impactY = previousY + (nextY - previousY) * hitT;
+      const impactProgress = previousProgress + (progress - previousProgress) * hitT;
+      this.ball.x = impactX;
+      this.ball.y = impactY;
+      this.ball.z = Math.sin(Math.PI * impactProgress) * 7;
+      this.ball.vx = nextVx;
+      this.ball.vy = nextVy;
+      this.ball.vz = 0;
+      this.ball.curve = 0;
+      this.curveFlight = null;
+
+      if (hitKeeper) {
+        const dx = impactX - hitKeeper.x;
+        const dy = impactY - hitKeeper.y;
+        const d = Math.hypot(dx, dy) || 1;
+        this.ball.x = hitKeeper.x + (dx / d) * (GK_R + B_R - 0.5);
+        this.ball.y = hitKeeper.y + (dy / d) * (GK_R + B_R - 0.5);
+        this.contactGoalkeeper(hitKeeper, false);
+        // Il 5% di parate previsto dal tiro a giro continua a diventare corner (tranne 1v1).
+        if (!flight.scores && this.teamSize > 1) {
+          this.awardCorner(flight.team, flight.team === 1, this.ball.y);
+        }
+        return;
+      }
+
+      if (hitPlayer) {
+        const dx = this.ball.x - hitPlayer.x;
+        const dy = this.ball.y - hitPlayer.y;
+        const d = Math.hypot(dx, dy);
+        const speed = Math.hypot(this.ball.vx, this.ball.vy) || 1;
+        const nx = d > 0.01 ? dx / d : -this.ball.vx / speed;
+        const ny = d > 0.01 ? dy / d : -this.ball.vy / speed;
+        this.ball.x = hitPlayer.x + nx * (P_R + B_R + 0.5);
+        this.ball.y = hitPlayer.y + ny * (P_R + B_R + 0.5);
+        const approach = this.ball.vx * nx + this.ball.vy * ny;
+        if (approach < 0) {
+          this.ball.vx -= approach * 1.35 * nx;
+          this.ball.vy -= approach * 1.35 * ny;
+        }
+        this.ball.z = 0;
+        this.ball.lastTouch = hitPlayer.team;
+        this.ball.lastTouchWasKeeper = false;
+        this.sfx.block();
+        this.shake = Math.min(this.shake + 2.5, 10);
+        this.spawnKick(this.ball.x, this.ball.y, nx, ny, this.teamKit(hitPlayer.team).primary);
+        return;
+      }
+    }
+
+    this.ball.x = nextX;
+    this.ball.y = nextY;
     this.ball.z = sweep * 7;
-    this.ball.vx = dt > 0 ? (this.ball.x - previousX) / dt : 0;
-    this.ball.vy = dt > 0 ? (this.ball.y - previousY) / dt : 0;
+    this.ball.vx = nextVx;
+    this.ball.vy = nextVy;
     this.ball.vz = 0;
 
     if (progress < 1) return;
@@ -1862,7 +1975,7 @@ export class GameEngine {
     this.ball.curve = 0;
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
-    this.curveFlight = { team: p.team, startX, startY, targetX, targetY, duration, elapsed: 0, arc, scores };
+    this.curveFlight = { team: p.team, shooter: p, startX, startY, targetX, targetY, duration, elapsed: 0, arc, scores };
     p.kickCd = 0.38;
     this.shots[p.team]++;
     this.shake = Math.min(this.shake + 7, 16);
@@ -1911,6 +2024,7 @@ export class GameEngine {
     this.ball.curve = 0;
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
+    this.passReceiver = best;
     this.recentKicker = p;
     this.kickerGrace = 0.14;
     p.kickCd = 0.25;
