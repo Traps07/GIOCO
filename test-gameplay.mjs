@@ -250,17 +250,19 @@ assert.equal(engine.score[0], 0, 'il tiro coperto dal portiere non entra in rete
 assert.equal(engine.ball.lastTouch, coveringKeeper.team, 'la parata registra il portiere come ultimo tocco');
 assert.ok(engine.ball.x < coveringKeeper.x, 'il portiere respinge la palla verso il campo');
 
-// Il 5% salvato non dà corner nel formato 1v1.
+// Anche il 5% salvato dà corner nel formato 1v1.
 engine.startMatch('normal', 'match', 1, undefined, 1);
 engine.phase = 'play';
 const soloShooter = engine.players[0];
+for (const player of engine.players) if (player !== soloShooter) player.y = 20;
+engine.goalkeepers[1].y = 20;
 engine.claimBall(soloShooter);
 const cornersBeforeSoloCurve = events.filter((event) => event.type === 'corner').length;
 Math.random = () => 0.96;
 engine.curveShot(soloShooter);
 engine.updateBall(engine.curveFlight.duration, false);
 Math.random = originalRandom;
-assert.equal(events.filter((event) => event.type === 'corner').length, cornersBeforeSoloCurve, 'la parata sul giro non dà corner in 1v1');
+assert.equal(events.filter((event) => event.type === 'corner').length, cornersBeforeSoloCurve + 1, 'la parata sul giro assegna corner anche in 1v1');
 
 // I bot accompagnano il portatore e cercano compagni con passaggi in avanti.
 engine.startMatch('normal', 'match', 1, undefined, 3);
@@ -403,13 +405,13 @@ engine.setStick(1, -0.8, 0, true);
 assert.equal(engine.inputDir(0).x, 0.8);
 assert.equal(engine.inputDir(1).x, -0.8);
 
-// Una parata che devia oltre la linea di fondo assegna corner, ma non nell'1v1.
+// Una parata che devia oltre la linea di fondo assegna corner anche nell'1v1.
 engine.startMatch('normal', 'match', 1, undefined, 3);
 engine.phase = 'play';
 const keeper = engine.goalkeepers[0];
-keeper.y = 430;
+keeper.y = engine.fieldHeight / 2 + 120;
 engine.ball.x = 50;
-engine.ball.y = 446;
+engine.ball.y = keeper.y + 16;
 engine.ball.vx = -800;
 engine.ball.vy = 0;
 engine.ball.z = 0;
@@ -434,22 +436,35 @@ engine.ball.lastTouch = 0;
 engine.ball.lastTouchWasKeeper = true;
 const before1v1 = events.filter((event) => event.type === 'corner').length;
 engine.updateBall(0, false);
-assert.equal(events.filter((event) => event.type === 'corner').length, before1v1, 'in 1v1 non si assegna il corner');
-assert.ok(engine.ball.x >= 0, 'nel formato 1v1 la palla viene rimessa in gioco');
+assert.equal(events.filter((event) => event.type === 'corner').length, before1v1 + 1, 'in 1v1 si assegna il corner');
+assert.equal(engine.ballCarrier.team, 1, 'nel 1v1 il corner assegna il possesso al battitore');
 
 // Al calcio d’inizio successivo al gol parte la squadra che lo ha subito.
 engine.startMatch('normal', 'match', 2, undefined, 3);
 engine.update(3.5);
 assert.equal(engine.ballCarrier, null, 'il calcio d’inizio iniziale resta neutrale');
-assert.ok(Math.abs(engine.ball.x - 600) < 1, 'la palla viene posizionata al centro al calcio d’inizio');
+assert.ok(Math.abs(engine.ball.x - engine.fieldWidth / 2) < 1, 'la palla viene posizionata al centro al calcio d’inizio');
+assert.ok(Math.abs(engine.ball.y - engine.fieldHeight / 2) < 1, 'il pallone parte dal centro anche sul campo esteso');
 engine.goal(0);
 engine.update(3);
+assert.equal(engine.phase, 'countdown', 'dopo la rete si prepara il calcio d’inizio');
+assert.equal(engine.ballCarrier.team, 1, 'la squadra che ha subito ha il possesso già al calcio d’inizio');
 engine.update(3.5);
-assert.equal(engine.ballCarrier.team, 1, 'dopo il gol della squadra 0 riparte chi ha subito');
+assert.equal(engine.ballCarrier.team, 1, 'la squadra che ha subito mantiene il possesso all’avvio del gioco');
 engine.goal(1);
 engine.update(3);
+assert.equal(engine.ballCarrier.team, 0, 'dopo il gol della squadra 1 riparte subito chi ha subito');
 engine.update(3.5);
-assert.equal(engine.ballCarrier.team, 0, 'dopo il gol della squadra 1 riparte chi ha subito');
+assert.equal(engine.ballCarrier.team, 0, 'la squadra 0 mantiene il pallone dopo il calcio d’inizio');
+
+// I campi si allargano dal 3v3 in su, mentre 1v1 e 2v2 mantengono le dimensioni originali.
+for (const teamSize of [1, 2, 3, 4, 5]) {
+  engine.startMatch('normal', 'match', 1, undefined, teamSize);
+  const expanded = teamSize >= 3;
+  assert.equal(engine.fieldWidth, expanded ? 1380 : 1200, `${teamSize}v${teamSize}: larghezza del campo`);
+  assert.equal(engine.fieldHeight, expanded ? 780 : 700, `${teamSize}v${teamSize}: altezza del campo`);
+  assert.equal(engine.goalkeepers[1].x, engine.fieldWidth - 38, `${teamSize}v${teamSize}: portiere sul limite del campo`);
+}
 
 engine.dispose();
-console.log('PASS: passaggi precisi, ricezione automatica, tiro a giro bloccabile, corner e kickoff alla squadra che subisce.');
+console.log('PASS: passaggi precisi, tiro a giro bloccabile, corner 1v1, campi estesi e kickoff alla squadra che subisce.');

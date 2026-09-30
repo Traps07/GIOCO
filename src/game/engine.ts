@@ -47,8 +47,10 @@ export type EngineEvent =
   | { type: 'pause' }
   | { type: 'resume' };
 
-const W = 1200;
-const H = 700;
+const BASE_W = 1200;
+const BASE_H = 700;
+const LARGE_FIELD_W = 1380;
+const LARGE_FIELD_H = 780;
 const GOAL_HALF = 100;
 const GOAL_DEPTH = 32;
 const P_R = 17;
@@ -89,9 +91,19 @@ const FORMATIONS: Record<TeamSize, { x: number; y: number }[]> = {
   ],
 };
 
-function formationFor(team: number, idx: number, teamSize: TeamSize) {
+function formationFor(
+  team: number,
+  idx: number,
+  teamSize: TeamSize,
+  fieldWidth = BASE_W,
+  fieldHeight = BASE_H,
+) {
   const position = FORMATIONS[teamSize][idx];
-  return { x: team === 0 ? position.x : W - position.x, y: position.y };
+  const verticalScale = fieldHeight / BASE_H;
+  return {
+    x: team === 0 ? position.x : fieldWidth - position.x,
+    y: fieldHeight / 2 + (position.y - BASE_H / 2) * verticalScale,
+  };
 }
 
 interface DiffCfg {
@@ -152,8 +164,14 @@ class Player {
   tackleT = 0;
   tackleResolved = false;
   number: number;
-  constructor(public team: number, public idx: number, public teamSize: TeamSize) {
-    const f = formationFor(team, idx, teamSize);
+  constructor(
+    public team: number,
+    public idx: number,
+    public teamSize: TeamSize,
+    private fieldWidth = BASE_W,
+    private fieldHeight = BASE_H,
+  ) {
+    const f = formationFor(team, idx, teamSize, fieldWidth, fieldHeight);
     this.x = f.x;
     this.y = f.y;
     this.tx = f.x;
@@ -162,7 +180,7 @@ class Player {
     this.faceX = team === 0 ? 1 : -1;
   }
   reset() {
-    const f = formationFor(this.team, this.idx, this.teamSize);
+    const f = formationFor(this.team, this.idx, this.teamSize, this.fieldWidth, this.fieldHeight);
     this.x = f.x;
     this.y = f.y;
     this.vx = 0;
@@ -180,15 +198,20 @@ class Player {
 
 class FixedGoalkeeper {
   readonly x: number;
-  y = H / 2;
+  y: number;
   vy = 0;
 
-  constructor(public team: number) {
-    this.x = team === 0 ? GK_X : W - GK_X;
+  constructor(
+    public team: number,
+    fieldWidth = BASE_W,
+    private fieldHeight = BASE_H,
+  ) {
+    this.x = team === 0 ? GK_X : fieldWidth - GK_X;
+    this.y = fieldHeight / 2;
   }
 
   reset() {
-    this.y = H / 2;
+    this.y = this.fieldHeight / 2;
     this.vy = 0;
   }
 }
@@ -276,6 +299,14 @@ export class GameEngine {
   private disposed = false;
   inputEnabled = false;
 
+  private get fieldWidth() {
+    return this.teamSize >= 3 ? LARGE_FIELD_W : BASE_W;
+  }
+
+  private get fieldHeight() {
+    return this.teamSize >= 3 ? LARGE_FIELD_H : BASE_H;
+  }
+
   phase: Phase = 'demo';
   private players: Player[] = [];
   private goalkeepers: FixedGoalkeeper[] = [new FixedGoalkeeper(0), new FixedGoalkeeper(1)];
@@ -283,7 +314,7 @@ export class GameEngine {
   private teamSize: TeamSize = 3;
   private selectedTeams: TeamSelection = [...DEFAULT_TEAMS];
   private controlledIdx: [number, number] = [1, 1];
-  private ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, z: 0, vz: 0, curve: 0, lastTouch: -1, lastTouchWasKeeper: false };
+  private ball = { x: this.fieldWidth / 2, y: this.fieldHeight / 2, vx: 0, vy: 0, z: 0, vz: 0, curve: 0, lastTouch: -1, lastTouchWasKeeper: false };
   private ballCarrier: Player | null = null;
   private passReceiver: Player | null = null;
   private recentKicker: Player | null = null;
@@ -298,7 +329,6 @@ export class GameEngine {
   private countdownShown = -1;
   private goalT = 0;
   private lastGoalTeam = -1;
-  private nextKickoffTeam: number | null = null;
   private kickoffTeam: number | null = null;
   private goalSide: -1 | 1 = 1;
   private winner = -2;
@@ -576,8 +606,14 @@ export class GameEngine {
     this.teamSize = teamSize;
     this.players = [];
     for (let team = 0; team < 2; team++) {
-      for (let idx = 0; idx < teamSize; idx++) this.players.push(new Player(team, idx, teamSize));
+      for (let idx = 0; idx < teamSize; idx++) {
+        this.players.push(new Player(team, idx, teamSize, this.fieldWidth, this.fieldHeight));
+      }
     }
+    this.goalkeepers = [
+      new FixedGoalkeeper(0, this.fieldWidth, this.fieldHeight),
+      new FixedGoalkeeper(1, this.fieldWidth, this.fieldHeight),
+    ];
     this.resetControlledPlayers();
   }
 
@@ -598,7 +634,7 @@ export class GameEngine {
     this.shots = [0, 0];
     this.timeLeft = MATCH_TIME;
     this.winner = -2;
-    this.nextKickoffTeam = null;
+    this.kickoffTeam = null;
     this.period = 'regular';
     this.allowDraw = false;
     this.pens = null;
@@ -629,7 +665,7 @@ export class GameEngine {
     this.timeLeft = MATCH_TIME;
     this.winner = -2;
     this.lastGoalTeam = -1;
-    this.nextKickoffTeam = null;
+    this.kickoffTeam = null;
     this.resetControlledPlayers();
     this.period = 'regular';
     this.allowDraw = mode === 'group';
@@ -649,18 +685,19 @@ export class GameEngine {
     this.goalkeepers.forEach((keeper) => keeper.reset());
     this.newBall();
     this.resetControlledPlayers();
-    this.kickoffTeam = this.nextKickoffTeam;
-    this.nextKickoffTeam = null;
     if (this.kickoffTeam !== null) {
+      const kickoffTeam = this.kickoffTeam;
       const takerIndex = Math.min(1, this.teamSize - 1);
-      const taker = this.players[this.kickoffTeam * this.teamSize + takerIndex];
-      const attackDirection = this.kickoffTeam === 0 ? 1 : -1;
-      taker.x = W / 2 - attackDirection * BALL_CARRY_OFFSET;
-      taker.y = H / 2;
+      const taker = this.players[kickoffTeam * this.teamSize + takerIndex];
+      const attackDirection = kickoffTeam === 0 ? 1 : -1;
+      taker.x = this.fieldWidth / 2 - attackDirection * BALL_CARRY_OFFSET;
+      taker.y = this.fieldHeight / 2;
       taker.vx = 0;
       taker.vy = 0;
       taker.faceX = attackDirection;
       taker.faceY = 0;
+      this.claimBall(taker);
+      this.kickoffTeam = null;
     }
     this.countdown = 3.4;
     this.countdownShown = 4;
@@ -671,8 +708,8 @@ export class GameEngine {
 
   private newBall() {
     this.releaseBall();
-    this.ball.x = W / 2;
-    this.ball.y = H / 2;
+    this.ball.x = this.fieldWidth / 2;
+    this.ball.y = this.fieldHeight / 2;
     this.ball.vx = 0;
     this.ball.vy = 0;
     this.ball.z = 0;
@@ -699,8 +736,8 @@ export class GameEngine {
   private placeBallAtCarrier(player: Player) {
     const fx = player.faceX || (player.team === 0 ? 1 : -1);
     const fy = player.faceY;
-    this.ball.x = clamp(player.x + fx * BALL_CARRY_OFFSET, B_R, W - B_R);
-    this.ball.y = clamp(player.y + fy * BALL_CARRY_OFFSET, B_R, H - B_R);
+    this.ball.x = clamp(player.x + fx * BALL_CARRY_OFFSET, B_R, this.fieldWidth - B_R);
+    this.ball.y = clamp(player.y + fy * BALL_CARRY_OFFSET, B_R, this.fieldHeight - B_R);
     this.ball.vx = player.vx + fx * 38;
     this.ball.vy = player.vy + fy * 38;
     this.ball.z = 0;
@@ -776,15 +813,15 @@ export class GameEngine {
     this.ball.curve = 0;
     this.score[team]++;
     this.lastGoalTeam = team;
-    this.nextKickoffTeam = 1 - team;
+    this.kickoffTeam = 1 - team;
     this.phase = 'goal';
     this.goalT = team === 0 ? 2.6 : 2.2;
     this.goalFlash = 1;
     this.goalSide = team === 0 ? 1 : -1;
     this.shake = 16;
     this.sfx.goal();
-    const gx = team === 0 ? W : 0;
-    this.spawnConfetti(gx, H / 2, team === 0 ? -1 : 1, 130, team);
+    const gx = team === 0 ? this.fieldWidth : 0;
+    this.spawnConfetti(gx, this.fieldHeight / 2, team === 0 ? -1 : 1, 130, team);
     this.emit({ type: 'goal', team, score: [...this.score] });
     if (this.demo) this.goalT = 1.6;
   }
@@ -1147,12 +1184,6 @@ export class GameEngine {
       }
       if (this.countdown <= 0) {
         this.phase = 'play';
-        if (this.kickoffTeam !== null) {
-          const takerIndex = Math.min(1, this.teamSize - 1);
-          const taker = this.players[this.kickoffTeam * this.teamSize + takerIndex];
-          this.claimBall(taker);
-        }
-        this.kickoffTeam = null;
         this.sfx.whistle(false);
       }
       return;
@@ -1164,8 +1195,8 @@ export class GameEngine {
       // palla che si assesta in rete
       this.ball.vx *= Math.exp(-4 * dt);
       this.ball.vy *= Math.exp(-4 * dt);
-      this.ball.x = clamp(this.ball.x + this.ball.vx * dt, -GOAL_DEPTH + 7, W + GOAL_DEPTH - 7);
-      this.ball.y = clamp(this.ball.y + this.ball.vy * dt, H / 2 - GOAL_HALF + 8, H / 2 + GOAL_HALF - 8);
+      this.ball.x = clamp(this.ball.x + this.ball.vx * dt, -GOAL_DEPTH + 7, this.fieldWidth + GOAL_DEPTH - 7);
+      this.ball.y = clamp(this.ball.y + this.ball.vy * dt, this.fieldHeight / 2 - GOAL_HALF + 8, this.fieldHeight / 2 + GOAL_HALF - 8);
       if (this.goalT <= 0) {
         if (this.demo) {
           this.players.forEach((p) => p.reset());
@@ -1356,10 +1387,10 @@ export class GameEngine {
   }
 
   private ownGoalX(team: number) {
-    return team === 0 ? 0 : W;
+    return team === 0 ? 0 : this.fieldWidth;
   }
   private oppGoalX(team: number) {
-    return team === 0 ? W : 0;
+    return team === 0 ? this.fieldWidth : 0;
   }
 
   private aiControl(p: Player, dt: number, cfg: DiffCfg) {
@@ -1367,7 +1398,7 @@ export class GameEngine {
     const ownX = this.ownGoalX(p.team);
     const oppX = this.oppGoalX(p.team);
     const opps = this.players.filter((q) => q.team !== p.team);
-    const form = formationFor(p.team, p.idx, this.teamSize);
+    const form = formationFor(p.team, p.idx, this.teamSize, this.fieldWidth, this.fieldHeight);
     const carrier = this.ballCarrier;
     const meHas = carrier === p;
     let tx = p.tx;
@@ -1383,14 +1414,14 @@ export class GameEngine {
     )[0];
 
     if (meHas) {
-      const dGoal = dist(p.x, p.y, oppX, H / 2);
+      const dGoal = dist(p.x, p.y, oppX, this.fieldHeight / 2);
       const pressure = Math.min(...opps.map((o) => dist(o.x, o.y, p.x, p.y)));
-      const dOwn = dist(p.x, p.y, ownX, H / 2);
+      const dOwn = dist(p.x, p.y, ownX, this.fieldHeight / 2);
 
       const aiActionHold = Math.min(cfg.minHold, 0.42);
       if (p.kickCd <= 0 && p.holdT > aiActionHold) {
         const passDistance = Math.max(250, cfg.shootRange * 0.72);
-        if (this.teamSize > 1 && Math.abs(p.y - H / 2) > 145 && dGoal < 700 && pressure > 65 && p.holdT > 0.35) {
+        if (this.teamSize > 1 && Math.abs(p.y - this.fieldHeight / 2) > 145 && dGoal < 700 && pressure > 65 && p.holdT > 0.35) {
           this.aiCross(p, cfg);
         } else if (this.teamSize > 1 && dGoal > passDistance) {
           // Passare è la prima scelta anche nella propria metà: non spazzare via palloni innocui.
@@ -1398,14 +1429,14 @@ export class GameEngine {
         } else if (dOwn < 240) {
           if (this.teamSize === 1 && (pressure < 140 || p.holdT > 1.3)) this.clear(p);
         } else if (dGoal < cfg.shootRange) {
-          if (Math.abs(p.y - H / 2) > 115 && pressure > 90) this.aiCurveShot(p);
+          if (Math.abs(p.y - this.fieldHeight / 2) > 115 && pressure > 90) this.aiCurveShot(p);
           else this.aiShoot(p, cfg);
         } else if (pressure < 130 || p.holdT > 0.9) {
           this.aiPass(p, cfg);
         }
       }
 
-      const gy = H / 2 + Math.sin(this.time * 1.3 + p.idx * 2.1) * 90;
+      const gy = this.fieldHeight / 2 + Math.sin(this.time * 1.3 + p.idx * 2.1) * 90;
       const dx = oppX - p.x;
       const dy = gy - p.y;
       const dl = Math.hypot(dx, dy) || 1;
@@ -1429,12 +1460,12 @@ export class GameEngine {
       maxS = cfg.speed * 1.4;
     } else if (carrier && carrier.team === p.team) {
       const direction = p.team === 0 ? 1 : -1;
-      const lane = Math.sign(form.y - H / 2) || (p.idx % 2 === 0 ? -1 : 1);
+      const lane = Math.sign(form.y - this.fieldHeight / 2) || (p.idx % 2 === 0 ? -1 : 1);
       const forwardRun = p.idx % 2 === 0 ? 220 : 290;
       const supportX = carrier.x + direction * forwardRun;
       const supportY = carrier.y + lane * (p.idx % 2 === 0 ? 145 : 205);
-      tx = clamp(supportX, 70, W - 70);
-      ty = clamp(supportY, 70, H - 70);
+      tx = clamp(supportX, 70, this.fieldWidth - 70);
+      ty = clamp(supportY, 70, this.fieldHeight - 70);
       maxS = cfg.speed * 1.3;
     } else if (carrier && carrier.team !== p.team) {
       if (p === chaser) {
@@ -1447,12 +1478,12 @@ export class GameEngine {
         }
       } else {
         const dx = carrier.x - ownX;
-        const dy = carrier.y - H / 2;
-        const wob = Math.sign(form.y - H / 2) * 115;
+        const dy = carrier.y - this.fieldHeight / 2;
+        const wob = Math.sign(form.y - this.fieldHeight / 2) * 115;
         tx = ownX + dx * 0.38;
-        ty = H / 2 + dy * 0.5 + wob * 0.42;
-        tx = p.team === 0 ? clamp(tx, 90, W * 0.62) : clamp(tx, W * 0.38, W - 90);
-        ty = clamp(ty, 70, H - 70);
+        ty = this.fieldHeight / 2 + dy * 0.5 + wob * 0.42;
+        tx = p.team === 0 ? clamp(tx, 90, this.fieldWidth * 0.62) : clamp(tx, this.fieldWidth * 0.38, this.fieldWidth - 90);
+        ty = clamp(ty, 70, this.fieldHeight - 70);
       }
     } else if (!carrier && p === chaser) {
       tx = ball.x + ball.vx * 0.18;
@@ -1460,24 +1491,24 @@ export class GameEngine {
       maxS = cfg.speed * 1.06;
     } else if (!carrier && ball.lastTouch !== p.team) {
       const dx = ball.x - ownX;
-      const dy = ball.y - H / 2;
-      const wob = Math.sign(form.y - H / 2) * 120;
+      const dy = ball.y - this.fieldHeight / 2;
+      const wob = Math.sign(form.y - this.fieldHeight / 2) * 120;
       tx = ownX + dx * 0.38;
-      ty = H / 2 + dy * 0.55 + wob * 0.4;
-      tx = p.team === 0 ? clamp(tx, 90, W * 0.62) : clamp(tx, W * 0.38, W - 90);
-      ty = clamp(ty, 70, H - 70);
+      ty = this.fieldHeight / 2 + dy * 0.55 + wob * 0.4;
+      tx = p.team === 0 ? clamp(tx, 90, this.fieldWidth * 0.62) : clamp(tx, this.fieldWidth * 0.38, this.fieldWidth - 90);
+      ty = clamp(ty, 70, this.fieldHeight - 70);
     } else {
       const dir = p.team === 0 ? 1 : -1;
-      const spread = Math.sign(form.y - H / 2);
+      const spread = Math.sign(form.y - this.fieldHeight / 2);
       const adv = clamp(p.team === 0 ? targetX - form.x : form.x - targetX, 0, 260);
       tx = form.x + dir * (60 + adv * 0.5);
-      ty = clamp(targetY + spread * 190, 90, H - 90);
+      ty = clamp(targetY + spread * 190, 90, this.fieldHeight - 90);
       const teammateCarrier = carrier?.team === p.team && carrier !== p ? carrier : null;
       if (teammateCarrier && dist(tx, ty, teammateCarrier.x, teammateCarrier.y) < 150) {
-        const supportSide = spread || (teammateCarrier.y < H / 2 ? 1 : -1);
+        const supportSide = spread || (teammateCarrier.y < this.fieldHeight / 2 ? 1 : -1);
         ty = teammateCarrier.y + supportSide * 220;
       }
-      ty = clamp(ty, 80, H - 80);
+      ty = clamp(ty, 80, this.fieldHeight - 80);
     }
 
     p.tx = tx;
@@ -1514,7 +1545,7 @@ export class GameEngine {
     for (const keeper of this.goalkeepers) {
       const ballComing = keeper.team === 0 ? this.ball.vx < -80 : this.ball.vx > 80;
       const crossingTime = ballComing ? (keeper.x - this.ball.x) / this.ball.vx : -1;
-      let targetY = H / 2 + (this.ball.y - H / 2) * 0.18;
+      let targetY = this.fieldHeight / 2 + (this.ball.y - this.fieldHeight / 2) * 0.18;
 
       if (crossingTime >= 0 && crossingTime < 1.1) {
         // Anticipa il tiro solo quando arriva verso la porta, lasciando un breve tempo di reazione.
@@ -1522,7 +1553,7 @@ export class GameEngine {
         targetY = this.ball.y + this.ball.vy * leadTime;
       }
 
-      targetY = clamp(targetY, H / 2 - GOAL_HALF + GK_R * 0.55, H / 2 + GOAL_HALF - GK_R * 0.55);
+      targetY = clamp(targetY, this.fieldHeight / 2 - GOAL_HALF + GK_R * 0.55, this.fieldHeight / 2 + GOAL_HALF - GK_R * 0.55);
       const step = clamp(targetY - keeper.y, -GK_SPEED * dt, GK_SPEED * dt);
       keeper.y += step;
       keeper.vy = step / dt;
@@ -1534,8 +1565,8 @@ export class GameEngine {
     p.y += p.vy * dt;
     p.vx *= Math.exp(-0.4 * dt);
     p.vy *= Math.exp(-0.4 * dt);
-    p.x = clamp(p.x, P_R, W - P_R);
-    p.y = clamp(p.y, P_R, H - P_R);
+    p.x = clamp(p.x, P_R, this.fieldWidth - P_R);
+    p.y = clamp(p.y, P_R, this.fieldHeight - P_R);
   }
 
   private separatePlayers() {
@@ -1567,8 +1598,8 @@ export class GameEngine {
       }
     }
     for (const p of this.players) {
-      p.x = clamp(p.x, P_R, W - P_R);
-      p.y = clamp(p.y, P_R, H - P_R);
+      p.x = clamp(p.x, P_R, this.fieldWidth - P_R);
+      p.y = clamp(p.y, P_R, this.fieldHeight - P_R);
     }
   }
 
@@ -1603,7 +1634,7 @@ export class GameEngine {
     let ny = d > 0.01 ? dy / d : 0;
 
     if (incoming) {
-      const cornerDeflection = !isDemo && this.teamSize > 1 && Math.abs(impact) > 0.68 && Math.random() < 0.48;
+      const cornerDeflection = !isDemo && Math.abs(impact) > 0.68 && Math.random() < 0.48;
       if (cornerDeflection) {
         // Una parata laterale può deviare il pallone oltre la linea di fondo.
         nx = -faceX;
@@ -1644,18 +1675,18 @@ export class GameEngine {
   }
 
   private awardCorner(team: number, leftEnd: boolean, y: number) {
-    const top = y < H / 2;
+    const top = y < this.fieldHeight / 2;
     const taker = this.players
       .filter((p) => p.team === team)
       .reduce((best, p) => {
-        const cornerX = leftEnd ? 0 : W;
-        const cornerY = top ? 0 : H;
+        const cornerX = leftEnd ? 0 : this.fieldWidth;
+        const cornerY = top ? 0 : this.fieldHeight;
         return dist(p.x, p.y, cornerX, cornerY) < dist(best.x, best.y, cornerX, cornerY) ? p : best;
       });
 
     this.releaseBall();
-    taker.x = team === 0 ? W - 48 : 48;
-    taker.y = top ? 48 : H - 48;
+    taker.x = team === 0 ? this.fieldWidth - 48 : 48;
+    taker.y = top ? 48 : this.fieldHeight - 48;
     taker.vx = 0;
     taker.vy = 0;
     taker.faceX = team === 0 ? 1 : -1;
@@ -1680,7 +1711,7 @@ export class GameEngine {
     const nextY = clamp(
       flight.startY + (flight.targetY - flight.startY) * progress + flight.arc * sweep,
       B_R,
-      H - B_R,
+      this.fieldHeight - B_R,
     );
     const nextVx = dt > 0 ? (nextX - previousX) / dt : 0;
     const nextVy = dt > 0 ? (nextY - previousY) / dt : 0;
@@ -1728,10 +1759,8 @@ export class GameEngine {
         this.ball.x = hitKeeper.x + (dx / d) * (GK_R + B_R - 0.5);
         this.ball.y = hitKeeper.y + (dy / d) * (GK_R + B_R - 0.5);
         this.contactGoalkeeper(hitKeeper, false);
-        // Il 5% di parate previsto dal tiro a giro continua a diventare corner (tranne 1v1).
-        if (!flight.scores && this.teamSize > 1) {
-          this.awardCorner(flight.team, flight.team === 1, this.ball.y);
-        }
+        // Il 5% di parate previsto dal tiro a giro continua a diventare corner.
+        if (!flight.scores) this.awardCorner(flight.team, flight.team === 1, this.ball.y);
         return;
       }
 
@@ -1778,18 +1807,18 @@ export class GameEngine {
       return;
     }
 
-    // Il 5% restante è una parata reale; nei formati maggiori diventa corner per chi ha tirato.
+    // Il 5% restante è una parata reale con corner per chi ha tirato.
     const keeper = this.goalkeepers[1 - flight.team];
     const faceX = keeper.team === 0 ? 1 : -1;
-    const impactSide = Math.sign(flight.targetY - H / 2) || 1;
+    const impactSide = Math.sign(flight.targetY - this.fieldHeight / 2) || 1;
     this.ball.x = keeper.x + faceX * (GK_R + B_R - 9);
-    this.ball.y = clamp(keeper.y + impactSide * GK_R * 0.78, B_R, H - B_R);
+    this.ball.y = clamp(keeper.y + impactSide * GK_R * 0.78, B_R, this.fieldHeight - B_R);
     this.ball.vx = -faceX * 820;
     this.ball.vy = impactSide * 180;
     this.ball.lastTouch = flight.team;
     this.ball.lastTouchWasKeeper = false;
     this.contactGoalkeeper(keeper, false);
-    if (this.teamSize > 1) this.awardCorner(flight.team, flight.team === 1, this.ball.y);
+    this.awardCorner(flight.team, flight.team === 1, this.ball.y);
   }
 
   private updateBall(dt: number, isDemo: boolean) {
@@ -1832,8 +1861,8 @@ export class GameEngine {
       if (ball.y < B_R) {
         ball.y = B_R;
         ball.vy = Math.abs(ball.vy) * 0.62;
-      } else if (ball.y > H - B_R) {
-        ball.y = H - B_R;
+      } else if (ball.y > this.fieldHeight - B_R) {
+        ball.y = this.fieldHeight - B_R;
         ball.vy = -Math.abs(ball.vy) * 0.62;
       }
     }
@@ -1849,7 +1878,7 @@ export class GameEngine {
       ball.vz = 0;
     }
 
-    const inMouth = Math.abs(ball.y - H / 2) < GOAL_HALF - 4;
+    const inMouth = Math.abs(ball.y - this.fieldHeight / 2) < GOAL_HALF - 4;
 
     // Gol o calcio d'angolo dopo una deviazione del portiere.
     if (inMouth) {
@@ -1857,15 +1886,14 @@ export class GameEngine {
         this.goal(1);
         return;
       }
-      if (ball.x > W) {
+      if (ball.x > this.fieldWidth) {
         this.goal(0);
         return;
       }
-    } else if (ball.x < 0 || ball.x > W) {
+    } else if (ball.x < 0 || ball.x > this.fieldWidth) {
       const defendingTeam = ball.x < 0 ? 0 : 1;
       if (
         !isDemo &&
-        this.teamSize > 1 &&
         ball.lastTouchWasKeeper &&
         ball.lastTouch === defendingTeam
       ) {
@@ -1876,28 +1904,28 @@ export class GameEngine {
         ball.x = B_R;
         ball.vx = Math.abs(ball.vx) * 0.62;
       } else {
-        ball.x = W - B_R;
+        ball.x = this.fieldWidth - B_R;
         ball.vx = -Math.abs(ball.vx) * 0.62;
       }
     }
 
     // dentro la porta (prima del gol vero e proprio)
-    if (Math.abs(ball.y - H / 2) < GOAL_HALF) {
+    if (Math.abs(ball.y - this.fieldHeight / 2) < GOAL_HALF) {
       if (ball.x < -GOAL_DEPTH + B_R) {
         ball.x = -GOAL_DEPTH + B_R;
         ball.vx = Math.abs(ball.vx) * 0.5;
-      } else if (ball.x > W + GOAL_DEPTH - B_R) {
-        ball.x = W + GOAL_DEPTH - B_R;
+      } else if (ball.x > this.fieldWidth + GOAL_DEPTH - B_R) {
+        ball.x = this.fieldWidth + GOAL_DEPTH - B_R;
         ball.vx = -Math.abs(ball.vx) * 0.5;
       }
     }
 
     // pali
     const posts = [
-      { x: 0, y: H / 2 - GOAL_HALF },
-      { x: 0, y: H / 2 + GOAL_HALF },
-      { x: W, y: H / 2 - GOAL_HALF },
-      { x: W, y: H / 2 + GOAL_HALF },
+      { x: 0, y: this.fieldHeight / 2 - GOAL_HALF },
+      { x: 0, y: this.fieldHeight / 2 + GOAL_HALF },
+      { x: this.fieldWidth, y: this.fieldHeight / 2 - GOAL_HALF },
+      { x: this.fieldWidth, y: this.fieldHeight / 2 + GOAL_HALF },
     ];
     for (const post of posts) {
       const dx = ball.x - post.x;
@@ -1922,7 +1950,7 @@ export class GameEngine {
   // ---------- calci e passaggi ----------
   private shootAim(p: Player, spread: number) {
     const dir = this.inputDir(p.team);
-    const aimY = H / 2 + (dir.len > 0.2 ? dir.y * 80 : (Math.random() - 0.5) * 130) + (Math.random() - 0.5) * spread * 300;
+    const aimY = this.fieldHeight / 2 + (dir.len > 0.2 ? dir.y * 80 : (Math.random() - 0.5) * 130) + (Math.random() - 0.5) * spread * 300;
     const dx = this.oppGoalX(p.team) - this.ball.x;
     const dy = aimY - this.ball.y;
     const dl = Math.hypot(dx, dy) || 1;
@@ -1970,7 +1998,7 @@ export class GameEngine {
   private curveShot(p: Player) {
     if (this.ballCarrier !== p) return;
     const steer = this.inputDir(p.team);
-    const defaultOffset = p.y < H / 2 ? GOAL_HALF * 0.52 : -GOAL_HALF * 0.52;
+    const defaultOffset = p.y < this.fieldHeight / 2 ? GOAL_HALF * 0.52 : -GOAL_HALF * 0.52;
     const targetOffset = steer.len > 0.2
       ? clamp(steer.y, -1, 1) * (GOAL_HALF - B_R - 10)
       : defaultOffset;
@@ -1980,15 +2008,15 @@ export class GameEngine {
     const keeper = this.goalkeepers[1 - p.team];
     const keeperFaceX = keeper.team === 0 ? 1 : -1;
     const targetY = scores
-      ? H / 2 + targetOffset
-      : clamp(keeper.y + Math.sign(targetOffset || 1) * GK_R * 0.78, B_R, H - B_R);
+      ? this.fieldHeight / 2 + targetOffset
+      : clamp(keeper.y + Math.sign(targetOffset || 1) * GK_R * 0.78, B_R, this.fieldHeight - B_R);
     const targetX = scores
       ? goalX + direction * (GOAL_DEPTH + 6)
       : keeper.x + keeperFaceX * (GK_R + B_R - 9);
     const startX = this.ball.x;
     const startY = this.ball.y;
     const duration = clamp(Math.abs(targetX - startX) / 1460, 0.38, 1.25);
-    const arc = (p.y < H / 2 ? 1 : -1) * 72;
+    const arc = (p.y < this.fieldHeight / 2 ? 1 : -1) * 72;
 
     this.releaseBall(p);
     this.ball.vx = (targetX - startX) / duration;
@@ -2040,8 +2068,8 @@ export class GameEngine {
     this.releaseBall(p);
     // Avvia il pallone dal lato del passaggio, mai attraverso il corpo del calciatore.
     const launchOffset = P_R + B_R + 14;
-    this.ball.x = clamp(p.x + dirX * launchOffset, B_R, W - B_R);
-    this.ball.y = clamp(p.y + dirY * launchOffset, B_R, H - B_R);
+    this.ball.x = clamp(p.x + dirX * launchOffset, B_R, this.fieldWidth - B_R);
+    this.ball.y = clamp(p.y + dirY * launchOffset, B_R, this.fieldHeight - B_R);
     const dx = tx - this.ball.x;
     const dy = ty - this.ball.y;
     const dl = Math.hypot(dx, dy) || 1;
@@ -2071,10 +2099,10 @@ export class GameEngine {
     const mates = this.players.filter((q) => q.team === p.team && q !== p);
     const boxX = this.oppGoalX(p.team) - towardGoal * 145;
     let targetY = dir.len > 0.2
-      ? H / 2 + dir.y * 185
-      : p.y < H / 2
-        ? H / 2 + 95
-        : H / 2 - 95;
+      ? this.fieldHeight / 2 + dir.y * 185
+      : p.y < this.fieldHeight / 2
+        ? this.fieldHeight / 2 + 95
+        : this.fieldHeight / 2 - 95;
     let targetX = boxX;
 
     if (mates.length > 0) {
@@ -2085,9 +2113,9 @@ export class GameEngine {
         const bestOpen = Math.min(...this.players.filter((q) => q.team !== p.team).map((q) => dist(q.x, q.y, best.x, best.y)));
         return boxDistance - openness * 0.16 < bestDistance - bestOpen * 0.16 ? mate : best;
       });
-      targetX = clamp(receiver.x + receiver.vx * 0.2, p.team === 0 ? W - 300 : 160, p.team === 0 ? W - 80 : 300);
-      targetY = clamp(receiver.y + receiver.vy * 0.2, H / 2 - 210, H / 2 + 210);
-      if (dir.len > 0.2) targetY = clamp(targetY + dir.y * 45, H / 2 - 220, H / 2 + 220);
+      targetX = clamp(receiver.x + receiver.vx * 0.2, p.team === 0 ? this.fieldWidth - 300 : 160, p.team === 0 ? this.fieldWidth - 80 : 300);
+      targetY = clamp(receiver.y + receiver.vy * 0.2, this.fieldHeight / 2 - 210, this.fieldHeight / 2 + 210);
+      if (dir.len > 0.2) targetY = clamp(targetY + dir.y * 45, this.fieldHeight / 2 - 220, this.fieldHeight / 2 + 220);
       if (humanSwitch) this.controlledIdx[p.team] = receiver.idx;
     }
 
@@ -2130,7 +2158,7 @@ export class GameEngine {
     const oppX = this.oppGoalX(p.team);
     const side = Math.random() > 0.5 ? 0.22 : 0.78;
     const dx = oppX - p.x;
-    const dy = H * side - p.y;
+    const dy = this.fieldHeight * side - p.y;
     const dl = Math.hypot(dx, dy) || 1;
     this.releaseBall(p);
     this.ball.vx = (dx / dl) * 680;
@@ -2788,9 +2816,9 @@ export class GameEngine {
     }
 
     const margin = 34;
-    const s = Math.min((vw - margin * 2) / W, (vh - margin * 2) / H);
-    const ox = (vw - W * s) / 2;
-    const oy = (vh - H * s) / 2 + 8;
+    const s = Math.min((vw - margin * 2) / this.fieldWidth, (vh - margin * 2) / this.fieldHeight);
+    const ox = (vw - this.fieldWidth * s) / 2;
+    const oy = (vh - this.fieldHeight * s) / 2 + 8;
 
     const shakeX = (Math.random() - 0.5) * this.shake;
     const shakeY = (Math.random() - 0.5) * this.shake;
@@ -2838,12 +2866,12 @@ export class GameEngine {
 
     // flash gol
     if (this.goalFlash > 0) {
-      const gx = this.goalSide === 1 ? W : 0;
-      const fg = ctx.createRadialGradient(gx, H / 2, 0, gx, H / 2, 420);
+      const gx = this.goalSide === 1 ? this.fieldWidth : 0;
+      const fg = ctx.createRadialGradient(gx, this.fieldHeight / 2, 0, gx, this.fieldHeight / 2, 420);
       fg.addColorStop(0, `rgba(255,255,255,${this.goalFlash * 0.45})`);
       fg.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = fg;
-      ctx.fillRect(-60, H / 2 - 430, W + 120, 860);
+      ctx.fillRect(-60, this.fieldHeight / 2 - 430, this.fieldWidth + 120, 860);
     }
 
     ctx.restore();
@@ -2863,20 +2891,20 @@ export class GameEngine {
     ctx.save();
     // base + strisce erba
     ctx.fillStyle = '#0c4a30';
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, this.fieldWidth, this.fieldHeight);
     const bands = 12;
     for (let i = 0; i < bands; i++) {
       if (i % 2 === 0) {
         ctx.fillStyle = 'rgba(255,255,255,0.025)';
-        ctx.fillRect((i * W) / bands, 0, W / bands, H);
+        ctx.fillRect((i * this.fieldWidth) / bands, 0, this.fieldWidth / bands, this.fieldHeight);
       }
     }
-    const sheen = ctx.createLinearGradient(0, 0, 0, H);
+    const sheen = ctx.createLinearGradient(0, 0, 0, this.fieldHeight);
     sheen.addColorStop(0, 'rgba(190,235,255,0.05)');
     sheen.addColorStop(0.5, 'rgba(0,0,0,0)');
     sheen.addColorStop(1, 'rgba(0,20,10,0.16)');
     ctx.fillStyle = sheen;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, this.fieldWidth, this.fieldHeight);
 
     // linee
     ctx.strokeStyle = 'rgba(240,252,255,0.85)';
@@ -2884,37 +2912,37 @@ export class GameEngine {
     ctx.shadowColor = 'rgba(160,230,255,0.55)';
     ctx.shadowBlur = 7;
     ctx.beginPath();
-    ctx.strokeRect(0, 0, W, H);
-    ctx.moveTo(W / 2, 0);
-    ctx.lineTo(W / 2, H);
-    ctx.moveTo(W / 2 + 92, H / 2);
-    ctx.arc(W / 2, H / 2, 92, 0, Math.PI * 2);
+    ctx.strokeRect(0, 0, this.fieldWidth, this.fieldHeight);
+    ctx.moveTo(this.fieldWidth / 2, 0);
+    ctx.lineTo(this.fieldWidth / 2, this.fieldHeight);
+    ctx.moveTo(this.fieldWidth / 2 + 92, this.fieldHeight / 2);
+    ctx.arc(this.fieldWidth / 2, this.fieldHeight / 2, 92, 0, Math.PI * 2);
     ctx.stroke();
     ctx.beginPath();
-    ctx.strokeRect(0, H / 2 - 160, 150, 320);
-    ctx.strokeRect(W - 150, H / 2 - 160, 150, 320);
-    ctx.strokeRect(0, H / 2 - 95, 62, 190);
-    ctx.strokeRect(W - 62, H / 2 - 95, 62, 190);
+    ctx.strokeRect(0, this.fieldHeight / 2 - 160, 150, 320);
+    ctx.strokeRect(this.fieldWidth - 150, this.fieldHeight / 2 - 160, 150, 320);
+    ctx.strokeRect(0, this.fieldHeight / 2 - 95, 62, 190);
+    ctx.strokeRect(this.fieldWidth - 62, this.fieldHeight / 2 - 95, 62, 190);
     ctx.beginPath();
-    ctx.arc(112, H / 2, 78, -Math.PI / 3.1, Math.PI / 3.1);
+    ctx.arc(112, this.fieldHeight / 2, 78, -Math.PI / 3.1, Math.PI / 3.1);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(W - 112, H / 2, 78, Math.PI - Math.PI / 3.1, Math.PI + Math.PI / 3.1);
+    ctx.arc(this.fieldWidth - 112, this.fieldHeight / 2, 78, Math.PI - Math.PI / 3.1, Math.PI + Math.PI / 3.1);
     ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.fillStyle = 'rgba(240,252,255,0.9)';
     ctx.beginPath();
-    ctx.arc(W / 2, H / 2, 5, 0, Math.PI * 2);
-    ctx.arc(112, H / 2, 4, 0, Math.PI * 2);
-    ctx.arc(W - 112, H / 2, 4, 0, Math.PI * 2);
+    ctx.arc(this.fieldWidth / 2, this.fieldHeight / 2, 5, 0, Math.PI * 2);
+    ctx.arc(112, this.fieldHeight / 2, 4, 0, Math.PI * 2);
+    ctx.arc(this.fieldWidth - 112, this.fieldHeight / 2, 4, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 
   private drawGoals(ctx: CanvasRenderingContext2D) {
     for (const side of [-1, 1]) {
-      const gx = side === -1 ? 0 : W;
-      const x0 = side === -1 ? -GOAL_DEPTH : W;
+      const gx = side === -1 ? 0 : this.fieldWidth;
+      const x0 = side === -1 ? -GOAL_DEPTH : this.fieldWidth;
       ctx.save();
       // rete
       ctx.strokeStyle = 'rgba(220,240,255,0.28)';
@@ -2922,10 +2950,10 @@ export class GameEngine {
       ctx.beginPath();
       for (let i = 0; i <= GOAL_DEPTH; i += 7) {
         const x = x0 + i;
-        ctx.moveTo(x, H / 2 - GOAL_HALF);
-        ctx.lineTo(x, H / 2 + GOAL_HALF);
+        ctx.moveTo(x, this.fieldHeight / 2 - GOAL_HALF);
+        ctx.lineTo(x, this.fieldHeight / 2 + GOAL_HALF);
       }
-      for (let y = H / 2 - GOAL_HALF; y <= H / 2 + GOAL_HALF; y += 7) {
+      for (let y = this.fieldHeight / 2 - GOAL_HALF; y <= this.fieldHeight / 2 + GOAL_HALF; y += 7) {
         ctx.moveTo(x0, y);
         ctx.lineTo(x0 + GOAL_DEPTH, y);
       }
@@ -2934,14 +2962,14 @@ export class GameEngine {
       ctx.strokeStyle = 'rgba(255,255,255,0.9)';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(gx, H / 2 - GOAL_HALF);
-      ctx.lineTo(x0 + (side === -1 ? 0 : GOAL_DEPTH), H / 2 - GOAL_HALF);
-      ctx.lineTo(x0 + (side === -1 ? 0 : GOAL_DEPTH), H / 2 + GOAL_HALF);
-      ctx.lineTo(gx, H / 2 + GOAL_HALF);
+      ctx.moveTo(gx, this.fieldHeight / 2 - GOAL_HALF);
+      ctx.lineTo(x0 + (side === -1 ? 0 : GOAL_DEPTH), this.fieldHeight / 2 - GOAL_HALF);
+      ctx.lineTo(x0 + (side === -1 ? 0 : GOAL_DEPTH), this.fieldHeight / 2 + GOAL_HALF);
+      ctx.lineTo(gx, this.fieldHeight / 2 + GOAL_HALF);
       ctx.stroke();
       // pali
       ctx.fillStyle = '#ffffff';
-      for (const py of [H / 2 - GOAL_HALF, H / 2 + GOAL_HALF]) {
+      for (const py of [this.fieldHeight / 2 - GOAL_HALF, this.fieldHeight / 2 + GOAL_HALF]) {
         ctx.beginPath();
         ctx.arc(gx, py, 5, 0, Math.PI * 2);
         ctx.fill();

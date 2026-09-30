@@ -12,6 +12,7 @@ Il file è autonomo e funziona offline; internet serve solo per caricare i font 
 ## 🎮 Modalità
 
 - **PARTITA 90s** — scegli **1v1, 2v2, 3v3, 4v4 o 5v5**; il portiere è sempre aggiuntivo e fisso. In caso di parità: supplementari e poi rigori.
+- **Campo** — dimensioni standard per 1v1 e 2v2; più ampio per 3v3, 4v4 e 5v5.
 - **SOLO RIGORI** — vai direttamente alla serie dal dischetto.
 - **TORNEO NAZIONALE** — 12 nazionali, 4 gruppi da 3, prime due ai quarti, poi semifinali e finale. Le partite del giocatore usano il formato selezionato.
 - **1 o 2 giocatori locali** — la scelta degli utenti è indipendente dal formato delle squadre.
@@ -21,11 +22,12 @@ Il file è autonomo e funziona offline; internet serve solo per caricare i font 
 
 I giocatori **controllano la palla quando la raccolgono**: non rimbalza via a ogni contatto. Gli avversari pressano e tentano contrasti, ma hanno una probabilità ridotta di strappare il possesso; se falliscono, il portatore conserva la palla. La CPU tenta i contrasti automaticamente; in locale si può intervenire con il comando dedicato.
 
-- **Passaggio**: serve a liberare un compagno e cambiare lato; il ricevente controllato viene selezionato automaticamente.
+- **Passaggio**: trova automaticamente il compagno più vicino senza mirare; il ricevente corre incontro al pallone.
 - **Cross**: pallone alto indirizzato verso l’area e i compagni in posizione da tiro.
-- **Tiro a giro**: conclusione con traiettoria curva che entra in rete nel **95% dei tentativi**.
+- **Tiro a giro**: resta efficace e segna nel **95% dei tentativi senza copertura**; portiere e giocatori di movimento possono murarlo se sulla traiettoria.
 - **Tiro di potenza**: conclusione dritta e rapidissima.
-- **Calcio d’angolo**: una parata del portiere può deviare il pallone oltre la linea di fondo e assegnare un corner alla squadra avversaria. I corner non vengono assegnati nel formato 1v1.
+- **Calcio d’angolo**: una parata del portiere può deviare il pallone oltre la linea di fondo e assegnare un corner alla squadra avversaria, anche nel formato 1v1.
+- **Ripresa del gioco**: dopo ogni gol, il calcio d’inizio e il possesso spettano alla squadra che lo ha subito.
 
 ## ⌨️ Comandi
 
