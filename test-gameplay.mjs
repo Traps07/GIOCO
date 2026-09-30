@@ -299,6 +299,28 @@ engine.setStick(0, 0, 0, false);
 assert.ok(engine.ball.vx < 0, 'il passaggio va verso il compagno più vicino, non verso la mira');
 assert.equal(engine.controlledIdx[0], nearestMate.idx, 'il controllo passa al ricevente più vicino');
 
+// Prova end-to-end: il tasto passa in qualunque direzione sia orientato il giocatore.
+engine.startMatch('normal', 'match', 1, undefined, 3);
+engine.phase = 'play';
+const livePasser = engine.players[0];
+const liveNearest = engine.players[1];
+const liveFarther = engine.players[2];
+livePasser.x = 400;
+livePasser.y = 350;
+liveNearest.x = 350;
+liveNearest.y = 350;
+liveFarther.x = 700;
+liveFarther.y = 350;
+engine.claimBall(livePasser);
+engine.setStick(0, 1, 0, true);
+engine.onKeyDown({ code: 'KeyC', repeat: false, preventDefault: noop });
+engine.update(1 / 60);
+engine.setStick(0, 0, 0, false);
+assert.equal(engine.ballCarrier, null, 'il comando passaggio rilascia sempre la palla con un compagno disponibile');
+assert.ok(engine.ball.vx < 0, 'il comando passa verso il compagno vicino anche puntando dalla parte opposta');
+engine.update(1 / 60);
+assert.equal(engine.ballCarrier, liveNearest, 'il passaggio all’indietro supera il giocatore che ha calciato e raggiunge il ricevente');
+
 // Cross e tiro di potenza mantengono le traiettorie dedicate.
 engine.startMatch('normal', 'match', 2, undefined, 3);
 const skillPlayer = engine.players[0];

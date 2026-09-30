@@ -261,6 +261,8 @@ export class GameEngine {
   private controlledIdx: [number, number] = [1, 1];
   private ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, z: 0, vz: 0, curve: 0, lastTouch: -1, lastTouchWasKeeper: false };
   private ballCarrier: Player | null = null;
+  private recentKicker: Player | null = null;
+  private kickerGrace = 0;
   private curveFlight: CurveFlight | null = null;
   private trail: { x: number; y: number }[] = [];
   private particles: Particle[] = [];
@@ -642,6 +644,8 @@ export class GameEngine {
   private releaseBall(player?: Player) {
     if (player && this.ballCarrier !== player) return;
     this.curveFlight = null;
+    this.recentKicker = null;
+    this.kickerGrace = 0;
     if (this.ballCarrier) {
       this.ballCarrier.hasBall = false;
       this.ballCarrier.holdT = 0;
@@ -1080,6 +1084,8 @@ export class GameEngine {
     this.time += dt;
     this.shake = Math.max(0, this.shake - dt * 40 - this.shake * 4 * dt);
     this.goalFlash = Math.max(0, this.goalFlash - dt * 1.6);
+    this.kickerGrace = Math.max(0, this.kickerGrace - dt);
+    if (this.kickerGrace === 0) this.recentKicker = null;
     this.updateParticles(dt);
     this.players.forEach((p) => {
       p.kickCd = Math.max(0, p.kickCd - dt);
@@ -1512,6 +1518,7 @@ export class GameEngine {
 
   private contactBall(p: Player, _dt: number) {
     if (this.ballCarrier || this.ball.z > 24 || this.curveFlight) return;
+    if (p === this.recentKicker && this.kickerGrace > 0) return;
     const dx = this.ball.x - p.x;
     const dy = this.ball.y - p.y;
     const d = Math.hypot(dx, dy);
@@ -1878,13 +1885,25 @@ export class GameEngine {
     });
     const d = dist(p.x, p.y, best.x, best.y);
     const power = clamp(420 + d * 0.66, 430, 760);
-    const lead = (d / power) * 0.72;
-    const tx = best.x + best.vx * lead + (Math.random() - 0.5) * errRange * 220;
-    const ty = best.y + best.vy * lead + (Math.random() - 0.5) * errRange * 220;
+    const lead = humanSwitch ? 0 : (d / power) * 0.72;
+    const noiseX = humanSwitch ? 0 : (Math.random() - 0.5) * errRange * 220;
+    const noiseY = humanSwitch ? 0 : (Math.random() - 0.5) * errRange * 220;
+    const tx = best.x + best.vx * lead + noiseX;
+    const ty = best.y + best.vy * lead + noiseY;
+    const fromPlayerX = tx - p.x;
+    const fromPlayerY = ty - p.y;
+    const playerToTarget = Math.hypot(fromPlayerX, fromPlayerY) || 1;
+    const dirX = fromPlayerX / playerToTarget;
+    const dirY = fromPlayerY / playerToTarget;
+
+    this.releaseBall(p);
+    // Avvia il pallone dal lato del passaggio, mai attraverso il corpo del calciatore.
+    const launchOffset = P_R + B_R + 14;
+    this.ball.x = clamp(p.x + dirX * launchOffset, B_R, W - B_R);
+    this.ball.y = clamp(p.y + dirY * launchOffset, B_R, H - B_R);
     const dx = tx - this.ball.x;
     const dy = ty - this.ball.y;
     const dl = Math.hypot(dx, dy) || 1;
-    this.releaseBall(p);
     this.ball.vx = (dx / dl) * power;
     this.ball.vy = (dy / dl) * power;
     this.ball.z = 0;
@@ -1892,6 +1911,8 @@ export class GameEngine {
     this.ball.curve = 0;
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
+    this.recentKicker = p;
+    this.kickerGrace = 0.14;
     p.kickCd = 0.25;
     this.sfx.pass();
     this.spawnKick(this.ball.x, this.ball.y, dx / dl, dy / dl, '#ffffff');
