@@ -1644,7 +1644,7 @@ export function EndScreen({
         </p>
         <div className="mt-2 flex items-center justify-center gap-3 text-[9px] text-white/35">
           <span className="flex items-center gap-1"><KitPreview team={homeTeam} className="h-4 w-3.5" kit={homeKit} /> {homeTeam.code}</span>
-          <span className="flex items-center gap-1"><KitPreview team={awayTeam} className="h-4 w-3.5" kit={awayKit} /> {awayTeam.code}{awayKit === awayTeam.awayKit ? ' · away' : ''}</span>
+          <span className="flex items-center gap-1"><KitPreview team={awayTeam} className="h-4 w-3.5" kit={awayKit} /> {awayTeam.code}{awayKit === awayTeam.awayKit ? ` · ${t.teamKitAwayClash}` : ''}</span>
         </div>
         {decidedBy === 'golden' && (
           <p className="mt-2 flex items-center gap-1.5 font-display text-xs tracking-[0.3em] text-amber-300">
