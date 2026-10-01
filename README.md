@@ -1,6 +1,6 @@
 # ⚽ Street Soccer
 
-An arcade football game that runs entirely in your browser. Play with **1–5 outfield players plus one fixed goalkeeper on each team**, enjoy 90-second matches, golden-goal extra time, first-person penalty shootouts, and six interface languages: English, Italian, German, French, Spanish, and Arabic.
+An arcade football game that runs entirely in your browser. Play with **1–5 outfield players plus one fixed goalkeeper on each team**, choose between **225 national teams from every confederation on Earth**, enjoy 90-second matches, golden-goal extra time, first-person penalty shootouts, build **fully custom tournaments** from groups to knock-out brackets, and use the interface in six languages: English, Italian, German, French, Spanish, and Arabic.
 
 ## ▶️ Play now
 
@@ -14,9 +14,11 @@ The single-file game works offline; an internet connection is only needed to loa
 - **Quick match** — choose **1v1, 2v2, 3v3, 4v4, or 5v5**. Each team always has an additional fixed goalkeeper. A tied match goes to golden-goal extra time and then penalties.
 - **Pitch size** — standard dimensions for 1v1 and 2v2; a wider, larger pitch for 3v3, 4v4, and 5v5.
 - **Penalty shootout** — jump straight to the spot-kick series.
-- **National tournament** — 12 national teams in 4 groups of 3. The top two teams from each group advance to the quarter-finals, followed by the semi-finals and final.
+- **National tournament** — a full tournament builder, not a fixed bracket. Pick the format (**groups + knock-out cup, groups only, round-robin league, or single knock-out**), the number of participants from **4 to 64**, the group size (2–6), how many teams qualify (1–3), a third-place play-off, golden-goal extra time, penalty shoot-outs, seeding (random, seeded pots, or serpentine), upset frequency, and how many group matchdays to play. Participants are drawn from a pool you filter by confederation and by merit tier, or hand-picked one by one. Ten ready-made presets reproduce the real formats: 48-team and 32-team World Cup, Euro, Copa América, Africa Cup of Nations, Asian Cup, Oceanian Cup, a minor-nations cup, a world league, and a straight knock-out. Byes, uneven groups, and truncated calendars are all handled, and every match you do not play is simulated from the teams' coefficients.
+- **225 national teams** — every FIFA member association plus the UN and associate states without a national side (Monaco, Tuvalu, Kiribati, Nauru, Vatican City, Réunion, Zanzibar, Guam, …), split into **UEFA, CONMEBOL, CONCACAF, CAF, AFC, and OFC** and into five merit tiers. Each team wears a kit inspired by its real shirt; nations without a professional side get a kit built from their **flag** instead, and the team card labels which of the two you are looking at. Clashing colours are resolved automatically: the away team switches to a generated second kit.
 - **Local multiplayer** — one or two people can play on the same keyboard; the number of local players is independent of the on-field team size.
-- Choose from 12 national teams with kits inspired by World Cup colours and shirt designs. Three difficulty levels and six languages are available.
+
+Three difficulty levels and six languages are available, with every nation's name localised in all six.
 
 The Settings screen lets you mute game audio, remap keyboard controls, choose a match length of **60, 90, 120, or 180 seconds**, and change the interface language. English is the default for a new player profile. Extra time remains 30 seconds.
 
@@ -73,6 +75,8 @@ npm run dev
 npm run build
 npm test
 ```
+
+`npm test` runs the whole suite: two-player input handling, the nation database (`test:nations`), server-side rendering of every screen in all six languages (`test:ui`), the tournament engine (`test:tournament`, 120 configuration permutations plus all presets), a gameplay simulation, and a full match loop soak test.
 
 To refresh the standalone game file after making changes:
 

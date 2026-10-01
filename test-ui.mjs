@@ -4,10 +4,11 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement as h } from 'react';
 import { STRINGS, LANGUAGES } from './src/i18n.js';
-import { MenuScreen, EndScreen } from './src/components/Menus.js';
+import { MenuScreen, EndScreen, TeamSelectScreen, TournamentSetupScreen, TournamentScreen } from './src/components/Menus.js';
 import SettingsScreen from './src/components/SettingsScreen.js';
 import { DEFAULT_KEY_BINDINGS } from './src/game/keyboard.js';
-import { DEFAULT_TEAMS } from './src/game/teams.js';
+import { DEFAULT_TEAMS, NATIONAL_TEAMS, getNationalTeam } from './src/game/teams.js';
+import { createTournament, drawParticipants, DEFAULT_TOURNAMENT_CONFIG } from './src/game/tournament.js';
 import HUD from './src/components/HUD.js';
 
 const snap = (over = {}) => ({
@@ -56,6 +57,15 @@ const check = (name, fn) => {
 };
 
 const noop = () => {};
+const mulberry = (seed) => {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
 
 for (const { id } of LANGUAGES) {
   const t = STRINGS[id];
@@ -176,6 +186,54 @@ for (const { id } of LANGUAGES) {
     ),
   );
 
+  check(`scelta nazionale mondiale (${id})`, () => {
+    const html = renderToStaticMarkup(
+      h(TeamSelectScreen, {
+        playerCount: 1, teamSize: 3, mode: 'match', teams: ['ita', 'bra'], lang: id,
+        onChooseTeam: noop, onBack: noop, onStart: noop, t,
+      }),
+    );
+    if (!html.includes(getNationalTeam('ita').names[id])) throw new Error('manca il nome della nazionale');
+    if (!html.includes('UEFA') || !html.includes('CONMEBOL')) throw new Error('mancano i filtri continentali');
+    return html;
+  });
+
+  check(`costruzione torneo (${id})`, () =>
+    renderToStaticMarkup(
+      h(TournamentSetupScreen, {
+        teamSize: 3, matchDuration: 90, difficulty: 'normal', initialTeam: 'ita', lang: id,
+        onBack: noop, onStart: noop, t,
+      }),
+    ),
+  );
+
+  check(`costruzione torneo - lega 24 squadre (${id})`, () =>
+    renderToStaticMarkup(
+      h(TournamentSetupScreen, {
+        teamSize: 2, matchDuration: 60, difficulty: 'hard', initialTeam: 'arg', lang: id,
+        onBack: noop, onStart: noop, t,
+      }),
+    ),
+  );
+
+  for (const [name, config, participants] of [
+    ['coppa 16', { ...DEFAULT_TOURNAMENT_CONFIG, format: 'cup', groupSize: 4, qualify: 2, thirdPlace: true }, 16],
+    ['lega 10', { ...DEFAULT_TOURNAMENT_CONFIG, format: 'league' }, 10],
+    ['tabellone 12', { ...DEFAULT_TOURNAMENT_CONFIG, format: 'knockout', thirdPlace: true }, 12],
+  ]) {
+    check(`schermo torneo — ${name} (${id})`, () => {
+      const list = drawParticipants(participants, 'ita', {}, mulberry(11));
+      const cup = createTournament({ playerTeam: 'ita', participants: list, config }, mulberry(12));
+      const html = renderToStaticMarkup(
+        h(TournamentScreen, {
+          tournament: cup, lang: id, onPlayNext: noop, onNewTournament: noop, onMenu: noop, t,
+        }),
+      );
+      if (!html.includes(getNationalTeam(cup.participants[0]).flag)) throw new Error('manca la bandiera di una partecipante');
+      return html;
+    });
+  }
+
   check(`schermata finale (${id})`, () =>
     renderToStaticMarkup(
       h(EndScreen, {
@@ -241,5 +299,14 @@ if (has(twoP, STRINGS.en.gamepadHint) && has(oneP, STRINGS.en.gamepadHint)) {
   console.log('FAIL  la legenda controller è visibile nelle modalità 1P e 2P');
 }
 
-console.log(failures ? `\n${failures} fallimenti` : '\ninterfaccia: tutto renders senza errori');
+// il selettore deve elencare tutte le nazionali del mondo in ogni lingua
+const allNames = new Set(NATIONAL_TEAMS.map((team) => team.names.en));
+if (NATIONAL_TEAMS.length > 200 && allNames.size === NATIONAL_TEAMS.length) {
+  console.log(`PASS  ${NATIONAL_TEAMS.length} nazioni mondiali selectable, nomi unici`);
+} else {
+  failures++;
+  console.log(`FAIL  nazioni mondiali: ${NATIONAL_TEAMS.length}, nomi unici ${allNames.size}`);
+}
+
+console.log(failures ? `\n${failures} fallimenti` : '\ninterfaccia: tutto renderizza senza errori');
 if (failures) process.exit(1);

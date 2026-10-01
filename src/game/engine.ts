@@ -1,6 +1,6 @@
 import { SFX } from './sound';
 import { cloneKeyBindings, DEFAULT_KEY_BINDINGS, type KeyboardBindings } from './keyboard';
-import { DEFAULT_TEAMS, getNationalTeam, type TeamKit, type TeamSelection } from './teams';
+import { DEFAULT_TEAMS, getTeamStrength, resolveKits, type TeamKit, type TeamSelection } from './teams';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type GameMode = 'match' | 'pens';
@@ -317,6 +317,9 @@ export class GameEngine {
   private playerCount: PlayerCount = 1;
   private teamSize: TeamSize = 3;
   private selectedTeams: TeamSelection = [...DEFAULT_TEAMS];
+  private teamKits: [TeamKit, TeamKit] = resolveKits(DEFAULT_TEAMS[0], DEFAULT_TEAMS[1]);
+  private teamBias: [number, number] = [1, 1];
+  private overtimeRules: { extraTime: boolean; penalties: boolean } = { extraTime: true, penalties: true };
   private controlledIdx: [number, number] = [1, 1];
   private ball = { x: this.fieldWidth / 2, y: this.fieldHeight / 2, vx: 0, vy: 0, z: 0, vz: 0, curve: 0, lastTouch: -1, lastTouchWasKeeper: false };
   private ballCarrier: Player | null = null;
@@ -589,11 +592,39 @@ export class GameEngine {
   }
 
   private teamKit(team: number): TeamKit {
-    return getNationalTeam(this.selectedTeams[team]).kit;
+    return this.teamKits[team] ?? this.teamKits[0];
+  }
+
+  /** Divise effettive (con trasferta automatica in caso di colore troppo simile) e bias di forza. */
+  private refreshTeamMods() {
+    this.teamKits = resolveKits(this.selectedTeams[0], this.selectedTeams[1]);
+    const diff = getTeamStrength(this.selectedTeams[0]) - getTeamStrength(this.selectedTeams[1]);
+    const factor = clamp(diff / 60, -0.16, 0.16);
+    this.teamBias = [1 + factor, 1 - factor];
+  }
+
+  /** Modula la cfg dell'IA in base al coefficiente delle due nazionali. */
+  private scaledCfg(base: DiffCfg, team: number): DiffCfg {
+    const bias = clamp(this.teamBias[team] ?? 1, 0.82, 1.2);
+    const k = bias - 1;
+    if (Math.abs(k) < 0.005) return base;
+    return {
+      speed: base.speed * (1 + k * 0.5),
+      shootRange: base.shootRange * (1 + k * 0.6),
+      shootErr: base.shootErr / (1 + k * 1.2),
+      passErr: base.passErr / (1 + k * 1.2),
+      minHold: base.minHold * (1 - k * 0.5),
+    };
   }
 
   setTeams(teams: TeamSelection) {
     this.selectedTeams = [...teams];
+    this.refreshTeamMods();
+  }
+
+  /** Regola supplementari/rigori: usati dalla modalità torneo personalizzata. */
+  setOvertimeRules(rules: Partial<{ extraTime: boolean; penalties: boolean }>) {
+    this.overtimeRules = { ...this.overtimeRules, ...rules };
   }
 
   setDemoTeamSize(teamSize: TeamSize) {
@@ -659,6 +690,7 @@ export class GameEngine {
     this.diff = diff;
     this.playerCount = playerCount;
     this.selectedTeams = [...teams];
+    this.refreshTeamMods();
     this.demo = false;
     this.keys.clear();
     this.clearInputQueues();
@@ -1231,9 +1263,12 @@ export class GameEngine {
         if (whole <= 5 && whole > 0) this.sfx.count(false);
         if (whole <= 0) {
           if (this.period === 'regular' && this.score[0] === this.score[1] && !this.allowDraw) {
-            this.startExtraTime();
+            if (this.overtimeRules.extraTime) this.startExtraTime();
+            else if (this.overtimeRules.penalties) this.startPens();
+            else this.endMatch();
           } else if (this.period === 'extra') {
-            this.startPens();
+            if (this.overtimeRules.penalties) this.startPens();
+            else this.endMatch();
           } else {
             this.endMatch();
           }
@@ -1261,10 +1296,10 @@ export class GameEngine {
         const cfg = isDemo
           ? DEMO_CFG
           : this.playerCount === 2
-            ? DIFFS[this.diff]
+            ? this.scaledCfg(DIFFS[this.diff], p.team)
             : p.team === 1
-              ? DIFFS[this.diff]
-              : { ...DIFFS.normal, speed: 262 };
+              ? this.scaledCfg(DIFFS[this.diff], 1)
+              : this.scaledCfg({ ...DIFFS.normal, speed: 262 }, 0);
         this.aiControl(p, dt, cfg);
       }
       this.integratePlayer(p, dt);
@@ -3124,6 +3159,64 @@ export class GameEngine {
       ctx.fillRect(x - r, y - r * 0.18, r * 2, r * 0.36);
       ctx.fillStyle = kit.accent;
       ctx.fillRect(x - r, y + r * 0.3, r * 2, r * 0.12);
+    } else if (kit.pattern === 'halves') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x, y - r, r, r * 2);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r * 0.04, y - r, r * 0.08, r * 2);
+    } else if (kit.pattern === 'hoops') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r, y - r * 0.72, r * 2, r * 0.34);
+      ctx.fillRect(x - r, y + r * 0.1, r * 2, r * 0.34);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r, y - r * 0.28, r * 2, r * 0.14);
+    } else if (kit.pattern === 'flag') {
+      // tre bande orizzontali riprese dal drappo nazionale
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r, y - r, r * 2, r * 0.72);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r, y + r * 0.28, r * 2, r * 0.72);
+      if (kit.trim) {
+        ctx.fillStyle = kit.trim;
+        ctx.globalAlpha = 0.55;
+        ctx.fillRect(x - r * 0.5, y - r * 0.28, r, r * 0.56);
+        ctx.globalAlpha = 1;
+      }
+    } else if (kit.pattern === 'star') {
+      ctx.fillStyle = kit.accent;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const rad = i % 2 === 0 ? r * 0.44 : r * 0.19;
+        const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+        const px = x + Math.cos(angle) * rad;
+        const py = y + Math.sin(angle) * rad * 0.92;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else if (kit.pattern === 'gradient') {
+      const grad = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
+      grad.addColorStop(0, kit.secondary);
+      grad.addColorStop(0.6, kit.primary);
+      grad.addColorStop(1, kit.accent);
+      ctx.globalAlpha = 0.62;
+      ctx.fillStyle = grad;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      ctx.globalAlpha = 1;
+    } else if (kit.pattern === 'sleeves') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r, y - r, r * 0.4, r * 2);
+      ctx.fillRect(x + r * 0.6, y - r, r * 0.4, r * 2);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r * 0.1, y - r, r * 0.2, r * 1.1);
+    } else if (kit.pattern === 'solid') {
+      if (kit.trim) {
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = kit.trim;
+        ctx.fillRect(x - r, y + r * 0.34, r * 2, r * 0.1);
+        ctx.globalAlpha = 1;
+      }
     } else {
       ctx.fillStyle = kit.secondary;
       ctx.fillRect(x - r * 0.18, y - r, r * 0.36, r * 2);

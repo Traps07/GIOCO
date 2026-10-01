@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_MATCH_DURATION, GameEngine, MATCH_DURATIONS, type Difficulty, type GameMode, type MatchDuration, type PlayerCount, type Snapshot, type TeamSize } from './game/engine';
 import HUD from './components/HUD';
 import TouchControls from './components/TouchControls';
-import { MenuScreen, TeamSelectScreen, TournamentSetupScreen, TournamentScreen, PauseScreen, EndScreen } from './components/Menus';
+import { MenuScreen, TeamSelectScreen, TournamentSetupScreen, TournamentScreen, PauseScreen, EndScreen, type TournamentLaunch } from './components/Menus';
 import SettingsScreen from './components/SettingsScreen';
 import { cloneKeyBindings, DEFAULT_KEY_BINDINGS, type KeyboardBindings, type PlayerKeyAction } from './game/keyboard';
 import { DEFAULT_TEAMS, type NationalTeamId, type TeamSelection } from './game/teams';
@@ -95,6 +95,7 @@ export default function App() {
   const [teams, setTeams] = useState<TeamSelection>([...DEFAULT_TEAMS]);
   const [tournament, setTournament] = useState<TournamentState | null>(null);
   const tournamentRef = useRef<TournamentState | null>(null);
+  const tournamentMatchRef = useRef<TournamentLaunch['match'] | null>(null);
   const [lang, setLangState] = useState<Language>(loadLang);
   const [muted, setMuted] = useState(loadMuted);
   const [matchDuration, setMatchDurationState] = useState<MatchDuration>(loadMatchDuration);
@@ -272,10 +273,17 @@ export default function App() {
   }, []);
   const closeSettings = useCallback(() => setScreen(settingsReturnScreen.current), []);
   const openTournamentSetup = useCallback(() => setScreen('tournamentSetup'), []);
-  const beginTournament = useCallback((playerTeam: NationalTeamId) => {
-    const nextCup = createTournament(playerTeam);
+  const beginTournament = useCallback((launch: TournamentLaunch) => {
+    const nextCup = createTournament({
+      playerTeam: launch.playerTeam,
+      participants: launch.participants,
+      config: launch.config,
+    });
+    tournamentMatchRef.current = launch.match;
     tournamentRef.current = nextCup;
     setTournament(nextCup);
+    setTeamSize(launch.match.teamSize);
+    setDifficulty(launch.match.difficulty);
     setResult(null);
     setGoalBanner(null);
     setEventBanner(null);
@@ -288,14 +296,19 @@ export default function App() {
     if (!cup || !fixture || !engine) return;
     const opponent = fixture.home === cup.playerTeam ? fixture.away : fixture.home;
     const matchTeams: TeamSelection = [cup.playerTeam, opponent];
-    const matchMode = fixture.round === 'group' ? 'group' : 'match';
+    const matchMode = fixture.kind === 'group' ? 'group' : 'match';
+    const settings = tournamentMatchRef.current;
+    const size = settings?.teamSize ?? teamSize;
+    const length = settings?.matchDuration ?? matchDuration;
+    const level = settings?.difficulty ?? difficulty;
     setTeams(matchTeams);
     setPlayerCount(1);
     engine.unlockAudio();
     engine.setMuted(muted);
-    engine.setMatchDuration(matchDuration);
+    engine.setMatchDuration(length);
     engine.setKeyBindings(keyBindings);
-    engine.startMatch(difficulty, matchMode, 1, matchTeams, teamSize);
+    engine.setOvertimeRules({ extraTime: cup.config.extraTime, penalties: cup.config.penalties });
+    engine.startMatch(level, matchMode, 1, matchTeams, size);
     engine.inputEnabled = true;
     engine.setPaused(false);
     setResult(null);
@@ -344,6 +357,9 @@ export default function App() {
     if (!engine) return;
     engine.inputEnabled = false;
     engine.setPaused(false);
+    engine.setMatchDuration(matchDuration);
+    engine.setOvertimeRules({ extraTime: true, penalties: true });
+    tournamentMatchRef.current = null;
     engine.startDemo();
     tournamentRef.current = null;
     setTournament(null);
@@ -351,7 +367,7 @@ export default function App() {
     setEventBanner(null);
     setResult(null);
     setScreen('menu');
-  }, []);
+  }, [matchDuration]);
 
   const toggleMute = useCallback(() => {
     engineRef.current?.unlockAudio();
@@ -518,6 +534,8 @@ export default function App() {
       {screen === 'tournamentSetup' && (
         <TournamentSetupScreen
           teamSize={teamSize}
+          matchDuration={matchDuration}
+          difficulty={difficulty}
           initialTeam={tournament?.playerTeam ?? teams[0]}
           lang={lang}
           onBack={backToMenu}
