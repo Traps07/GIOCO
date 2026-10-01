@@ -8,6 +8,8 @@ import {
   resolveKits,
   filterTeams,
   getTeamStrength,
+  getTeamQuality,
+  CONFEDERATIONS,
   DEFAULT_TEAMS,
 } from './src/game/teams.js';
 import { LANGUAGES } from './src/i18n.js';
@@ -105,6 +107,34 @@ check('coefficiente: le corazzate valgono più delle squadre dilettantistiche', 
   assert.ok(getTeamStrength('bra') - getTeamStrength('smr') > 40, 'divario di coefficiente troppo piccolo');
   const ordered = [...NATIONAL_TEAMS].sort((a, b) => getTeamStrength(b.id) - getTeamStrength(a.id));
   assert.ok(ordered[0].tier >= 4, 'la prima per coefficiente non è di fascia alta');
+  assert.ok(getTeamStrength('bra') > getTeamStrength('bol'), 'il Brasile non vale più della Bolivia');
+  // le fasce sono ordinate in modo assoluto: una squadra di fascia superiore è sempre più forte
+  for (let tier = 1; tier < 5; tier++) {
+    const lower = NATIONAL_TEAMS.filter((team) => team.tier === tier).map((team) => team.strength);
+    const higher = NATIONAL_TEAMS.filter((team) => team.tier === tier + 1).map((team) => team.strength);
+    assert.ok(lower.length && higher.length, `fascia ${tier} o ${tier + 1} vuota`);
+    assert.ok(Math.min(...higher) > Math.max(...lower), `fascia ${tier + 1} non nettamente sopra la ${tier}`);
+  }
+  for (const conf of CONFEDERATIONS) {
+    const list = NATIONAL_TEAMS.filter((team) => team.confederation === conf);
+    const byTier = new Map();
+    for (const team of list) byTier.set(team.tier, Math.max(byTier.get(team.tier) ?? 0, team.strength));
+    const tiers = [...byTier.keys()].sort((a, b) => a - b);
+    for (let i = 1; i < tiers.length; i++) {
+      assert.ok(byTier.get(tiers[i]) > byTier.get(tiers[i - 1]), `${conf}: fascia ${tiers[i]} non più forte della ${tiers[i - 1]}`);
+    }
+  }
+});
+
+check('il coefficiente normalizzato resta nell intervallo e guida le statistiche', () => {
+  for (const team of NATIONAL_TEAMS) {
+    const q = getTeamQuality(team.id);
+    assert.ok(q >= 0 && q <= 1, `${team.id} qualità fuori range: ${q}`);
+    assert.equal(q, (team.strength - 20) / (99 - 20), `${team.id} qualità non coerente col coefficiente`);
+  }
+  assert.ok(getTeamQuality('bra') > 0.95, 'il Brasile dovrebbe essere vicino a 1');
+  assert.ok(getTeamQuality('smr') < 0.35, 'San Marino dovrebbe essere vicina a 0');
+  assert.ok(getTeamQuality('ita') >= getTeamQuality('smr'), 'ordine di qualità invertito');
 });
 
 check('le squadre senza divisa professionistica usano i colori della bandiera', () => {

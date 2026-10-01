@@ -124,6 +124,10 @@ const CONFEDERATION_BONUS: Record<Confederation, number> = {
   ofc: -4,
 };
 
+/** Intervallo del coefficiente: serve a trasformare le stelle in vantaggi reali. */
+export const STRENGTH_MIN = 20;
+export const STRENGTH_MAX = 99;
+
 const patternFor = (value: string): KitPattern => (KNOWN_PATTERNS.has(value) ? (value as KitPattern) : 'solid');
 
 /** DivisaAway "neutra": chiara se la maglia casa è scura e viceversa, con i colori della bandiera. */
@@ -163,7 +167,7 @@ const buildTeam = (raw: (typeof RAW_NATIONS)[number]): NationalTeam => {
     confederation: raw.conf,
     tier,
     kitSource: raw.kitSource,
-    strength: Math.round(Math.min(99, Math.max(20, 26 + tier * 13 + CONFEDERATION_BONUS[raw.conf]))),
+    strength: Math.round(Math.min(STRENGTH_MAX, Math.max(STRENGTH_MIN, 20 + tier * 15 + CONFEDERATION_BONUS[raw.conf]))),
   };
 };
 
@@ -220,6 +224,12 @@ export const getTeamKit = (id: NationalTeamId) => getNationalTeam(id).kit;
 export const getTeamTier = (id: NationalTeamId) => getNationalTeam(id).tier;
 
 export const getTeamStrength = (id: NationalTeamId) => getNationalTeam(id).strength;
+
+/** Coefficiente normalizzato 0–1: 0 = nazionale minore, 1 = corazzata da 5 stelle. */
+export const getTeamQuality = (id: NationalTeamId): number => {
+  const { strength } = getNationalTeam(id);
+  return Math.max(0, Math.min(1, (strength - STRENGTH_MIN) / (STRENGTH_MAX - STRENGTH_MIN)));
+};
 
 /**
  * Restituisce le due divise effettive della partita: se i colori casalinghi sono troppo

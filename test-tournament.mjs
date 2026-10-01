@@ -20,6 +20,14 @@ import {
   nextPowerOfTwo,
 } from './src/game/tournament.js';
 import { NATIONAL_TEAMS, getTeamStrength } from './src/game/teams.js';
+import {
+  encodeTournamentSave,
+  decodeTournamentSave,
+  persistTournament,
+  readTournamentSave,
+  forgetTournament,
+  TOURNAMENT_SAVE_KEY,
+} from './src/game/save.js';
 
 // PRNG deterministico (mulberry32) così i fallimenti sono riproducibili.
 const makeRandom = (seed) => {
@@ -289,6 +297,76 @@ for (const preset of TOURNAMENT_PRESETS) {
     simulated++;
   });
 }
+
+
+// ---- salvataggio automatico del torneo -----------------------------------
+const fakeStore = (() => {
+  const data = new Map();
+  return {
+    getItem: (key) => (data.has(key) ? data.get(key) : null),
+    setItem: (key, value) => data.set(key, String(value)),
+    removeItem: (key) => data.delete(key),
+  };
+})();
+globalThis.window = { localStorage: fakeStore };
+
+const resumeSetup = () => {
+  const random = makeRandom(31337);
+  const participants = drawParticipants(16, 'bra', {}, random);
+  const config = { ...DEFAULT_TOURNAMENT_CONFIG, format: 'cup', groupSize: 4, qualify: 2, thirdPlace: true };
+  const cup0 = createTournament({ playerTeam: 'bra', participants, config }, random);
+  const played = recordTournamentResult(cup0, [2, 0], 'bra', null, random);
+  return { first: getActiveTournamentMatch(cup0).id, cup: played };
+};
+
+check('salvataggio: round-trip identico e riprendibile', () => {
+  const { first, cup } = resumeSetup();
+  const restored = decodeTournamentSave(encodeTournamentSave(cup, { teamSize: 4, matchDuration: 120, difficulty: 'hard' }));
+  assert.ok(restored, 'il salvataggio valido è stato scartato');
+  assert.deepEqual(restored.tournament, cup, 'stato del torneo alterato dal salvataggio');
+  assert.deepEqual(restored.match, { teamSize: 4, matchDuration: 120, difficulty: 'hard' });
+  assert.equal(getActiveTournamentMatch(restored.tournament).id, getActiveTournamentMatch(cup).id, 'partita da giocare diversa');
+  assert.notEqual(getActiveTournamentMatch(restored.tournament).id, first, 'la partita giocata non risulta conclusa');
+});
+
+check('salvataggio: JSON corrotto o manomesso viene ignorato', () => {
+  const { cup } = resumeSetup();
+  const base = JSON.parse(encodeTournamentSave(cup, { teamSize: 3, matchDuration: 90, difficulty: 'normal' }));
+  const mutate = (fn) => {
+    const clone = structuredClone(base);
+    fn(clone);
+    return decodeTournamentSave(JSON.stringify(clone));
+  };
+  assert.equal(decodeTournamentSave('non-è-json'), null, 'JSON invalido accettato');
+  assert.equal(decodeTournamentSave(null), null);
+  assert.equal(decodeTournamentSave('{}'), null, 'oggetto vuoto accettato');
+  assert.equal(decodeTournamentSave(JSON.stringify({ ...base, version: 99 })), null, 'versione sconosciuta accettata');
+  assert.equal(mutate((c) => { c.tournament.config.format = 'rotaiente'; }), null, 'formato inventato accettato');
+  assert.equal(mutate((c) => { c.tournament.config.groupSize = 17; }), null, 'gironi da 17 accettati');
+  assert.equal(mutate((c) => { c.tournament.participants[0] = 'xxx'; }), null, 'nazionale inesistente accettata');
+  assert.equal(mutate((c) => { c.tournament.playerTeam = 'neverland'; }), null, 'squadra del giocatore inesistente accettata');
+  assert.equal(mutate((c) => { c.tournament.groups[0].matchdays[0][0].home = 'zzz'; }), null, 'partita con squadra fuori roster accettata');
+  assert.equal(mutate((c) => { c.tournament.stage = 'pazza'; }), null, 'fase sconosciuta accettata');
+  assert.equal(mutate((c) => { c.tournament.matchday = 12.5; }), null, 'giornata non intera accettata');
+  assert.equal(mutate((c) => { c.tournament.groups[0].matchdays[0][0].score = [500, -3]; }), null, 'risultato assurdo accettato');
+  assert.ok(decodeTournamentSave(JSON.stringify(base)), 'salvataggio integro scartato per errore');
+  const soft = mutate((c) => { c.match.teamSize = 9; c.match.matchDuration = 7; });
+  assert.ok(soft, 'il salvataggio doveva restare valido');
+  assert.equal(soft.match.teamSize, 3, 'teamSize non riportato al default');
+  assert.equal(soft.match.matchDuration, 90, 'durata non riportata al default');
+});
+
+check('salvataggio: localStorage scritto, riletto e cancellato', () => {
+  const { cup } = resumeSetup();
+  const saved = persistTournament(cup, { teamSize: 2, matchDuration: 60, difficulty: 'easy' });
+  assert.ok(fakeStore.getItem(TOURNAMENT_SAVE_KEY), 'nessuna scrittura su localStorage');
+  const read = readTournamentSave();
+  assert.deepEqual(read.tournament, saved.tournament, 'rilettura diversa dalla scrittura');
+  assert.equal(read.match.difficulty, 'easy');
+  forgetTournament();
+  assert.equal(fakeStore.getItem(TOURNAMENT_SAVE_KEY), null, 'salvataggio non rimosso');
+  assert.equal(readTournamentSave(), null);
+});
 
 check('tutti i tornei terminano e assegnano un campione', () => {
   assert.ok(simulated >= configs.length - 10, `solo ${simulated} simulazioni completate su ${configs.length}`);

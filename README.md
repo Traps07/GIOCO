@@ -14,13 +14,29 @@ The single-file game works offline; an internet connection is only needed to loa
 - **Quick match** — choose **1v1, 2v2, 3v3, 4v4, or 5v5**. Each team always has an additional fixed goalkeeper. A tied match goes to golden-goal extra time and then penalties.
 - **Pitch size** — standard dimensions for 1v1 and 2v2; a wider, larger pitch for 3v3, 4v4, and 5v5.
 - **Penalty shootout** — jump straight to the spot-kick series.
-- **National tournament** — a full tournament builder, not a fixed bracket. Pick the format (**groups + knock-out cup, groups only, round-robin league, or single knock-out**), the number of participants from **4 to 64**, the group size (2–6), how many teams qualify (1–3), a third-place play-off, golden-goal extra time, penalty shoot-outs, seeding (random, seeded pots, or serpentine), upset frequency, and how many group matchdays to play. Participants are drawn from a pool you filter by confederation and by merit tier, or hand-picked one by one. Ten ready-made presets reproduce the real formats: 48-team and 32-team World Cup, Euro, Copa América, Africa Cup of Nations, Asian Cup, Oceanian Cup, a minor-nations cup, a world league, and a straight knock-out. Byes, uneven groups, and truncated calendars are all handled, and every match you do not play is simulated from the teams' coefficients.
+- **National tournament** — a full tournament builder, not a fixed bracket. Pick the format (**groups + knock-out cup, groups only, round-robin league, or single knock-out**), the number of participants from **4 to 64**, the group size (2–6), how many teams qualify (1–3), a third-place play-off, golden-goal extra time, penalty shoot-outs, seeding (random, seeded pots, or serpentine), upset frequency, and how many group matchdays to play. Participants are drawn from a pool you filter by confederation and by merit tier, or hand-picked one by one. Ten ready-made presets reproduce the real formats: 48-team and 32-team World Cup, Euro, Copa América, Africa Cup of Nations, Asian Cup, Oceanian Cup, a minor-nations cup, a world league, and a straight knock-out. Byes, uneven groups, and truncated calendars are all handled, and every match you do not play is simulated from the teams' coefficients. **The tournament saves itself**: leave for the menu (or close the tab) and the saved bracket appears on the main menu with a *Resume* button — plus a discard button if you want to start clean.
 - **225 national teams** — every FIFA member association plus the UN and associate states without a national side (Monaco, Tuvalu, Kiribati, Nauru, Vatican City, Réunion, Zanzibar, Guam, …), split into **UEFA, CONMEBOL, CONCACAF, CAF, AFC, and OFC** and into five merit tiers. Each team wears a kit inspired by its real shirt; nations without a professional side get a kit built from their **flag** instead, and the team card labels which of the two you are looking at. Clashing colours are resolved automatically: the away team switches to a generated second kit.
 - **Local multiplayer** — one or two people can play on the same keyboard; the number of local players is independent of the on-field team size.
 
 Three difficulty levels and six languages are available, with every nation's name localised in all six.
 
 The Settings screen lets you mute game audio, remap keyboard controls, choose a match length of **60, 90, 120, or 180 seconds**, and change the interface language. English is the default for a new player profile. Extra time remains 30 seconds.
+
+## ⭐ Star ratings and shirt numbers
+
+Every nation carries a merit tier from one to five stars. The tier is not decorative: it drives a coefficient (20–99) that the match engine reads, so **Brazil really is faster, stronger and more precise than Bolivia**.
+
+| What the rating changes | Effect of a 5★ side and a 1★ side compared with an average nation |
+| --- | --- |
+| Sprint and run speed | ±9% for the player you control, ±20% for CPU units |
+| Shot power and shooting range | ±15% on every strike, and the AI attacks from further out |
+| Passing and shooting error | ±20% for the human, ±22% for the AI: a weak side sprays the last ball |
+| Duels | ±18% on tackle odds per side: a big tier gap swings duels by up to ~44% |
+| Goalkeeper | ±13% on tracking speed and on reading penalty kicks |
+
+The team-select screen shows a strength bar and the raw coefficient for both sides, so you can pick a giant or take a minor nation up against the world.
+
+Shirt numbers are fixed to the classic arcade sequence: **the player you control always wears 10**, then 9, 11, 7 and 8 fill the rest of the formation — 10 alone in 1v1, 10 and 9 in 2v2, 10-9-11 in 3v3, 10-9-11-7 in 4v4, and 10-9-11-7-8 in 5v5. In two-player mode both humans get the 10; the CPU side numbers itself in formation order.
 
 ## ⚽ Possession and actions
 

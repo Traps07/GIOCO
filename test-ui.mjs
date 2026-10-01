@@ -8,7 +8,8 @@ import { MenuScreen, EndScreen, TeamSelectScreen, TournamentSetupScreen, Tournam
 import SettingsScreen from './src/components/SettingsScreen.js';
 import { DEFAULT_KEY_BINDINGS } from './src/game/keyboard.js';
 import { DEFAULT_TEAMS, NATIONAL_TEAMS, getNationalTeam } from './src/game/teams.js';
-import { createTournament, drawParticipants, DEFAULT_TOURNAMENT_CONFIG } from './src/game/tournament.js';
+import { createTournament, drawParticipants, recordTournamentResult, getActiveTournamentMatch, DEFAULT_TOURNAMENT_CONFIG } from './src/game/tournament.js';
+import { encodeTournamentSave, decodeTournamentSave } from './src/game/save.js';
 import HUD from './src/components/HUD.js';
 
 const snap = (over = {}) => ({
@@ -67,6 +68,31 @@ const mulberry = (seed) => {
   };
 };
 
+
+/** Costruisce un salvataggio di torneo realistico, eventualmente già concluso. */
+const buildSave = (finished) => {
+  const rnd = mulberry(finished ? 4242 : 1234);
+  const participants = drawParticipants(8, 'ita', {}, rnd);
+  const config = { ...DEFAULT_TOURNAMENT_CONFIG, format: 'cup', groupSize: 4, qualify: 2 };
+  let cup = createTournament({ playerTeam: 'ita', participants, config }, rnd);
+  let guard = 0;
+  while (guard++ < 400) {
+    const fixture = getActiveTournamentMatch(cup);
+    if (!fixture) break;
+    const win = finished || rnd() > 0.5 ? [3, 1] : [1, 1];
+    const winner = win[0] === win[1] ? null : fixture.home;
+    cup = recordTournamentResult(cup, win, winner, null, rnd);
+    if (!finished) break;
+  }
+  const save = decodeTournamentSave(
+    encodeTournamentSave(cup, { teamSize: 3, matchDuration: 90, difficulty: 'normal' }),
+  );
+  if (!save) throw new Error('salvataggio di esempio non valido');
+  return save;
+};
+const savedOngoing = buildSave(false);
+const savedFinished = buildSave(true);
+
 for (const { id } of LANGUAGES) {
   const t = STRINGS[id];
 
@@ -92,6 +118,53 @@ for (const { id } of LANGUAGES) {
       }),
     ),
   );
+
+  const menuWithSave = (resume) => (props = {}) =>
+    renderToStaticMarkup(
+      h(MenuScreen, {
+        difficulty: 'normal',
+        setDifficulty: noop,
+        mode: 'match',
+        setMode: noop,
+        playerCount: 1,
+        setPlayerCount: noop,
+        teamSize: 3,
+        setTeamSize: noop,
+        matchDuration: 90,
+        teams: [...DEFAULT_TEAMS],
+        lang: id,
+        keyBindings: DEFAULT_KEY_BINDINGS,
+        onStart: noop,
+        onTournament: noop,
+        onSettings: noop,
+        resume,
+        onResume: noop,
+        onDiscardResume: noop,
+        t,
+        ...props,
+      }),
+    );
+
+  check(`menu con torneo salvato (${id})`, () => {
+    const html = menuWithSave(savedOngoing)();
+    if (!html.includes(t.menuResumeTitle)) throw new Error('manca lintestazione di ripresa');
+    if (!html.includes(t.menuResumeButton)) throw new Error('manca il pulsante RIPRENDI');
+    if (!html.includes(t.menuResumeDiscard)) throw new Error('manca il pulsante di eliminazione');
+    return html;
+  });
+
+  check(`menu con torneo concluso (${id})`, () => {
+    const html = menuWithSave(savedFinished)();
+    if (!html.includes(t.menuResumeFinished)) throw new Error('manca letichetta di torneo concluso');
+    if (!html.includes(t.menuResumeView)) throw new Error('manca il pulsante per vedere il tabellone');
+    return html;
+  });
+
+  check(`menu senza salvataggi (${id})`, () => {
+    const html = menuWithSave(null)();
+    if (html.includes(t.menuResumeTitle)) throw new Error('la card di ripresa non dovrebbe comparire');
+    return html;
+  });
 
   check(`settings (${id})`, () =>
     renderToStaticMarkup(

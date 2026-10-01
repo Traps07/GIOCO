@@ -506,5 +506,58 @@ assert.equal(engine.passQ[0], true, 'il passaggio usa il tasto personalizzato');
 engine.onKeyUp({ code: 'KeyL' });
 engine.onKeyUp({ code: 'KeyZ' });
 
+// Numeri di maglia: 10 al giocatore guidato, poi 9, 11, 7, 8 secondo la formazione.
+const SHIRTS = [10, 9, 11, 7, 8];
+for (const teamSize of [1, 2, 3, 4, 5]) {
+  for (const playerCount of [1, 2]) {
+    engine.startMatch('normal', 'match', playerCount, ['bra', 'bol'], teamSize);
+    for (const team of [0, 1]) {
+      const nums = [];
+      for (let idx = 0; idx < teamSize; idx++) nums.push(engine.players[team * teamSize + idx].number);
+      assert.deepEqual(
+        [...nums].sort((a, b) => a - b),
+        [...SHIRTS.slice(0, teamSize)].sort((a, b) => a - b),
+        `${teamSize}v${teamSize} P${playerCount}: numeri ${nums.join(',')} squadra ${team}`,
+      );
+      assert.equal(new Set(nums).size, teamSize, `${teamSize}v${teamSize}: numeri duplicati in squadra ${team}`);
+      if (team === 0 || playerCount === 2) {
+        assert.equal(nums[engine.controlledIdx[team]], 10, `${teamSize}v${teamSize} P${playerCount}: il 10 non va al giocatore guidato`);
+      } else {
+        assert.deepEqual(nums, SHIRTS.slice(0, teamSize), `${teamSize}v${teamSize}: sequenza CPU non in ordine`);
+      }
+    }
+  }
+}
+
+// Le stelle contano: velocità, potenza, imprecisioni, contrasti e portiere dipendono dal coefficiente.
+engine.setTeams(['bra', 'smr']);
+const scaleChecks = [
+  ['speedScale', 'gt'],
+  ['powerScale', 'gt'],
+  ['keeperScale', 'gt'],
+  ['flawScale', 'lt'],
+];
+for (const [method, direction] of scaleChecks) {
+  const strong = engine[method](0);
+  const weak = engine[method](1);
+  if (direction === 'gt') assert.ok(strong > weak, `${method}: Brasile non avvantaggiato (${strong} vs ${weak})`);
+  else assert.ok(strong < weak, `${method}: San Marino non più imprecisa (${strong} vs ${weak})`);
+  assert.ok(strong > 0.75 && strong < 1.35, `${method}: moltiplicatore fuori scala (${strong})`);
+}
+assert.ok(engine.gripRatio(0, 1) > 1, 'il Brasile deve rubare più facilmente il pallone');
+assert.ok(engine.gripRatio(1, 0) < 1, 'San Marino non dovrebbe reggere il contrasto');
+const BASE_CFG = { speed: 250, shootRange: 380, shootErr: 0.1, passErr: 0.14, minHold: 0.5 };
+const strongCfg = engine.scaledCfg(BASE_CFG, 0);
+const weakCfg = engine.scaledCfg(BASE_CFG, 1);
+assert.ok(strongCfg.speed > weakCfg.speed * 1.12, 'differenza di velocità IA troppo bassa');
+assert.ok(strongCfg.shootRange > weakCfg.shootRange, 'gittata IA non legata al coefficiente');
+assert.ok(strongCfg.shootErr < weakCfg.shootErr && strongCfg.passErr < weakCfg.passErr, 'imprecisioni IA non legate al coefficiente');
+assert.ok(strongCfg.minHold < weakCfg.minHold, 'la squadra forte non è più rapida nelle decisioni');
+// nessuna nazionale deve risultare ingiocabile o sovrumana
+engine.setTeams(['smr', 'bra']);
+assert.ok(engine.speedScale(0) > 0.9, 'la nazionale più debole è ferma');
+assert.ok(engine.speedScale(1) < 1.1, 'la nazionale più forte vola');
+
+
 engine.dispose();
 console.log('PASS: passaggi, impostazioni tastiera/durata, tiro a giro, corner 1v1, campi e kickoff verificati.');

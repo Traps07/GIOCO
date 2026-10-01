@@ -96,6 +96,7 @@ export interface Strings {
   tournamentPlayNext: string;
   tournamentChampion: string;
   tournamentEliminated: string;
+  tournamentAutoSaved: string;
   tournamentNew: string;
   tournamentBackToBracket: string;
   tournamentPending: string;
@@ -111,6 +112,8 @@ export interface Strings {
   teamKitFlag: string;
   teamKitAwayClash: string;
   teamTierLabel: string;
+  teamPowerLabel: string;
+  teamPowerHint: string;
   confederationTitle: string;
   confEurope: string;
   confSouthAmerica: string;
@@ -123,6 +126,12 @@ export interface Strings {
   tournamentPoolTitle: string;
   tournamentPoolAll: string;
   tournamentOnlySmall: string;
+  menuResumeTitle: string;
+  menuResumeButton: string;
+  menuResumeView: string;
+  menuResumeInfo: string;
+  menuResumeFinished: string;
+  menuResumeDiscard: string;
   tournamentOnlyConf: string;
   tournamentCountTitle: string;
   tournamentCountHint: string;
@@ -325,6 +334,7 @@ const it: Strings = {
   tournamentPlayNext: 'GIOCA LA PROSSIMA PARTITA',
   tournamentChampion: 'CAMPIONE DEL TORNEO',
   tournamentEliminated: 'La tua nazionale è stata eliminata. Il torneo è proseguito fino alla finale.',
+  tournamentAutoSaved: 'Salvataggio automatico attivo: puoi uscire e riprendere da dove ti sei fermato.',
   tournamentNew: 'NUOVO TORNEO',
   tournamentBackToBracket: 'TORNA AL TABELLONE',
   tournamentPending: 'Da definire',
@@ -340,6 +350,8 @@ const it: Strings = {
   teamKitFlag: 'Divisa ispirata alla bandiera',
   teamKitAwayClash: 'divisa da trasferta',
   teamTierLabel: 'Fascia di merito',
+  teamPowerLabel: 'FORZA',
+  teamPowerHint: 'Le stelle determinano velocità, potenza di tiro, precisione ed efficacia nei contrasti.',
   confederationTitle: 'CONTINENTE',
   confEurope: 'Europa',
   confSouthAmerica: 'Sudamerica',
@@ -352,6 +364,12 @@ const it: Strings = {
   tournamentPoolTitle: 'SERBATOIO',
   tournamentPoolAll: 'TUTTE LE NAZIONI DEL MONDO',
   tournamentOnlySmall: 'SOLO NAZIONI MINORI',
+  menuResumeTitle: 'TORNEO SALVATO',
+  menuResumeButton: 'RIPRENDI',
+  menuResumeView: 'VEDI TABELLONE',
+  menuResumeInfo: '{n} squadre · {p} partite giocate',
+  menuResumeFinished: 'TORNEO CONCLUSO',
+  menuResumeDiscard: 'Elimina il salvataggio',
   tournamentOnlyConf: 'Solo {conf}',
   tournamentCountTitle: 'PARTECIPANTI',
   tournamentCountHint: '{n} squadre in gara',
@@ -547,6 +565,7 @@ const en: Strings = {
   tournamentPlayNext: 'PLAY NEXT MATCH',
   tournamentChampion: 'TOURNAMENT CHAMPION',
   tournamentEliminated: 'Your team has been eliminated. The tournament played on to the final.',
+  tournamentAutoSaved: 'Autosave on — leave whenever you like and pick the bracket back up.',
   tournamentNew: 'NEW TOURNAMENT',
   tournamentBackToBracket: 'BACK TO BRACKET',
   tournamentPending: 'To be decided',
@@ -560,6 +579,8 @@ const en: Strings = {
   teamFilterAll: 'ALL CONTINENTS',
   teamKitFifa: 'Kit inspired by the FIFA side',
   teamKitFlag: 'Kit inspired by the flag',
+  teamPowerLabel: 'STRENGTH',
+  teamPowerHint: 'Stars drive pace, shot power, accuracy and duelling.',
   teamKitAwayClash: 'away kit',
   teamTierLabel: 'Merit tier',
   confederationTitle: 'CONFEDERATION',
@@ -574,6 +595,12 @@ const en: Strings = {
   tournamentPoolTitle: 'POOL',
   tournamentPoolAll: 'EVERY NATION IN THE WORLD',
   tournamentOnlySmall: 'SMALL NATIONS ONLY',
+  menuResumeTitle: 'SAVED TOURNAMENT',
+  menuResumeButton: 'RESUME',
+  menuResumeView: 'VIEW BRACKET',
+  menuResumeInfo: '{n} teams · {p} matches played',
+  menuResumeFinished: 'TOURNAMENT FINISHED',
+  menuResumeDiscard: 'Delete the saved tournament',
   tournamentOnlyConf: '{conf} only',
   tournamentCountTitle: 'PARTICIPANTS',
   tournamentCountHint: '{n} teams in the draw',
@@ -769,6 +796,7 @@ const de: Strings = {
   tournamentPlayNext: 'NÄCHSTES SPIEL STARTEN',
   tournamentChampion: 'TURNIERSIEGER',
   tournamentEliminated: 'Dein Team ist ausgeschieden. Das Turnier wurde bis zum Finale weitergespielt.',
+  tournamentAutoSaved: 'Autospeicher aktiv: jederzeit aufhören und das Turnier fortsetzen.',
   tournamentNew: 'NEUES TURNIER',
   tournamentBackToBracket: 'ZURÜCK ZUM SPIELPLAN',
   tournamentPending: 'Noch offen',
@@ -780,6 +808,8 @@ const de: Strings = {
   tournamentStageKnockout: 'K.-O.-RUFE',
   teamSearchPlaceholder: 'Nation oder Code suchen…',
   teamFilterAll: 'ALLE KONTINENTE',
+  teamPowerLabel: 'STÄRKE',
+  teamPowerHint: 'Sterne bestimmen Tempo, Schusskraft, Präzision und Zweikämpfe.',
   teamKitFifa: 'Trikot nach FIFA-Vorbild',
   teamKitFlag: 'Trikot nach Landesflagge',
   teamKitAwayClash: 'Auswärtsdress',
@@ -796,6 +826,12 @@ const de: Strings = {
   tournamentPoolTitle: 'POOL',
   tournamentPoolAll: 'ALLE NATIONEN DER WELT',
   tournamentOnlySmall: 'NUR KLEINE NATIONEN',
+  menuResumeTitle: 'GESPEICHERTES TURNIER',
+  menuResumeButton: 'FORTSETZEN',
+  menuResumeView: 'TABELLE ANSEHEN',
+  menuResumeInfo: '{n} Teams · {p} Spiele gespielt',
+  menuResumeFinished: 'TURNIER BEENDET',
+  menuResumeDiscard: 'Speicherstand löschen',
   tournamentOnlyConf: 'Nur {conf}',
   tournamentCountTitle: 'TEILNEHMER',
   tournamentCountHint: '{n} Teams im Los',
@@ -991,6 +1027,7 @@ const fr: Strings = {
   tournamentPlayNext: 'JOUER LE PROCHAIN MATCH',
   tournamentChampion: 'CHAMPION DU TOURNOI',
   tournamentEliminated: 'Ton équipe est éliminée. Le tournoi s’est poursuivi jusqu’à la finale.',
+  tournamentAutoSaved: 'Sauvegarde automatique : quittez et reprenez le tournoi où vous voulez.',
   tournamentNew: 'NOUVEAU TOURNOI',
   tournamentBackToBracket: 'RETOUR AU TABLEAU',
   tournamentPending: 'À déterminer',
@@ -1000,6 +1037,8 @@ const fr: Strings = {
   tournamentGroupsCountOne: '1 groupe',
   tournamentBracketCount: 'tableau de {n}',
   tournamentStageKnockout: 'TOURS FINAUX',
+  teamPowerLabel: 'PUISSANCE',
+  teamPowerHint: 'Les étoiles déterminent la vitesse, la frappe, la précision et les duels.',
   teamSearchPlaceholder: 'Rechercher une sélection…',
   teamFilterAll: 'TOUS LES CONTINENTS',
   teamKitFifa: 'Maillot inspiré de la sélection FIFA',
@@ -1018,6 +1057,12 @@ const fr: Strings = {
   tournamentPoolTitle: 'POOL',
   tournamentPoolAll: 'TOUTES LES NATIONS DU MONDE',
   tournamentOnlySmall: 'PETITES NATIONS SEULES',
+  menuResumeTitle: 'TORNOI SAUVEGARDÉ',
+  menuResumeButton: 'REPRENDRE',
+  menuResumeView: 'VOIR LE TABLEAU',
+  menuResumeInfo: '{n} équipes · {p} matchs joués',
+  menuResumeFinished: 'TORNOI TERMINÉ',
+  menuResumeDiscard: 'Supprimer la sauvegarde',
   tournamentOnlyConf: '{conf} uniquement',
   tournamentCountTitle: 'PARTICIPANTS',
   tournamentCountHint: '{n} équipes au tirage',
@@ -1213,6 +1258,7 @@ const es: Strings = {
   tournamentPlayNext: 'JUGAR EL PRÓXIMO PARTIDO',
   tournamentChampion: 'CAMPEÓN DEL TORNEO',
   tournamentEliminated: 'Tu selección ha quedado eliminada. El torneo continuó hasta la final.',
+  tournamentAutoSaved: 'Guardado automático activo: sale y retoma el torneo donde lo dejaste.',
   tournamentNew: 'NUEVO TORNEO',
   tournamentBackToBracket: 'VOLVER AL CUADRO',
   tournamentPending: 'Por decidir',
@@ -1220,6 +1266,8 @@ const es: Strings = {
   tierAll: 'TODAS',
   tournamentGroupsCount: '{n} grupos',
   tournamentGroupsCountOne: '1 grupo',
+  teamPowerLabel: 'POTENCIA',
+  teamPowerHint: 'Las estrellas determinan velocidad, disparo, precisión y duelos.',
   tournamentBracketCount: 'cuadro de {n}',
   tournamentStageKnockout: 'ELIMINACIONES',
   teamSearchPlaceholder: 'Busca una selección o código…',
@@ -1240,6 +1288,12 @@ const es: Strings = {
   tournamentPoolTitle: 'BOMBO',
   tournamentPoolAll: 'TODAS LAS NACIONES DEL MUNDO',
   tournamentOnlySmall: 'SOLO NACIONES MENORES',
+  menuResumeTitle: 'TORNEO GUARDADO',
+  menuResumeButton: 'REANUDAR',
+  menuResumeView: 'VER CUADRO',
+  menuResumeInfo: '{n} equipos · {p} partidos jugados',
+  menuResumeFinished: 'TORNEO FINALIZADO',
+  menuResumeDiscard: 'Eliminar la partida guardada',
   tournamentOnlyConf: 'Solo {conf}',
   tournamentCountTitle: 'PARTICIPANTES',
   tournamentCountHint: '{n} equipos en el sorteo',
@@ -1435,11 +1489,14 @@ const ar: Strings = {
   tournamentPlayNext: 'العب المباراة التالية',
   tournamentChampion: 'بطل البطولة',
   tournamentEliminated: 'خرج منتخبك من البطولة. استمرت المنافسات حتى النهائي.',
+  tournamentAutoSaved: 'الحفظ التلقائي مفعّل: يمكنك الخروج واستئناف البطولة من حيث توقفت.',
   tournamentNew: 'بطولة جديدة',
   tournamentBackToBracket: 'العودة إلى الجدول',
   tournamentPending: 'لم يُحدد بعد',
   teamSelectCount: '{n} منتخب',
   tierAll: 'الكل',
+  teamPowerLabel: 'القوة',
+  teamPowerHint: 'النجوم تحدد السرعة وقوة التسديد والدقة والصراعات على الكرة.',
   tournamentGroupsCount: '{n} مجموعات',
   tournamentGroupsCountOne: 'مجموعة واحدة',
   tournamentBracketCount: 'قرعة {n}',
@@ -1462,6 +1519,12 @@ const ar: Strings = {
   tournamentPoolTitle: 'المجموعة',
   tournamentPoolAll: 'كل منتخبات العالم',
   tournamentOnlySmall: 'المنتخبات الصغيرة فقط',
+  menuResumeTitle: 'البطولة المحفوظة',
+  menuResumeButton: 'استئناف',
+  menuResumeView: 'عرض الجدول',
+  menuResumeInfo: '{n} منتخب · {p} مباراة لعبت',
+  menuResumeFinished: 'انتهت البطولة',
+  menuResumeDiscard: 'حذف الملف المحفوظ',
   tournamentOnlyConf: '{conf} فقط',
   tournamentCountTitle: 'المنتخبات المشاركة',
   tournamentCountHint: '{n} منتخب في القرعة',

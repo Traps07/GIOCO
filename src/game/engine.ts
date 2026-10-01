@@ -1,6 +1,6 @@
 import { SFX } from './sound';
 import { cloneKeyBindings, DEFAULT_KEY_BINDINGS, type KeyboardBindings } from './keyboard';
-import { DEFAULT_TEAMS, getTeamStrength, resolveKits, type TeamKit, type TeamSelection } from './teams';
+import { DEFAULT_TEAMS, getTeamQuality, resolveKits, type TeamKit, type TeamSelection } from './teams';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type GameMode = 'match' | 'pens';
@@ -68,6 +68,15 @@ const GK_SPEED = 300;
 const BALL_GRAVITY = 980;
 const BALL_CARRY_OFFSET = P_R + B_R + 2;
 const TACKLE_RANGE = P_R * 2 + 16;
+
+/**
+ * Numeri di maglia standard: il giocatore di movimento indossa sempre il 10,
+ * poi compagni e avversari seguono con 9, 11, 7, 8 in base alla dimensione del campo.
+ */
+export const SHIRT_NUMBERS = [10, 9, 11, 7, 8];
+
+/** Fattore di un moltiplicatore legato al coefficiente della nazionale (q = 0 … 1). */
+const qFactor = (q: number, span: number) => 1 + (q - 0.5) * span;
 
 const FORMATIONS: Record<TeamSize, { x: number; y: number }[]> = {
   1: [{ x: 360, y: 350 }],
@@ -180,7 +189,7 @@ class Player {
     this.y = f.y;
     this.tx = f.x;
     this.ty = f.y;
-    this.number = team === 0 ? [4, 7, 10, 8, 11][idx] : [4, 9, 11, 7, 10][idx];
+    this.number = SHIRT_NUMBERS[Math.min(idx, SHIRT_NUMBERS.length - 1)];
     this.faceX = team === 0 ? 1 : -1;
   }
   reset() {
@@ -318,7 +327,8 @@ export class GameEngine {
   private teamSize: TeamSize = 3;
   private selectedTeams: TeamSelection = [...DEFAULT_TEAMS];
   private teamKits: [TeamKit, TeamKit] = resolveKits(DEFAULT_TEAMS[0], DEFAULT_TEAMS[1]);
-  private teamBias: [number, number] = [1, 1];
+  /** Coefficiente normalizzato (0 = nazionale minore, 1 = corazzata) delle due squadre. */
+  private teamQuality: [number, number] = [0.5, 0.5];
   private overtimeRules: { extraTime: boolean; penalties: boolean } = { extraTime: true, penalties: true };
   private controlledIdx: [number, number] = [1, 1];
   private ball = { x: this.fieldWidth / 2, y: this.fieldHeight / 2, vx: 0, vy: 0, z: 0, vz: 0, curve: 0, lastTouch: -1, lastTouchWasKeeper: false };
@@ -595,25 +605,54 @@ export class GameEngine {
     return this.teamKits[team] ?? this.teamKits[0];
   }
 
-  /** Divise effettive (con trasferta automatica in caso di colore troppo simile) e bias di forza. */
+  /** Divise effettive (con trasferta automatica) e coefficiente delle due nazionali. */
   private refreshTeamMods() {
     this.teamKits = resolveKits(this.selectedTeams[0], this.selectedTeams[1]);
-    const diff = getTeamStrength(this.selectedTeams[0]) - getTeamStrength(this.selectedTeams[1]);
-    const factor = clamp(diff / 60, -0.16, 0.16);
-    this.teamBias = [1 + factor, 1 - factor];
+    this.teamQuality = [
+      getTeamQuality(this.selectedTeams[0]),
+      getTeamQuality(this.selectedTeams[1]),
+    ];
   }
 
-  /** Modula la cfg dell'IA in base al coefficiente delle due nazionali. */
+  /** Coefficiente di una squadra in campo (0.5 se nazionale media). */
+  private qualityOf(team: number) {
+    return clamp(this.teamQuality[team] ?? 0.5, 0, 1);
+  }
+
+  /** Velocità del giocatore umano: la differenza si sente senza diventare un handicap. */
+  private speedScale(team: number) {
+    return qFactor(this.qualityOf(team), 0.18);
+  }
+
+  /** Potenza dei tiri. */
+  private powerScale(team: number) {
+    return qFactor(this.qualityOf(team), 0.3);
+  }
+
+  /** Margine d'errore: più la nazionale è debole, più impreciso è l'ultimo passaggio. */
+  private flawScale(team: number) {
+    return qFactor(this.qualityOf(team), -0.4);
+  }
+
+  /** Efficacia nei contrasti: rapporto fra chi ruba il pallone e chi lo porta. */
+  private gripRatio(tackler: number, carrier: number) {
+    return qFactor(this.qualityOf(tackler), 0.36) / qFactor(this.qualityOf(carrier), 0.36);
+  }
+
+  /** Riflessi del portiere. */
+  private keeperScale(team: number) {
+    return qFactor(this.qualityOf(team), 0.26);
+  }
+
+  /** Modula la cfg dell'IA in base al coefficiente (stelle) della nazionale. */
   private scaledCfg(base: DiffCfg, team: number): DiffCfg {
-    const bias = clamp(this.teamBias[team] ?? 1, 0.82, 1.2);
-    const k = bias - 1;
-    if (Math.abs(k) < 0.005) return base;
+    const q = this.qualityOf(team);
     return {
-      speed: base.speed * (1 + k * 0.5),
-      shootRange: base.shootRange * (1 + k * 0.6),
-      shootErr: base.shootErr / (1 + k * 1.2),
-      passErr: base.passErr / (1 + k * 1.2),
-      minHold: base.minHold * (1 - k * 0.5),
+      speed: base.speed * qFactor(q, 0.4),
+      shootRange: base.shootRange * qFactor(q, 0.5),
+      shootErr: base.shootErr * qFactor(q, -0.45),
+      passErr: base.passErr * qFactor(q, -0.45),
+      minHold: base.minHold * qFactor(q, -0.2),
     };
   }
 
@@ -649,6 +688,33 @@ export class GameEngine {
       new FixedGoalkeeper(1, this.fieldWidth, this.fieldHeight),
     ];
     this.resetControlledPlayers();
+    this.assignShirtNumbers();
+  }
+
+  /**
+   * Numeri di maglia: il giocatore guidato dall'umano riceve il 10, gli altri
+   * completano la sequenza 9, 11, 7, 8 secondo la formazione.
+   */
+  private assignShirtNumbers() {
+    for (const team of [0, 1]) {
+      const human = team === 0 || this.playerCount === 2;
+      const pool = SHIRT_NUMBERS.slice(0, this.teamSize);
+      const controlled = human ? clamp(this.controlledIdx[team] ?? 0, 0, this.teamSize - 1) : -1;
+      let filler = 1;
+      for (let idx = 0; idx < this.teamSize; idx++) {
+        const player = this.players[team * this.teamSize + idx];
+        if (!player) continue;
+        let slot = idx;
+        if (controlled >= 0) {
+          if (idx === controlled) slot = 0;
+          else {
+            slot = Math.min(filler, pool.length - 1);
+            filler += 1;
+          }
+        }
+        player.number = pool[slot];
+      }
+    }
   }
 
   private resetControlledPlayers() {
@@ -691,6 +757,7 @@ export class GameEngine {
     this.playerCount = playerCount;
     this.selectedTeams = [...teams];
     this.refreshTeamMods();
+    this.assignShirtNumbers();
     this.demo = false;
     this.keys.clear();
     this.clearInputQueues();
@@ -821,7 +888,7 @@ export class GameEngine {
       const nx = (carrier.x - tackler.x) / (d || 1);
       const ny = (carrier.y - tackler.y) / (d || 1);
       const closing = (tackler.vx - carrier.vx) * nx + (tackler.vy - carrier.vy) * ny;
-      const success = clamp(0.1 + closing / 5000, 0.06, 0.24);
+      const success = clamp((0.1 + closing / 5000) * this.gripRatio(tackler.team, carrier.team), 0.05, 0.28);
       if (Math.random() < success) {
         this.claimBall(tackler);
         tackler.vx += nx * 55;
@@ -991,7 +1058,11 @@ export class GameEngine {
 
       if (!this.penKeeperIsHuman()) {
         // Il portiere IA sceglie dove tuffarsi (a volte legge la mira).
-        const readChance = this.diff === 'easy' ? 0.2 : this.diff === 'normal' ? 0.32 : 0.45;
+        const readChance = clamp(
+          (this.diff === 'easy' ? 0.2 : this.diff === 'normal' ? 0.32 : 0.45) * this.keeperScale(1 - ps.turn),
+          0.05,
+          0.6,
+        );
         if (Math.random() < readChance) {
           ps.aiDiveX = clamp(ps.toX + (Math.random() - 0.5) * 0.34, -1, 1);
           ps.aiDiveY = clamp(ps.toY + (Math.random() - 0.5) * 0.3, 0.1, 0.95);
@@ -1343,10 +1414,11 @@ export class GameEngine {
         const me = this.getControlled(team);
         if (this.tackleQ[team]) this.startTackle(me);
         if (this.ballCarrier !== me || me.kickCd > 0) continue;
+        const flaw = this.flawScale(team);
         if (this.powerQ[team]) this.powerShot(me);
         else if (this.curveQ[team]) this.curveShot(me);
-        else if (this.crossQ[team]) this.cross(me, 0.04, true);
-        else if (this.shootQ[team]) this.shoot(me, 0.05);
+        else if (this.crossQ[team]) this.cross(me, 0.04 * flaw, true);
+        else if (this.shootQ[team]) this.shoot(me, 0.05 * flaw);
         else if (this.passQ[team]) this.pass(me, 0.05, true);
       }
     }
@@ -1390,7 +1462,7 @@ export class GameEngine {
   private humanControl(p: Player, dt: number) {
     const dir = this.inputDir(p.team);
     const sprint = this.gamepadSprint[p.team as 0 | 1] || this.keys.has(this.keyBindings[p.team === 0 ? 'p1' : 'p2'].sprint);
-    const maxS = (sprint ? 352 : 296) * (dir.len || 0);
+    const maxS = (sprint ? 352 : 296) * this.speedScale(p.team) * (dir.len || 0);
     const dvx = dir.x * maxS - p.vx;
     const dvy = dir.y * maxS - p.vy;
     const accel = 1900 * dt;
@@ -1580,7 +1652,8 @@ export class GameEngine {
       }
 
       targetY = clamp(targetY, this.fieldHeight / 2 - GOAL_HALF + GK_R * 0.55, this.fieldHeight / 2 + GOAL_HALF - GK_R * 0.55);
-      const step = clamp(targetY - keeper.y, -GK_SPEED * dt, GK_SPEED * dt);
+      const gkMax = GK_SPEED * this.keeperScale(keeper.team);
+      const step = clamp(targetY - keeper.y, -gkMax * dt, gkMax * dt);
       keeper.y += step;
       keeper.vy = step / dt;
     }
@@ -1986,7 +2059,7 @@ export class GameEngine {
   private shoot(p: Player, errRange: number) {
     if (this.ballCarrier !== p) return;
     const dir = this.shootAim(p, errRange);
-    const power = 820 + Math.random() * 60;
+    const power = (820 + Math.random() * 60) * this.powerScale(p.team);
     this.releaseBall(p);
     this.ball.vx = dir.x * power + p.vx * 0.25;
     this.ball.vy = dir.y * power + p.vy * 0.25;
@@ -2004,8 +2077,8 @@ export class GameEngine {
 
   private powerShot(p: Player) {
     if (this.ballCarrier !== p) return;
-    const dir = this.shootAim(p, 0.015);
-    const power = 1460;
+    const dir = this.shootAim(p, 0.015 * this.flawScale(p.team));
+    const power = 1460 * this.powerScale(p.team);
     this.releaseBall(p);
     this.ball.vx = dir.x * power + p.vx * 0.35;
     this.ball.vy = dir.y * power + p.vy * 0.35;

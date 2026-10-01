@@ -2,8 +2,10 @@ import { useMemo, useState, type ReactNode } from 'react';
 import {
   Play, RotateCcw, Home, Trophy, Frown, Handshake, ChevronRight, ChevronLeft, Zap, Target, Timer, User, Users,
   Gamepad2, Settings, Search, X, Globe2, SlidersHorizontal, Shuffle, Star, Flag, Check, Layers, Minus, Plus, Info,
+  Save, Trash2,
 } from 'lucide-react';
 import type { Difficulty, DecidedBy, GameMode, MatchDuration, PlayerCount, TeamSize } from '../game/engine';
+import type { TournamentSave } from '../game/save';
 import { formatKeyCode, type KeyboardBindings } from '../game/keyboard';
 import {
   CONFEDERATION_META,
@@ -11,6 +13,7 @@ import {
   TEAM_COUNT,
   filterTeams,
   getNationalTeam,
+  getTeamQuality,
   resolveKits,
   type Confederation,
   type NationalTeam,
@@ -434,6 +437,9 @@ export function MenuScreen({
   onStart,
   onTournament,
   onSettings,
+  resume,
+  onResume,
+  onDiscardResume,
   t,
 }: ScreenProps & {
   difficulty: Difficulty;
@@ -451,7 +457,14 @@ export function MenuScreen({
   onStart: () => void;
   onTournament: () => void;
   onSettings: () => void;
+  /** Torneo ripartito dall'ultimo salvataggio automatico. */
+  resume?: TournamentSave | null;
+  onResume?: () => void;
+  onDiscardResume?: () => void;
 }) {
+  const savedCup = resume?.tournament ?? null;
+  const savedRecord = savedCup ? getPlayerRecord(savedCup) : null;
+  const savedTeam = savedCup ? getNationalTeam(savedCup.playerTeam) : null;
   const DIFF_INFO: { id: Difficulty; label: string; desc: string }[] = [
     { id: 'easy', label: t.diffEasy, desc: t.diffEasyDesc },
     { id: 'normal', label: t.diffNormal, desc: t.diffNormalDesc },
@@ -634,6 +647,35 @@ export function MenuScreen({
             <span className="mt-0.5 text-[9px] text-white/45">{fmt(t.tournamentButtonDesc, { n: TEAM_COUNT })}</span>
           </span>
         </button>
+        {savedCup && onResume && (
+          <div className="mt-2 flex w-full max-w-xs items-stretch gap-2 rounded-2xl border border-emerald-300/35 bg-emerald-300/10 px-3 py-2 text-left transition hover:border-emerald-200/60">
+            <Save size={15} className="mt-0.5 shrink-0 text-emerald-300" />
+            <button type="button" onClick={onResume} className="min-w-0 flex-1">
+              <span className="flex items-center gap-1.5 font-display text-[10px] tracking-[0.16em] text-emerald-100">
+                {savedCup.stage === 'complete' ? t.menuResumeFinished : t.menuResumeTitle}
+                {savedCup.champion ? ` · ${getNationalTeam(savedCup.champion).flag} ${getNationalTeam(savedCup.champion).code}` : ''}
+              </span>
+              <span className="mt-0.5 block truncate text-[9px] text-white/50">
+                {savedTeam ? `${savedTeam.flag} ${savedTeam.names[lang]}` : ''} ·{' '}
+                {fmt(t.menuResumeInfo, { n: savedCup.participants.length, p: savedRecord?.played ?? 0 })}
+              </span>
+              <span className="mt-0.5 block font-display text-[9px] tracking-[0.14em] text-emerald-200/80">
+                {savedCup.stage === 'complete' ? t.menuResumeView : t.menuResumeButton}
+              </span>
+            </button>
+            {onDiscardResume && (
+              <button
+                type="button"
+                onClick={onDiscardResume}
+                aria-label={t.menuResumeDiscard}
+                title={t.menuResumeDiscard}
+                className="flex items-center rounded-xl border border-white/10 bg-black/25 px-2 text-white/45 transition hover:border-rose-300/45 hover:text-rose-200"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
+        )}
         <button
           onClick={onSettings}
           className="mt-2 flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-2 text-[10px] font-display tracking-[0.18em] text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
@@ -795,6 +837,26 @@ export function TeamSelectScreen({
             );
           })}
         </div>
+
+        <div className="mb-2 grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
+          {teams.map((teamId, side) => {
+            const team = getNationalTeam(teamId);
+            const quality = Math.round(getTeamQuality(teamId) * 100);
+            return (
+              <div key={side} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-1.5">
+                <span className="shrink-0 font-display text-[9px] tracking-[0.2em] text-white/45">{t.teamPowerLabel}</span>
+                <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
+                  <span
+                    className="block h-full rounded-full transition-all duration-300"
+                    style={{ width: `${quality}%`, backgroundColor: team.kit.primary, boxShadow: `0 0 12px ${team.kit.glow}` }}
+                  />
+                </span>
+                <span className="shrink-0 font-display text-[10px] tabular-nums text-white/70">{team.strength}</span>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mb-3 text-center text-[9px] text-white/40 sm:text-[10px]">{t.teamPowerHint}</p>
 
         <p className="mb-2 font-display text-[10px] tracking-[0.3em] text-white/45">
           {t.teamSelectPick} · {sideName(activeSide)} · {selectedTeam.flag} {selectedTeam.names[lang]}
@@ -1467,6 +1529,13 @@ export function TournamentScreen({ tournament, lang, onPlayNext, onNewTournament
           </span>
           <span className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-1 text-emerald-100/80">
             {record.wins}V {record.draws}N {record.losses}P · {record.goalsFor}:{record.goalsAgainst}
+          </span>
+          <span
+            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-white/45"
+            title={t.tournamentAutoSaved}
+          >
+            <Save size={11} className="shrink-0 text-emerald-300/80" />
+            <span className="hidden sm:inline">{t.tournamentAutoSaved}</span>
           </span>
           {manyGroups && (
             <button

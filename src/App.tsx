@@ -12,6 +12,13 @@ import {
   recordTournamentResult,
   type TournamentState,
 } from './game/tournament';
+import {
+  forgetTournament,
+  persistTournament,
+  readTournamentSave,
+  type TournamentMatchSettings,
+  type TournamentSave,
+} from './game/save';
 import { STRINGS, isRTL, type Language } from './i18n';
 
 const LANG_KEY = 'ss3v3-lang';
@@ -96,6 +103,7 @@ export default function App() {
   const [tournament, setTournament] = useState<TournamentState | null>(null);
   const tournamentRef = useRef<TournamentState | null>(null);
   const tournamentMatchRef = useRef<TournamentLaunch['match'] | null>(null);
+  const [savedTournament, setSavedTournament] = useState<TournamentSave | null>(readTournamentSave);
   const [lang, setLangState] = useState<Language>(loadLang);
   const [muted, setMuted] = useState(loadMuted);
   const [matchDuration, setMatchDurationState] = useState<MatchDuration>(loadMatchDuration);
@@ -195,6 +203,7 @@ export default function App() {
           const nextCup = recordTournamentResult(cup, fixtureScore, winnerTeam, fixturePens);
           tournamentRef.current = nextCup;
           setTournament(nextCup);
+          rememberRef.current(nextCup);
         }
         endTimer.current = window.setTimeout(() => {
           setResult(res);
@@ -273,6 +282,36 @@ export default function App() {
   }, []);
   const closeSettings = useCallback(() => setScreen(settingsReturnScreen.current), []);
   const openTournamentSetup = useCallback(() => setScreen('tournamentSetup'), []);
+  /** Salvataggio automatico: ogni progresso del torneo finisce su disco. */
+  const rememberTournament = useCallback(
+    (next: TournamentState) => {
+      const fallback: TournamentMatchSettings = { teamSize, matchDuration, difficulty };
+      setSavedTournament(persistTournament(next, tournamentMatchRef.current ?? fallback));
+    },
+    [difficulty, matchDuration, teamSize],
+  );
+  const rememberRef = useRef(rememberTournament);
+  rememberRef.current = rememberTournament;
+  const resumeTournament = useCallback(() => {
+    if (!savedTournament) return;
+    const next = savedTournament.tournament;
+    const settings = savedTournament.match;
+    tournamentMatchRef.current = settings;
+    tournamentRef.current = next;
+    setTournament(next);
+    setTeamSize(settings.teamSize);
+    setDifficulty(settings.difficulty);
+    setMatchDurationState(settings.matchDuration);
+    engineRef.current?.setMatchDuration(settings.matchDuration);
+    setResult(null);
+    setGoalBanner(null);
+    setEventBanner(null);
+    setScreen('tournament');
+  }, [savedTournament]);
+  const discardTournamentSave = useCallback(() => {
+    forgetTournament();
+    setSavedTournament(null);
+  }, []);
   const beginTournament = useCallback((launch: TournamentLaunch) => {
     const nextCup = createTournament({
       playerTeam: launch.playerTeam,
@@ -282,13 +321,14 @@ export default function App() {
     tournamentMatchRef.current = launch.match;
     tournamentRef.current = nextCup;
     setTournament(nextCup);
+    rememberTournament(nextCup);
     setTeamSize(launch.match.teamSize);
     setDifficulty(launch.match.difficulty);
     setResult(null);
     setGoalBanner(null);
     setEventBanner(null);
     setScreen('tournament');
-  }, []);
+  }, [rememberTournament]);
   const startTournamentMatch = useCallback(() => {
     const cup = tournamentRef.current;
     const fixture = cup ? getActiveTournamentMatch(cup) : null;
@@ -511,6 +551,9 @@ export default function App() {
           keyBindings={keyBindings}
           onStart={openTeamSelect}
           onTournament={openTournamentSetup}
+          resume={savedTournament}
+          onResume={resumeTournament}
+          onDiscardResume={discardTournamentSave}
           onSettings={openSettings}
           t={t}
         />
