@@ -190,6 +190,14 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
                   />
                 </div>
               </div>
+              {snap.setPiece && (
+                <div className="mt-1.5 flex max-w-[92vw] items-center gap-1.5 rounded-full border border-emerald-300/40 bg-emerald-400/12 px-3 py-1">
+                  <span className="truncate font-display text-[10px] tracking-[0.22em] text-emerald-100">
+                    {snap.setPiece === 'corner' ? t.setPieceCorner : t.setPieceKickoff}
+                    <span className="text-amber-200/85"> · {t.setPieceShotHint}</span>
+                  </span>
+                </div>
+              )}
               {snap.survivalRound > 0 && (
                 <div className="mt-1.5 flex max-w-[92vw] items-center gap-1.5 rounded-full border border-rose-300/40 bg-rose-500/15 px-3 py-1">
                   <Skull size={11} className="shrink-0 text-rose-300" />

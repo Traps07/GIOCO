@@ -29,6 +29,7 @@ const snap = (over = {}) => ({
   controlled: [1, 2],
   gamepadsConnected: 0,
   survivalRound: 0,
+  setPiece: null,
   pens: null,
   ...over,
 });
@@ -547,6 +548,42 @@ for (const { id } of LANGUAGES) {
 
 if (has(menuAt('en', 'survival'), '∞')) console.log('PASS  menu: titolo ∞ in sopravvivenza');
 else { failures++; console.log('FAIL  menu: titolo ∞ in sopravvivenza'); }
+
+// il pill dei calci da fermo deve comparire in ogni lingua
+const flat = (html) => html.replace(/&#x27;/g, "'");
+for (const { id } of LANGUAGES) {
+  const t = STRINGS[id];
+  check(`pill calcio da fermo nell'HUD (${id})`, () => {
+    if (typeof t.setPieceKickoff !== 'string' || typeof t.setPieceCorner !== 'string' || typeof t.setPieceShotHint !== 'string') {
+      throw new Error('etichette dei calci da fermo mancanti');
+    }
+    for (const kind of ['kickoff', 'corner']) {
+      const html = renderToStaticMarkup(
+        h(HUD, {
+          snap: snap({ setPiece: kind }),
+          muted: false, onToggleMute: noop, onPause: noop,
+          playerCount: 2, teams: [...DEFAULT_TEAMS], keyBindings: DEFAULT_KEY_BINDINGS,
+          lang: id, goalBanner: null, eventBanner: null, t,
+        }),
+      );
+      const label = kind === 'corner' ? t.setPieceCorner : t.setPieceKickoff;
+      const out = flat(html);
+      if (!has(out, label)) throw new Error(`nessun avviso per ${kind}`);
+      if (!has(out, t.setPieceShotHint)) throw new Error(`manca il 3% per ${kind}`);
+      if (kind === 'corner' && has(out, t.setPieceKickoff)) throw new Error('l\'angolo mostra il testo del calcio d\'inizio');
+    }
+    const live = renderToStaticMarkup(
+      h(HUD, {
+        snap: snap({ setPiece: null }),
+        muted: false, onToggleMute: noop, onPause: noop,
+        playerCount: 2, teams: [...DEFAULT_TEAMS], keyBindings: DEFAULT_KEY_BINDINGS,
+        lang: id, goalBanner: null, eventBanner: null, t,
+      }),
+    );
+    if (has(flat(live), t.setPieceShotHint)) throw new Error('l\'avviso resta anche a gioco in corso');
+    return live;
+  });
+}
 
 console.log(failures ? `\n${failures} fallimenti` : '\ninterfaccia: tutto renderizza senza errori');
 if (failures) process.exit(1);

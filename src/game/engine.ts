@@ -18,6 +18,16 @@ export type Period = 'regular' | 'extra' | 'pens';
 export type PenKickResult = 'goal' | 'save' | 'miss' | 'post';
 export type PenStage = 'intro' | 'aim' | 'kick' | 'resolve';
 export type DecidedBy = 'regular' | 'golden' | 'pens' | 'survival';
+/** Calcio da fermo che obbliga a servire un compagno (o a tentare il tiro beffardo). */
+export type SetPieceKind = 'kickoff' | 'corner';
+export interface SetPiece {
+  kind: SetPieceKind;
+  team: number;
+  /** Chi sta battendo: legato all'oggetto, non alla posizione in rosa. */
+  taker: Player;
+  /** Secondi di gioco già corsi sul calcio da fermo. */
+  t: number;
+}
 
 export interface PensSnap {
   score: [number, number];
@@ -45,6 +55,8 @@ export interface Snapshot {
   gamepadsConnected: number;
   /** Round corrente in sopravvivenza (0 = modalità normale). */
   survivalRound: number;
+  /** Calcio da fermo in corso: l'azione deve finire a un compagno (o al tiro). */
+  setPiece: SetPieceKind | null;
   pens: PensSnap | null;
 }
 
@@ -63,6 +75,14 @@ const BASE_H = 700;
 const LARGE_FIELD_W = 1380;
 const LARGE_FIELD_H = 780;
 const GOAL_HALF = 100;
+/** Sui calci da fermo il tiro diretto in porta entra solo nel 3% dei casi. */
+export const SET_PIECE_GOAL_CHANCE = 0.03;
+/** Finestra di gioco in cui anche il primo tocco del pallone neutro d'inizio è vincolato. */
+const SET_PIECE_PENDING = 6;
+/** Il battitore può solo spostarsi di poco: il pallone resta sul punto. */
+const SET_PIECE_SHUFFLE = 108;
+/** Dopo questo tempo di gioco il pallone torna vivo: nessun blocco eterno. */
+const SET_PIECE_GRACE = 6;
 const GOAL_DEPTH = 32;
 const P_R = 17;
 const B_R = 9;
@@ -352,6 +372,10 @@ export class GameEngine {
   private overtimeRules: { extraTime: boolean; penalties: boolean } = { extraTime: true, penalties: true };
   /** In sopravvivenza il primo gol chiude il round. */
   private suddenDeath = false;
+  /** Calcio d'angolo o d'inizio in corso: il pallone è fermo sul punto. */
+  private setPiece: SetPiece | null = null;
+  /** Pallone neutro dell'inizio: chi lo raccoglie per primo deve giocarlo. */
+  private setPiecePending = 0;
   /** Round corrente in sopravvivenza (0 = modalità normale). */
   survivalRound = 0;
   private controlledIdx: [number, number] = [1, 1];
@@ -785,6 +809,8 @@ export class GameEngine {
     this.allowDraw = false;
     this.suddenDeath = false;
     this.survivalRound = 0;
+    this.setPiece = null;
+    this.setPiecePending = 0;
     this.pens = null;
     this.fpFx = [];
     this.fpTrail = [];
@@ -821,6 +847,8 @@ export class GameEngine {
     // in sopravvivenza il pareggio al 60° significa solo "sei ancora vivo"
     this.allowDraw = mode === 'group' || mode === 'survival';
     this.suddenDeath = mode === 'survival';
+    this.setPiece = null;
+    this.setPiecePending = 0;
     this.pens = null;
     this.fpFx = [];
     this.fpTrail = [];
@@ -853,7 +881,12 @@ export class GameEngine {
       taker.faceX = attackDirection;
       taker.faceY = 0;
       this.claimBall(taker);
+      this.armSetPiece('kickoff', taker);
       this.kickoffTeam = null;
+    } else {
+      // calcio d'inizio iniziale: pallone neutro, ma chi lo raccoglie deve giocarlo
+      this.setPiece = null;
+      this.setPiecePending = this.teamSize > 1 && !this.demo && !this.pens ? SET_PIECE_PENDING : 0;
     }
     this.countdown = 3.4;
     this.countdownShown = 4;
@@ -889,7 +922,44 @@ export class GameEngine {
     this.ballCarrier = null;
   }
 
+  /** Arma il vincolo sul calcio da fermo (mai in demo, mai in 1v1). */
+  private armSetPiece(kind: SetPieceKind, taker: Player) {
+    if (this.demo || this.teamSize < 2 || this.pens) {
+      this.setPiece = null;
+      return;
+    }
+    this.setPiecePending = 0;
+    this.setPiece = { kind, team: taker.team, taker, t: 0 };
+  }
+
+  /** Il battitore è ancora sul pallone fermo? */
+  private setPieceHold(player: Player) {
+    return this.setPiece !== null && this.ballCarrier === player && this.setPiece.taker === player;
+  }
+
+  /**
+   * Tiro diretto da calcio da fermo: la porta la si trova nel 3% dei casi.
+   * `null` quando non sei su un calcio da fermo, `false` quando il tiro è viziato.
+   */
+  private setPieceShotRoll(p: Player): boolean | null {
+    if (!this.setPieceHold(p)) return null;
+    return Math.random() < SET_PIECE_GOAL_CHANCE;
+  }
+
+  /** Mira larga: pali fuori misura, così il tiro «fa scena» ma non entra. */
+  private wideSetPieceAim(p: Player) {
+    const goalX = this.oppGoalX(p.team);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const targetY = this.fieldHeight / 2 + side * (GOAL_HALF + 55 + Math.random() * 75);
+    const dx = goalX - this.ball.x;
+    const dy = targetY - this.ball.y;
+    const dl = Math.hypot(dx, dy) || 1;
+    return { x: dx / dl, y: dy / dl };
+  }
+
   private placeBallAtCarrier(player: Player) {
+    // sul punto del calcio da fermo il pallone non si trascina: va giocato
+    if (this.setPieceHold(player)) return;
     const fx = player.faceX || (player.team === 0 ? 1 : -1);
     const fy = player.faceY;
     this.ball.x = clamp(player.x + fx * BALL_CARRY_OFFSET, B_R, this.fieldWidth - B_R);
@@ -903,6 +973,8 @@ export class GameEngine {
 
   private claimBall(player: Player) {
     if (this.ballCarrier === player) return;
+    const firstTouch = this.setPiecePending > 0;
+    if (firstTouch) this.setPiecePending = 0;
     this.releaseBall();
     this.ballCarrier = player;
     if (player.team === 0 || this.playerCount === 2) this.controlledIdx[player.team] = player.idx;
@@ -914,6 +986,10 @@ export class GameEngine {
     this.ball.lastTouch = player.team;
     this.ball.lastTouchWasKeeper = false;
     this.placeBallAtCarrier(player);
+    if (firstTouch) {
+      // la prima palla raccolta al calcio d'inizio va giocata, non trascinata
+      this.setPiece = { kind: 'kickoff', team: player.team, taker: player, t: 0 };
+    }
   }
 
   private startTackle(player: Player, automated = false) {
@@ -997,6 +1073,8 @@ export class GameEngine {
     this.phase = 'over';
     this.timeLeft = 0;
     this.pens = null;
+    this.setPiece = null;
+    this.setPiecePending = 0;
     this.sfx.whistle(true);
     if (this.winner >= 0) setTimeout(() => this.sfx.cheer(), 400);
     this.emit({
@@ -1383,6 +1461,16 @@ export class GameEngine {
       return;
     }
 
+    if (this.phase === 'play' && this.setPiecePending > 0) this.setPiecePending -= dt;
+    if (this.setPiece && this.phase === 'play') {
+      const taker = this.setPiece.taker;
+      if (this.ballCarrier !== taker || Math.hypot(this.ball.vx, this.ball.vy) > 140) {
+        this.setPiece = null;
+      } else {
+        this.setPiece.t += dt;
+        if (this.setPiece.t > SET_PIECE_GRACE) this.setPiece = null;
+      }
+    }
     if (this.phase === 'play') {
       this.timeLeft -= dt;
       const whole = Math.ceil(this.timeLeft);
@@ -1722,6 +1810,15 @@ export class GameEngine {
   }
 
   private integratePlayer(p: Player, dt: number) {
+    if (this.setPieceHold(p)) {
+      // sul dischetto si può solo aggiustare la posizione
+      const pace = Math.hypot(p.vx, p.vy);
+      if (pace > SET_PIECE_SHUFFLE) {
+        const k = SET_PIECE_SHUFFLE / pace;
+        p.vx *= k;
+        p.vy *= k;
+      }
+    }
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     p.vx *= Math.exp(-0.4 * dt);
@@ -1856,6 +1953,7 @@ export class GameEngine {
     this.claimBall(taker);
     this.ball.lastTouch = team;
     this.ball.lastTouchWasKeeper = false;
+    this.armSetPiece('corner', taker);
     this.emit({ type: 'corner', team });
   }
 
@@ -2120,7 +2218,8 @@ export class GameEngine {
 
   private shoot(p: Player, errRange: number) {
     if (this.ballCarrier !== p) return;
-    const dir = this.shootAim(p, errRange);
+    const direct = this.setPieceShotRoll(p);
+    const dir = direct === false ? this.wideSetPieceAim(p) : this.shootAim(p, errRange);
     const power = (820 + Math.random() * 60) * this.powerScale(p.team);
     this.releaseBall(p);
     this.ball.vx = dir.x * power + p.vx * 0.25;
@@ -2139,7 +2238,11 @@ export class GameEngine {
 
   private powerShot(p: Player) {
     if (this.ballCarrier !== p) return;
-    const dir = this.shootAim(p, 0.015 * this.flawScale(p.team));
+    const direct = this.setPieceShotRoll(p);
+    const dir =
+      direct === false
+        ? this.wideSetPieceAim(p)
+        : this.shootAim(p, 0.015 * this.flawScale(p.team));
     const power = 1460 * this.powerScale(p.team);
     this.releaseBall(p);
     this.ball.vx = dir.x * power + p.vx * 0.35;
@@ -2163,7 +2266,8 @@ export class GameEngine {
     const targetOffset = steer.len > 0.2
       ? clamp(steer.y, -1, 1) * (GOAL_HALF - B_R - 10)
       : defaultOffset;
-    const scores = Math.random() < 0.95;
+    const direct = this.setPieceShotRoll(p);
+    const scores = (direct === null || direct) && Math.random() < 0.95;
     const direction = p.team === 0 ? 1 : -1;
     const goalX = this.oppGoalX(p.team);
     const keeper = this.goalkeepers[1 - p.team];
@@ -3676,6 +3780,7 @@ export class GameEngine {
       playerCount: this.playerCount,
       teamSize: this.teamSize,
       controlled: [...this.controlledIdx],
+      setPiece: this.setPiece?.kind ?? null,
       gamepadsConnected: this.gamepadsConnected,
       survivalRound: this.survivalRound,
       pens: ps

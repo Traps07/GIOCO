@@ -87,6 +87,9 @@ export interface Strings {
   survivalNewRecord: string;
   badgeSurvival: string;
   decSurvival: string;
+  setPieceKickoff: string;
+  setPieceCorner: string;
+  setPieceShotHint: string;
   btnPlay: string;
   btnPlayPens: string;
   tournamentButton: string;
@@ -342,6 +345,9 @@ const it: Strings = {
   survivalNewRecord: 'NUOVO RECORD!',
   badgeSurvival: 'SOPRAVVIVENZA · MORTE SUBITA',
   decSurvival: 'DECISA AL PRIMO GOL',
+  setPieceKickoff: "CALCIO D'INIZIO: PASSA AL COMPAGNO",
+  setPieceCorner: "ANGOLO: CROSS, FILTRANTE O PASSAGGIO",
+  setPieceShotHint: 'TIRO DIRETTO 3%',
   btnPlay: 'GIOCA ORA',
   btnPlayPens: 'BATTILO DAL DISCHETTO',
   tournamentButton: 'TORNEO',
@@ -590,6 +596,9 @@ const en: Strings = {
   survivalNewRecord: 'NEW BEST!',
   badgeSurvival: 'SURVIVAL · SUDDEN DEATH',
   decSurvival: 'DECIDED BY THE FIRST GOAL',
+  setPieceKickoff: 'KICK OFF: PLAY IT TO A TEAMMATE',
+  setPieceCorner: 'CORNER: CROSS, THROUGH OR PASS',
+  setPieceShotHint: 'DIRECT SHOT 3%',
   btnPlay: 'PLAY NOW',
   btnPlayPens: 'FROM THE SPOT',
   tournamentButton: 'TOURNAMENT',
@@ -838,6 +847,9 @@ const de: Strings = {
   survivalNewRecord: 'NEUER REKORD!',
   badgeSurvival: 'ÜBERLEBEN · SUDDEN DEATH',
   decSurvival: 'ENTSCIEDEN DURCH DAS ERSTE TOR',
+  setPieceKickoff: 'ANSTOSS: ABSPIEL ZUM MITSPIELER',
+  setPieceCorner: 'ECKBALL: FLANKE, STEIL ODER PASS',
+  setPieceShotHint: 'DIREKTSCHUSS 3%',
   btnPlay: 'JETZT SPIELEN',
   btnPlayPens: 'VOM PUNKT AUS',
   tournamentButton: 'TURNIER',
@@ -1086,6 +1098,9 @@ const fr: Strings = {
   survivalNewRecord: 'NOUVEAU RECORD!',
   badgeSurvival: 'SURVIE · MORT SUBITE',
   decSurvival: 'DECIDE SUR LE PREMIER BUT',
+  setPieceKickoff: "COUP D ENVOI: PASSE A UN COEQUIPIER",
+  setPieceCorner: "CORNER: CENTRE, OUVERTURE OU PASSE",
+  setPieceShotHint: 'TIR DIRECT 3%',
   btnPlay: 'JOUER',
   btnPlayPens: 'AU POINT DE PENALTY',
   tournamentButton: 'TOURNOI',
@@ -1334,6 +1349,9 @@ const es: Strings = {
   survivalNewRecord: '¡NUEVO RÉCORD!',
   badgeSurvival: 'SUPERVIVENCIA · MUERTE SÚBITA',
   decSurvival: 'DECIDIDO POR EL PRIMER GOL',
+  setPieceKickoff: 'SAQUE INICIAL: PASA A UN COMPAÑERO',
+  setPieceCorner: 'CÓRNER: CENTRO, FILTRADO O PASE',
+  setPieceShotHint: 'TIRO DIRECTO 3%',
   btnPlay: 'JUGAR AHORA',
   btnPlayPens: 'DESDE EL PUNTO PENAL',
   tournamentButton: 'TORNEO',
@@ -1582,6 +1600,9 @@ const ar: Strings = {
   survivalNewRecord: 'رقم قياسي جديد!',
   badgeSurvival: 'البقاء · موت مفاجئ',
   decSurvival: 'حُسمت بالهدف الأول',
+  setPieceKickoff: 'ركلة البداية: مرر لزميلك',
+  setPieceCorner: 'ركلة ركنية: عرضية أو تمريرة بينية أو تمريرة',
+  setPieceShotHint: 'تسديدة مباشرة 3%',
   btnPlay: 'العب الآن',
   btnPlayPens: 'سدّد من النقطة',
   tournamentButton: 'بطولة',

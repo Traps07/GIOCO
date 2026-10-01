@@ -59,6 +59,7 @@ Players keep possession after collecting the ball rather than losing it on every
 - **Power shot** — a fast, direct strike.
 - **Corner kick** — a goalkeeper save can deflect the ball over the goal line for a corner, including in 1v1.
 - **Kick-off** — after a goal, the team that conceded starts with possession.
+- **Set pieces** (corners and kick-offs, in every mode except 1v1) — the ball is dead on the spot until it is played: the taker may shuffle a few steps to pick an angle but cannot run it forward, so the kick has to reach a teammate through a **pass, a cross or a through ball**. Shooting straight at goal stays available, but a direct strike from a set piece finds the net on **3%** of attempts only — the aim is forced wide on the other 97%, so it is a lottery ticket rather than a chance. The first touch of the neutral opening kick-off obeys the same rule. Winning the ball from the taker cancels the obligation, and after 6 seconds of standing on it the ball simply goes live, so a match can never stall. A green pill under the clock says which restart is pending, and the same rules apply to the CPU and to the survival rounds.
 
 ## ⌨️ Default keyboard controls
 

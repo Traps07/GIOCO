@@ -1,6 +1,6 @@
 // Test headless delle meccaniche di possesso, contrasti, tiri e corner.
 import assert from 'node:assert/strict';
-import { DIFFICULTIES, DIFFS, GameEngine, SURVIVAL_ROUND_DURATION } from './src/game/engine.js';
+import { DIFFICULTIES, DIFFS, GameEngine, SET_PIECE_GOAL_CHANCE, SURVIVAL_ROUND_DURATION } from './src/game/engine.js';
 import { SURVIVAL_LADDER, survivalDifficulty, survivalOpponent } from './src/game/survival.js';
 import { cloneKeyBindings } from './src/game/keyboard.js';
 
@@ -63,6 +63,7 @@ engine.on((event) => events.push(event));
 // Il contatto dà possesso; i contrasti sono deliberatamente poco risolutivi.
 engine.startMatch('normal', 'match', 2, undefined, 3);
 const carrier = engine.players[0];
+engine.releaseBall(); // pallone vagante, come da progetto: lo contende chi arriva prima
 const defender = engine.players[3];
 carrier.x = 300;
 carrier.y = 300;
@@ -199,6 +200,7 @@ for (let attempt = 0; attempt < 100; attempt++) {
   for (const player of engine.players) if (player !== shooter) player.y = 20;
   engine.goalkeepers[1].y = 20;
   engine.claimBall(shooter);
+  engine.setPiece = null; // qui si misura il tiro a giro, non il calcio da fermo
   Math.random = () => attempt < 95 ? 0.94 : 0.96;
   engine.curveShot(shooter);
   const flight = engine.curveFlight;
@@ -217,6 +219,7 @@ const blockedShooter = engine.players[0];
 for (const player of engine.players) if (player !== blockedShooter) player.y = 20;
 engine.goalkeepers[1].y = 20;
 engine.claimBall(blockedShooter);
+engine.setPiece = null; // misura il muro, non il calcio da fermo
 Math.random = () => 0.94;
 engine.curveShot(blockedShooter);
 const blockedFlight = engine.curveFlight;
@@ -237,6 +240,7 @@ engine.phase = 'play';
 const keeperShooter = engine.players[0];
 for (const player of engine.players) if (player !== keeperShooter) player.y = 20;
 engine.claimBall(keeperShooter);
+engine.setPiece = null; // misura la parata, non il calcio da fermo
 Math.random = () => 0.94;
 engine.curveShot(keeperShooter);
 const keeperFlight = engine.curveFlight;
@@ -472,8 +476,12 @@ assert.equal(engine.ballCarrier.team, 1, 'nel 1v1 il corner assegna il possesso 
 engine.startMatch('normal', 'match', 2, undefined, 3);
 engine.update(3.5);
 assert.equal(engine.ballCarrier, null, 'il calcio d’inizio iniziale resta neutrale');
+assert.equal(engine.getSnapshot().setPiece, null, 'in attesa del primo tocco non c\'è alcun vincolo');
 assert.ok(Math.abs(engine.ball.x - engine.fieldWidth / 2) < 1, 'la palla viene posizionata al centro al calcio d’inizio');
 assert.ok(Math.abs(engine.ball.y - engine.fieldHeight / 2) < 1, 'il pallone parte dal centro anche sul campo esteso');
+engine.claimBall(engine.players[0]);
+assert.equal(engine.getSnapshot().setPiece, 'kickoff', 'chi raccoglie il pallone neutro deve giocarlo');
+engine.releaseBall();
 engine.goal(0);
 engine.update(3);
 assert.equal(engine.phase, 'countdown', 'dopo la rete si prepara il calcio d’inizio');
@@ -817,6 +825,125 @@ engine.timeLeft = 0;
 engine.update(1 / 60);
 assert.equal(engine.getSnapshot().period, 'extra', 'la partita normale non fa più i supplementari');
 
+// ============ CALCI DA FERMO: angolo e inizio obbligano a servire un compagno ============
+const GOAL_HALF = 100;
+/** Arma (o disarma) un calcio da fermo sul giocatore indicato e ne misura il tiro. */
+const setPieceShot = (e, shooter, armed, roll) => {
+  const real = Math.random;
+  Math.random = () => roll;
+  e.setPiece = null;
+  e.setPiecePending = 0;
+  shooter.x = 700;
+  shooter.y = 390;
+  shooter.faceX = 1;
+  shooter.faceY = 0;
+  e.claimBall(shooter);
+  if (armed) e.setPiece = { kind: 'corner', team: shooter.team, taker: shooter, t: 0 };
+  e.shoot(shooter, 0.02);
+  const wide = Math.abs(e.ball.vy * ((e.fieldWidth - e.ball.x) / e.ball.vx)) > GOAL_HALF;
+  Math.random = real;
+  return wide;
+};
+// in 1v1 nessuno può passare: il vincolo non esiste
+engine.setStick(0, 0, 0, false);
+engine.startMatch('normal', 'match', 2, ['bra', 'fra'], 1);
+engine.phase = 'play';
+assert.equal(engine.setPiece, null, 'il 1v1 non deve avere vincoli sul calcio da fermo');
+assert.equal(engine.getSnapshot().setPiece, null, 'lo snapshot 1v1 segnala un vincolo');
+engine.awardCorner(0, true, 60);
+assert.equal(engine.setPiece, null, 'il corner 1v1 non deve obbligare il passaggio');
+
+// 3v3: il calcio d'inizio successivo a una rete arma il vincolo
+engine.startMatch('normal', 'match', 2, ['bra', 'fra'], 3);
+engine.goal(0);
+for (let frame = 0; frame < 210; frame++) engine.update(1 / 60);
+assert.equal(engine.phase, 'countdown', "manca il countdown del calcio d'inizio");
+assert.equal(engine.getSnapshot().setPiece, 'kickoff', "il calcio d'inizio non obbliga a giocare il pallone");
+const taker = engine.ballCarrier;
+assert.equal(taker.team, 1, "non batte il calcio d'inizio la squadra che ha subito");
+engine.phase = 'play';
+
+// il pallone resta sul punto: chi calcia non può trascinarlo via
+const parkX = engine.ball.x;
+const parkY = engine.ball.y;
+taker.x = parkX - 90;
+taker.y = parkY + 60;
+engine.placeBallAtCarrier(taker);
+assert.equal(engine.ball.x, parkX, 'il pallone si è spostato dal punto del calcio d\'inizio');
+assert.equal(engine.ball.y, parkY, 'il pallone si è spostato in altezza');
+taker.vx = 420;
+taker.vy = 0;
+engine.integratePlayer(taker, 1 / 60);
+assert.ok(Math.hypot(taker.vx, taker.vy) <= 110, 'il battitore scatta via col pallone');
+engine.setStick(1, -1, 0.4, true);
+for (let frame = 0; frame < 8; frame++) engine.update(1 / 60);
+assert.equal(engine.ball.x, parkX, 'il pallone segue il battitore durante i passi di rincorsa');
+engine.setStick(1, 0, 0, false);
+engine.setPiece = { kind: 'kickoff', team: taker.team, taker, t: 0 };
+
+// un passaggio normale scioglie il vincolo
+engine.pass(taker, 0.05, false);
+engine.update(1 / 60);
+assert.equal(engine.setPiece, null, 'il passaggio non ha liberato il calcio da fermo');
+assert.ok(Math.hypot(engine.ball.vx, engine.ball.vy) > 100, 'il pallone non è partito');
+
+// il tiro diretto è concesso ma la mira viene deviata fuori quando non è la volta buona
+engine.startMatch('normal', 'match', 2, ['bra', 'fra'], 3);
+engine.phase = 'play';
+const shooter = engine.players[0];
+engine.setPiece = null; // qui si misura solo la mira del tiro
+engine.setPiece = null;
+// roll sfavorevole (0.9 >= 3%): fuori misura; roll favorevole: porta inquadrata
+assert.equal(setPieceShot(engine, shooter, true, 0.9), true, 'il tiro diretto da calcio da fermo non è stato deviato');
+assert.equal(setPieceShot(engine, shooter, true, 0), false, 'il 3% di tiro diretto non può inquadrare la porta');
+assert.equal(setPieceShot(engine, shooter, false, 0.9), false, 'fuori dai calci da fermo il tiro viene punito');
+assert.ok(SET_PIECE_GOAL_CHANCE > 0 && SET_PIECE_GOAL_CHANCE < 0.06, 'la percentuale di gol diretto non è 3%');
+
+// quante volte entra davvero: 300 tentativi con PRNG seminato
+let onTarget = 0;
+let setPieceSeed = 24601;
+const setPieceRandom = () => {
+  setPieceSeed = (setPieceSeed * 1664525 + 1013904223) % 4294967296;
+  return setPieceSeed / 4294967296;
+};
+engine.startMatch('normal', 'match', 2, ['bra', 'fra'], 3);
+engine.phase = 'play';
+const seededShooter = engine.players[0];
+engine.setPiece = null;
+engine.setPiece = null;
+Math.random = setPieceRandom;
+for (let shot = 0; shot < 300; shot++) if (!setPieceShot(engine, seededShooter, true, setPieceRandom())) onTarget++;
+assert.ok(onTarget / 300 < 0.09, `troppi tiri diretti inquadrati da calcio da fermo (${onTarget}/300)`);
+let freeOnTarget = 0;
+setPieceSeed = 24601;
+for (let shot = 0; shot < 300; shot++) if (!setPieceShot(engine, seededShooter, false, setPieceRandom())) freeOnTarget++;
+assert.ok(freeOnTarget > onTarget * 4, `il vincolo non cambia nulla: ${onTarget} vs ${freeOnTarget}`);
+assert.ok(freeOnTarget > 200, `fuori dal vincolo troppi tiri fuori misura (${freeOnTarget})`);
+
+// il corner arma lo stesso vincolo e lo perde solo chi ruba il pallone
+engine.startMatch('normal', 'match', 1, ['bra', 'fra'], 3);
+engine.phase = 'play';
+engine.awardCorner(0, true, 40);
+assert.equal(engine.getSnapshot().setPiece, 'corner', 'l\'angolo non obbliga il cross o il passaggio');
+assert.equal(engine.controlledIdx[0], engine.setPiece.taker.idx, 'il giocatore guidato non è il battitore');
+const rival = engine.players.find((p) => p.team === 1);
+engine.claimBall(rival);
+engine.update(1 / 60);
+assert.equal(engine.setPiece, null, 'il vincolo deve cadere quando il pallone cambia proprietario');
+
+// la grazia scade: dopo 6 secondi di gioco il pallone torna vivo
+engine.awardCorner(0, true, 40);
+assert.equal(engine.setPiece.kind, 'corner');
+engine.setPiece.t = 6.1;
+engine.update(1 / 60);
+assert.equal(engine.setPiece, null, 'il vincolo non scade mai');
+
+// la demo non deve restare impallata sui calci da fermo
+engine.startDemo();
+for (let frame = 0; frame < 900; frame++) engine.update(1 / 60);
+assert.equal(engine.setPiece, null, 'la demo si blocca su un calcio da fermo');
+engine.startMatch('normal', 'match', 1, ['bra', 'fra'], 3);
+
 // la demo non eredita la morte subita
 engine.startDemo();
 assert.equal(engine.survivalActive, false, 'la demo è rimasta in sopravvivenza');
@@ -827,4 +954,4 @@ assert.equal(snapEnd.phase, 'countdown', 'un gol a tempo pieno non deve chiudere
 engine.update(1 / 60);
 
 engine.dispose();
-console.log('PASS: passaggi, filtrante, impostazioni tastiera/durata, tiro a giro, corner 1v1, campi e kickoff verificati.');
+console.log('PASS: passaggi, filtrante, impostazioni tastiera/durata, tiro a giro, corner 1v1, campi, kickoff e calci da fermo verificati.');
