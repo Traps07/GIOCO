@@ -758,7 +758,7 @@ export function TeamSelectScreen({
           </div>
           {clash && (
             <div className="flex items-center gap-1.5 rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-[10px] text-amber-100/80">
-              <Info size={11} /> {getNationalTeam(teams[1]).flag} → away
+              <Info size={11} /> {getNationalTeam(teams[1]).flag} {getNationalTeam(teams[1]).names[lang]} · {t.teamKitAwayClash}
             </div>
           )}
         </div>

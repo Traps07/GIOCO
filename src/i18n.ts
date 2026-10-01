@@ -109,6 +109,7 @@ export interface Strings {
   teamFilterAll: string;
   teamKitFifa: string;
   teamKitFlag: string;
+  teamKitAwayClash: string;
   teamTierLabel: string;
   confederationTitle: string;
   confEurope: string;
@@ -337,6 +338,7 @@ const it: Strings = {
   teamFilterAll: 'TUTTI I CONTINENTI',
   teamKitFifa: 'Divisa ispirata alla nazionale FIFA',
   teamKitFlag: 'Divisa ispirata alla bandiera',
+  teamKitAwayClash: 'divisa da trasferta',
   teamTierLabel: 'Fascia di merito',
   confederationTitle: 'CONTINENTE',
   confEurope: 'Europa',
@@ -558,6 +560,7 @@ const en: Strings = {
   teamFilterAll: 'ALL CONTINENTS',
   teamKitFifa: 'Kit inspired by the FIFA side',
   teamKitFlag: 'Kit inspired by the flag',
+  teamKitAwayClash: 'away kit',
   teamTierLabel: 'Merit tier',
   confederationTitle: 'CONFEDERATION',
   confEurope: 'Europe',
@@ -779,6 +782,7 @@ const de: Strings = {
   teamFilterAll: 'ALLE KONTINENTE',
   teamKitFifa: 'Trikot nach FIFA-Vorbild',
   teamKitFlag: 'Trikot nach Landesflagge',
+  teamKitAwayClash: 'Auswärtsdress',
   teamTierLabel: 'Leistungsstufe',
   confederationTitle: 'KONTINENT',
   confEurope: 'Europa',
@@ -1000,6 +1004,7 @@ const fr: Strings = {
   teamFilterAll: 'TOUS LES CONTINENTS',
   teamKitFifa: 'Maillot inspiré de la sélection FIFA',
   teamKitFlag: 'Maillot inspiré du drapeau',
+  teamKitAwayClash: 'maillot extérieur',
   teamTierLabel: 'Niveau de valeur',
   confederationTitle: 'CONFÉDÉRATION',
   confEurope: 'Europe',
@@ -1221,6 +1226,7 @@ const es: Strings = {
   teamFilterAll: 'TODOS LOS CONTINENTES',
   teamKitFifa: 'Equipación inspirada en la FIFA',
   teamKitFlag: 'Equipación inspirada en la bandera',
+  teamKitAwayClash: 'equipación visitante',
   teamTierLabel: 'Nivel de mérito',
   confederationTitle: 'CONFEDERACIÓN',
   confEurope: 'Europa',
@@ -1442,6 +1448,7 @@ const ar: Strings = {
   teamFilterAll: 'كل القارات',
   teamKitFifa: 'زي مستوحى من منتخب الفيفا',
   teamKitFlag: 'زي مستوحى من العلم',
+  teamKitAwayClash: 'زيّ خارجي',
   teamTierLabel: 'مستوى الجدارة',
   confederationTitle: 'القارة',
   confEurope: 'أوروبا',
