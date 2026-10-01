@@ -478,25 +478,25 @@ export function MenuScreen({
   const awayTeam = getNationalTeam(teams[1]);
 
   return (
-    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center overflow-y-auto bg-gradient-to-b from-[#02040ad9] via-[#02040a8c] to-[#02040ae6] backdrop-blur-[2px] py-6">
-      <div className="menu-stagger flex flex-col items-center px-6 text-center my-auto">
-        <div className={`mb-3 flex items-center gap-2 rounded-full border px-4 py-1.5 ${
+    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center overflow-y-auto bg-gradient-to-b from-[#02040ad9] via-[#02040a8c] to-[#02040ae6] backdrop-blur-[2px] py-5">
+      <div className="menu-stagger flex w-full max-w-5xl flex-col items-center px-4 text-center my-auto sm:px-6">
+        <div className={`mb-2.5 flex items-center gap-2 rounded-full border px-3.5 py-1 ${
           mode === 'pens' ? 'border-amber-400/30 bg-amber-400/10' : 'border-sky-400/30 bg-sky-400/10'
         }`}>
           <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${mode === 'pens' ? 'bg-amber-300' : 'bg-sky-300'}`} />
-          <span className={`font-display text-[10px] tracking-[0.4em] ${mode === 'pens' ? 'text-amber-200' : 'text-sky-200'}`}>
+          <span className={`font-display text-[9px] tracking-[0.3em] ${mode === 'pens' ? 'text-amber-200' : 'text-sky-200'}`}>
             {mode === 'pens' ? t.badgePens : fmt(t.badgeMatch, { seconds: matchDuration })}
           </span>
         </div>
 
         <h1 className="font-display leading-[0.9] tracking-tight">
-          <span className="block text-[clamp(2.4rem,9vw,5.5rem)] text-white">STREET</span>
-          <span className="block text-[clamp(2.4rem,9vw,5.5rem)] text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-cyan-200 to-rose-300 glow-soft">
+          <span className="block text-[clamp(2rem,7vw,4.3rem)] text-white">STREET</span>
+          <span className="block text-[clamp(2rem,7vw,4.3rem)] text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-cyan-200 to-rose-300 glow-soft">
             SOCCER {mode === 'match' ? `${teamSize}v${teamSize}` : 'PENS'}
           </span>
         </h1>
 
-        <p className="mt-4 max-w-md text-sm sm:text-base text-white/60">
+        <p className="mt-3 max-w-xl text-[13px] leading-snug sm:text-sm text-white/60">
           {playerCount === 2 ? (
             fmt(t.tagLocal, { home: `${homeTeam.flag} ${homeTeam.names[lang]}`, away: `${awayTeam.flag} ${awayTeam.names[lang]}` })
           ) : (
@@ -513,17 +513,17 @@ export function MenuScreen({
             </>
           )}
         </p>
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-amber-200/80">
-          <span className="flex items-center gap-1.5"><Globe2 size={12} /> {fmt(t.tournamentAvailable, { n: TEAM_COUNT })}</span>
+        <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[10px] text-amber-200/80">
+          <span className="flex items-center gap-1.5"><Globe2 size={11} /> {fmt(t.tournamentAvailable, { n: TEAM_COUNT })}</span>
           <span className="text-white/20">•</span>
-          <span className="flex items-center gap-1.5"><Zap size={12} /> {t.featGolden}</span>
+          <span className="flex items-center gap-1.5"><Zap size={11} /> {t.featGolden}</span>
           <span className="text-white/20">•</span>
-          <span className="flex items-center gap-1.5"><Target size={12} /> {t.featPens}</span>
+          <span className="flex items-center gap-1.5"><Target size={11} /> {t.featPens}</span>
         </div>
 
         {/* giocatori */}
-        <div className="mt-5 flex flex-col items-center gap-2">
-          <span className="font-display text-[10px] tracking-[0.3em] text-white/40">{t.playerCountTitle}</span>
+        <div className="mt-4 flex flex-col items-center gap-1.5">
+          <span className="font-display text-[9px] tracking-[0.26em] text-white/40">{t.playerCountTitle}</span>
           <div className="flex gap-2 sm:gap-3">
             {[
               { id: 1 as const, label: t.playerSolo, desc: t.playerSoloDesc, Icon: User },
@@ -536,7 +536,7 @@ export function MenuScreen({
                   type="button"
                   aria-pressed={active}
                   onClick={() => setPlayerCount(id)}
-                  className={`group flex min-w-36 flex-col items-center rounded-2xl border px-5 sm:px-8 py-2.5 transition-all duration-200 ${
+                  className={`group flex min-w-32 flex-col items-center rounded-2xl border px-4 sm:px-6 py-2 transition-all duration-200 ${
                     active
                       ? id === 2
                         ? 'border-rose-300/70 bg-rose-400/15 shadow-[0_0_30px_rgba(251,113,133,0.2)]'
@@ -544,12 +544,12 @@ export function MenuScreen({
                       : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10'
                   }`}
                 >
-                  <span className={`flex items-center gap-2 font-display text-xs tracking-[0.15em] ${
+                  <span className={`flex items-center gap-1.5 font-display text-[11px] leading-tight tracking-[0.12em] ${
                     active ? (id === 2 ? 'text-rose-200' : 'text-sky-200') : 'text-white/75'
                   }`}>
-                    <Icon size={14} /> {label}
+                    <Icon size={13} /> {label}
                   </span>
-                  <span className="mt-1 text-[10px] text-white/40">{desc}</span>
+                  <span className="mt-0.5 text-[9px] leading-snug text-white/40">{desc}</span>
                 </button>
               );
             })}
@@ -557,10 +557,10 @@ export function MenuScreen({
         </div>
 
         {mode === 'match' && (
-          <div className="mt-4 flex flex-col items-center gap-2">
+          <div className="mt-3.5 flex flex-col items-center gap-1.5">
             <div className="flex flex-col items-center">
-              <span className="font-display text-[10px] tracking-[0.3em] text-white/50">{t.teamSizeTitle}</span>
-              <span className="mt-0.5 text-[9px] text-white/35">{t.teamSizeDesc}</span>
+              <span className="font-display text-[9px] tracking-[0.26em] text-white/50">{t.teamSizeTitle}</span>
+              <span className="mt-0.5 text-[9px] leading-snug text-white/35">{t.teamSizeDesc}</span>
             </div>
             <div dir="ltr" className="flex gap-1.5 sm:gap-2">
               {TEAM_SIZES.map((size) => {
@@ -572,7 +572,7 @@ export function MenuScreen({
                     aria-pressed={active}
                     aria-label={`${size}v${size} · ${t.teamSizeDesc}`}
                     onClick={() => setTeamSize(size)}
-                    className={`flex h-10 w-12 items-center justify-center rounded-xl border font-display text-xs tracking-wide transition ${
+                    className={`flex h-9 w-11 items-center justify-center rounded-xl border font-display text-[11px] tracking-wide transition ${
                       active
                         ? 'border-emerald-300/70 bg-emerald-400/15 text-emerald-100 shadow-[0_0_20px_rgba(52,211,153,0.18)]'
                         : 'border-white/10 bg-white/5 text-white/65 hover:border-white/25 hover:bg-white/10'
@@ -587,7 +587,7 @@ export function MenuScreen({
         )}
 
         {/* modalità */}
-        <div className="mt-6 flex gap-2 sm:gap-3">
+        <div className="mt-4 flex gap-2 sm:gap-2.5">
           {MODE_INFO.map((m) => {
             const Icon = m.icon === 'timer' ? Timer : Target;
             const active = mode === m.id;
@@ -595,61 +595,61 @@ export function MenuScreen({
               <button
                 key={m.id}
                 onClick={() => setMode(m.id)}
-                className={`group flex flex-col items-center rounded-2xl border px-5 sm:px-8 py-3 transition-all duration-200 ${
+                className={`group flex flex-col items-center rounded-2xl border px-4 sm:px-6 py-2 transition-all duration-200 ${
                   active
                     ? 'border-amber-300/70 bg-amber-400/15 shadow-[0_0_30px_rgba(251,191,36,0.25)]'
                     : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10'
                 }`}
               >
-                <span className={`flex items-center gap-2 font-display text-xs tracking-[0.2em] ${active ? 'text-amber-200' : 'text-white/75'}`}>
-                  <Icon size={14} /> {m.label}
+                <span className={`flex items-center gap-1.5 font-display text-[11px] leading-tight tracking-[0.14em] ${active ? 'text-amber-200' : 'text-white/75'}`}>
+                  <Icon size={13} /> {m.label}
                 </span>
-                <span className="mt-1 text-[10px] text-white/40">{m.desc}</span>
+                <span className="mt-0.5 text-[9px] leading-snug text-white/40">{m.desc}</span>
               </button>
             );
           })}
         </div>
 
         {/* difficoltà */}
-        <div className="mt-3 flex gap-2 sm:gap-3">
+        <div className="mt-2.5 flex gap-2 sm:gap-2.5">
           {DIFF_INFO.map((d) => (
             <button
               key={d.id}
               onClick={() => setDifficulty(d.id)}
-              className={`group flex flex-col items-center rounded-2xl border px-4 sm:px-6 py-3 transition-all duration-200 ${
+              className={`group flex flex-col items-center rounded-2xl border px-4 sm:px-5 py-2 transition-all duration-200 ${
                 difficulty === d.id
                   ? 'border-sky-300/70 bg-sky-400/15 shadow-[0_0_30px_rgba(56,189,248,0.25)]'
                   : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10'
               }`}
             >
-              <span className={`font-display text-xs tracking-[0.2em] ${difficulty === d.id ? 'text-sky-200' : 'text-white/75'}`}>
+              <span className={`font-display text-[11px] leading-tight tracking-[0.14em] ${difficulty === d.id ? 'text-sky-200' : 'text-white/75'}`}>
                 {d.label}
               </span>
-              <span className="mt-1 text-[10px] text-white/40">{d.desc}</span>
+              <span className="mt-0.5 text-[9px] leading-snug text-white/40">{d.desc}</span>
             </button>
           ))}
         </div>
 
         <button
           onClick={onStart}
-          className="btn-play group mt-7 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-sky-400 to-cyan-300 px-10 py-4 font-display text-lg tracking-[0.15em] text-[#031524] transition-transform duration-200 hover:scale-105 active:scale-95"
+          className="btn-play group mt-5 flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-sky-400 to-cyan-300 px-8 py-3 font-display text-base tracking-[0.12em] text-[#031524] transition-transform duration-200 hover:scale-105 active:scale-95"
         >
-          <Play size={22} className="fill-current" />
+          <Play size={20} className="fill-current" />
           {mode === 'pens' ? t.btnPlayPens : t.btnPlay}
         </button>
         <button
           onClick={onTournament}
-          className="mt-2 flex w-full max-w-xs items-center justify-center gap-3 rounded-2xl border border-amber-300/35 bg-amber-300/10 px-5 py-2.5 text-left text-amber-100 transition hover:border-amber-200/70 hover:bg-amber-300/15"
+          className="mt-2 flex w-full max-w-xs items-center justify-center gap-2.5 rounded-2xl border border-amber-300/35 bg-amber-300/10 px-4 py-2 text-left text-amber-100 transition hover:border-amber-200/70 hover:bg-amber-300/15"
         >
-          <Trophy size={18} className="shrink-0 text-amber-300" />
-          <span className="flex flex-col">
-            <span className="font-display text-xs tracking-[0.16em]">{t.tournamentButton}</span>
+          <Trophy size={16} className="shrink-0 text-amber-300" />
+          <span className="flex min-w-0 flex-col">
+            <span className="font-display text-[11px] leading-tight tracking-[0.13em]">{t.tournamentButton}</span>
             <span className="mt-0.5 text-[9px] text-white/45">{fmt(t.tournamentButtonDesc, { n: TEAM_COUNT })}</span>
           </span>
         </button>
         {savedCup && onResume && (
-          <div className="mt-2 flex w-full max-w-xs items-stretch gap-2 rounded-2xl border border-emerald-300/35 bg-emerald-300/10 px-3 py-2 text-left transition hover:border-emerald-200/60">
-            <Save size={15} className="mt-0.5 shrink-0 text-emerald-300" />
+          <div className="mt-2 flex w-full max-w-xs items-stretch gap-2 rounded-2xl border border-emerald-300/35 bg-emerald-300/10 px-2.5 py-1.5 text-left transition hover:border-emerald-200/60">
+            <Save size={14} className="mt-0.5 shrink-0 text-emerald-300" />
             <button type="button" onClick={onResume} className="min-w-0 flex-1">
               <span className="flex items-center gap-1.5 font-display text-[10px] tracking-[0.16em] text-emerald-100">
                 {savedCup.stage === 'complete' ? t.menuResumeFinished : t.menuResumeTitle}
@@ -678,18 +678,18 @@ export function MenuScreen({
         )}
         <button
           onClick={onSettings}
-          className="mt-2 flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-2 text-[10px] font-display tracking-[0.18em] text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
+          className="mt-2 flex items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-4 py-1.5 text-[9px] font-display tracking-[0.16em] text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
         >
-          <Settings size={14} /> {t.settingsButton}
+          <Settings size={13} /> {t.settingsButton}
         </button>
 
         {playerCount === 2 ? (
-          <div className="mt-5 grid w-full max-w-3xl grid-cols-1 gap-2 text-left sm:grid-cols-2">
+          <div className="mt-4 grid w-full max-w-3xl grid-cols-1 gap-1.5 text-left sm:grid-cols-2">
             <div
-              className="flex flex-col gap-1.5 rounded-xl border px-4 py-3 text-[10px] text-white/60"
+              className="flex flex-col gap-1 rounded-xl border px-3 py-2 text-[9px] leading-snug text-white/60"
               style={{ borderColor: `${homeTeam.kit.primary}66`, backgroundColor: `${homeTeam.kit.primary}12` }}
             >
-              <span className="font-display text-[11px] tracking-widest" style={{ color: homeTeam.kit.primary }}>
+              <span className="font-display text-[10px] tracking-[0.12em]" style={{ color: homeTeam.kit.primary }}>
                 P1 · {homeTeam.flag} {homeTeam.names[lang]}
               </span>
               <span><kbd>{[keyBindings.p1.up, keyBindings.p1.left, keyBindings.p1.down, keyBindings.p1.right].map(formatKeyCode).join(' ')}</kbd> {t.kMove} · <kbd>{formatKeyCode(keyBindings.p1.sprint)}</kbd> {t.kSprint}</span>
@@ -697,10 +697,10 @@ export function MenuScreen({
               <span><kbd>{formatKeyCode(keyBindings.p1.power)}</kbd> {t.kPower} · <kbd>{formatKeyCode(keyBindings.p1.tackle)}</kbd> {t.kTackle}{teamSize > 1 && <> · <kbd>{formatKeyCode(keyBindings.p1.switch)}</kbd> {t.kSwitch}</>}</span>
             </div>
             <div
-              className="flex flex-col gap-1.5 rounded-xl border px-4 py-3 text-[10px] text-white/60"
+              className="flex flex-col gap-1 rounded-xl border px-3 py-2 text-[9px] leading-snug text-white/60"
               style={{ borderColor: `${awayTeam.kit.primary}66`, backgroundColor: `${awayTeam.kit.primary}12` }}
             >
-              <span className="font-display text-[11px] tracking-widest" style={{ color: awayTeam.kit.primary }}>
+              <span className="font-display text-[10px] tracking-[0.12em]" style={{ color: awayTeam.kit.primary }}>
                 P2 · {awayTeam.flag} {awayTeam.names[lang]}
               </span>
               <span><kbd>{[keyBindings.p2.up, keyBindings.p2.left, keyBindings.p2.down, keyBindings.p2.right].map(formatKeyCode).join(' ')}</kbd> {t.kMove} · <kbd>{formatKeyCode(keyBindings.p2.sprint)}</kbd> {t.kSprint}</span>
@@ -709,7 +709,7 @@ export function MenuScreen({
             </div>
           </div>
         ) : (
-          <div className="mt-7 hidden max-w-5xl flex-wrap justify-center gap-2 sm:flex">
+          <div className="mt-5 hidden max-w-4xl flex-wrap justify-center gap-1.5 sm:flex">
             {[
               [[keyBindings.p1.up, keyBindings.p1.left, keyBindings.p1.down, keyBindings.p1.right].map(formatKeyCode).join(' '), t.menuMove],
               [formatKeyCode(keyBindings.p1.sprint), t.menuSprint],
@@ -721,20 +721,20 @@ export function MenuScreen({
               [formatKeyCode(keyBindings.p1.tackle), t.menuTackle],
               ...(teamSize > 1 ? [[formatKeyCode(keyBindings.p1.switch), t.menuSwitch]] : []),
             ].map(([k, v]) => (
-              <div key={k} className="flex min-w-20 flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-black/35 px-3 py-2.5">
-                <span className="font-display text-[11px] text-sky-200 tracking-wide">{k}</span>
-                <span className="text-[10px] text-white/45">{v}</span>
+              <div key={k} className="flex min-w-[74px] flex-col items-center gap-1 rounded-xl border border-white/10 bg-black/35 px-2.5 py-2">
+                <span className="font-display text-[10px] text-sky-200 tracking-wide">{k}</span>
+                <span className="text-[9px] leading-snug text-white/45">{v}</span>
               </div>
             ))}
           </div>
         )}
 
-        <div className="mt-3 flex max-w-4xl items-start justify-center gap-2 text-left text-[9px] leading-relaxed text-white/40">
-          <Gamepad2 size={14} className="mt-0.5 shrink-0 text-sky-200/70" />
+        <div className="mt-3 flex max-w-3xl items-start justify-center gap-1.5 text-left text-[9px] leading-snug text-white/40">
+          <Gamepad2 size={13} className="mt-0.5 shrink-0 text-sky-200/70" />
           <span>{t.gamepadHint}</span>
         </div>
 
-        <p className="mt-5 text-[11px] text-white/35 sm:hidden">
+        <p className="mt-4 text-[10px] leading-snug text-white/35 sm:hidden">
           {playerCount === 2 ? t.playerDuoDesc : t.mobileHint}
         </p>
       </div>
