@@ -311,10 +311,16 @@ for (const opponent of engine.players.filter((player) => player.team === 0)) {
 }
 engine.claimBall(liveCarrier);
 const originalPass = engine.pass;
+const originalThroughPass = engine.throughBall;
 let liveAiPasses = 0;
 engine.pass = function (...args) {
   if (args[2] === false) liveAiPasses++;
   return originalPass.apply(this, args);
+};
+// il filtrante resta un passaggio automatico: va contato allo stesso modo
+engine.throughBall = function (p, err, human) {
+  if (!human) liveAiPasses++;
+  return originalThroughPass.call(this, p, err, human);
 };
 const carrierStartX = liveCarrier.x;
 const supportStartX = liveSupport.x;
@@ -323,6 +329,7 @@ assert.ok(liveCarrier.x < carrierStartX - 5, 'l’avversario bot avanza davvero 
 assert.ok(liveSupport.x < supportStartX - 5, 'il compagno bot avanza davvero verso l’attacco');
 for (let frame = 0; frame < 108; frame++) engine.update(1 / 60);
 engine.pass = originalPass;
+engine.throughBall = originalThroughPass;
 assert.ok(liveAiPasses > 0, 'nel ciclo partita il portatore bot esegue passaggi automatici');
 
 // Il passaggio umano segue la mira e preferisce il compagno indicato anche se è più lontano.
@@ -576,7 +583,18 @@ engine.phase = 'play';
 engine.onKeyDown({ code: 'KeyP', repeat: false, preventDefault: noop });
 assert.equal(engine.throughQ[1], true, 'P deve armare il filtrante per P2');
 engine.onKeyUp({ code: 'KeyP' });
-// anches l'IA lo usa, e solo fuori dalla demo
+// anche l'IA lo usa, e solo fuori dalla demo (PRNG seminato: niente test ballerini)
+const seededRandom = (() => {
+  let a = 20261001;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+})();
+const realMathRandom = Math.random;
+Math.random = seededRandom;
 let throughCalls = 0;
 const realThrough = engine.throughBall.bind(engine);
 engine.throughBall = (p, err, human) => {
@@ -594,6 +612,7 @@ for (let i = 0; i < 900; i++) engine.update(1 / 60);
 assert.equal(throughCalls, 0, 'la demo di sottofondo non deve usare i filtranti');
 assert.ok(aiCalls > 0, 'contatore IA azzerato troppo presto');
 engine.throughBall = realThrough;
+Math.random = realMathRandom;
 
 
 // Numeri di maglia: 10 al giocatore guidato, poi 9, 11, 7, 8 secondo la formazione.
