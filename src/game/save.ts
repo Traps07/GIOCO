@@ -27,7 +27,7 @@ import {
 export const TOURNAMENT_SAVE_KEY = 'street-soccer:tournament:v1';
 export const SAVE_VERSION = 1;
 
-const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
+const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard', 'extreme'];
 const TEAM_SIZES: TeamSize[] = [1, 2, 3, 4, 5];
 /** Durate riconosciute: allineate a quelle dell'engine. */
 const DURATION_LIST: readonly MatchDuration[] = [60, 90, 120, 180];
@@ -315,6 +315,32 @@ export function readTournamentSave(): TournamentSave | null {
     return decodeTournamentSave(area.getItem(TOURNAMENT_SAVE_KEY));
   } catch {
     return null;
+  }
+}
+
+/** Chiave del record di round superati in sopravvivenza. */
+export const SURVIVAL_BEST_KEY = 'ss3v3-survival-best';
+
+/** Record di round superati di fila in modalità sopravvivenza. */
+export function readSurvivalBest(): number {
+  const area = storage();
+  if (!area) return 0;
+  try {
+    const value = Number.parseInt(area.getItem(SURVIVAL_BEST_KEY) ?? '0', 10);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Aggiorna il record, se migliore di quello salvato. */
+export function writeSurvivalBest(rounds: number): void {
+  const area = storage();
+  if (!area) return;
+  try {
+    if (rounds > readSurvivalBest()) area.setItem(SURVIVAL_BEST_KEY, String(Math.round(rounds)));
+  } catch {
+    /* quota o navigazione anonima */
   }
 }
 

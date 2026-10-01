@@ -1,6 +1,7 @@
 // Test headless delle meccaniche di possesso, contrasti, tiri e corner.
 import assert from 'node:assert/strict';
-import { GameEngine } from './src/game/engine.js';
+import { DIFFICULTIES, DIFFS, GameEngine, SURVIVAL_ROUND_DURATION } from './src/game/engine.js';
+import { SURVIVAL_LADDER, survivalDifficulty, survivalOpponent } from './src/game/survival.js';
 import { cloneKeyBindings } from './src/game/keyboard.js';
 
 const noop = () => {};
@@ -667,6 +668,163 @@ engine.setTeams(['smr', 'bra']);
 assert.ok(engine.speedScale(0) > 0.9, 'la nazionale più debole è ferma');
 assert.ok(engine.speedScale(1) < 1.1, 'la nazionale più forte vola');
 
+
+// ============ DIFFICOLTÀ ESTREMA ============
+assert.deepEqual(DIFFICULTIES, ['easy', 'normal', 'hard', 'extreme'], 'ordine delle difficoltà');
+assert.deepEqual(Object.keys(DIFFS), DIFFICULTIES, 'manca una riga nella tabella DIFFS');
+for (let i = 1; i < DIFFICULTIES.length; i++) {
+  const softer = DIFFS[DIFFICULTIES[i - 1]];
+  const harsher = DIFFS[DIFFICULTIES[i]];
+  const tag = DIFFICULTIES[i];
+  assert.ok(harsher.speed > softer.speed, `IA non più veloce a ${tag}`);
+  assert.ok(harsher.shootRange > softer.shootRange, `IA non più lunga nel tiro a ${tag}`);
+  assert.ok(harsher.shootErr < softer.shootErr, `IA non più precisa nel tiro a ${tag}`);
+  assert.ok(harsher.passErr < softer.passErr, `IA non più precisa nei passaggi a ${tag}`);
+  assert.ok(harsher.minHold < softer.minHold, `IA non più rapida a decidere a ${tag}`);
+}
+assert.ok(DIFFS.extreme.speed > DIFFS.hard.speed * 1.09, 'ESTREMA è solo un ritocco di DIFFICILE');
+assert.ok(DIFFS.extreme.shootErr < DIFFS.hard.shootErr * 0.65, 'ESTREMA sbaglia ancora troppo');
+assert.ok(DIFFS.extreme.minHold < DIFFS.hard.minHold * 0.6, 'ESTREMA decide ancora lentamente');
+
+// una partita intera a ESTREMA deve restare stabile
+engine.startMatch('extreme', 'match', 1, ['bra', 'fra'], 3);
+assert.equal(engine.diff, 'extreme', 'il motore non ha ricevuto ESTREMA');
+for (let frame = 0; frame < 600; frame++) engine.update(1 / 60);
+for (const p of engine.players) {
+  assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.vx) && Number.isFinite(p.vy), 'giocatore impazzito a ESTREMA');
+}
+assert.ok(Number.isFinite(engine.getSnapshot().timeLeft), 'orologio impazzito a ESTREMA');
+
+// ============ SOPRAVVIVENZA: scala dei round ============
+assert.equal(survivalDifficulty(1, 'normal'), 'normal');
+assert.equal(survivalDifficulty(2, 'normal'), 'normal');
+assert.equal(survivalDifficulty(3, 'normal'), 'hard');
+assert.equal(survivalDifficulty(5, 'normal'), 'extreme');
+assert.equal(survivalDifficulty(1, 'easy'), 'easy');
+assert.equal(survivalDifficulty(7, 'easy'), 'extreme');
+assert.equal(survivalDifficulty(9, 'hard'), 'extreme');
+assert.equal(survivalDifficulty(400, 'extreme'), 'extreme', 'la difficoltà esce dalla scala');
+for (let round = 1; round <= 60; round++) {
+  assert.ok(DIFFICULTIES.includes(survivalDifficulty(round, 'normal')), `difficoltà inventata al round ${round}`);
+}
+
+const strengthOf = (id) => SURVIVAL_LADDER.find((team) => team.id === id).strength;
+assert.ok(
+  strengthOf(survivalOpponent(1, 'ita')) <= SURVIVAL_LADDER[3].strength,
+  'il round 1 non parte dalla nazionale più debole',
+);
+let previousStrength = -1;
+const seenOpponents = new Set();
+for (let round = 1; round <= 45; round++) {
+  const id = survivalOpponent(round, 'ita');
+  assert.notEqual(id, 'ita', `il round ${round} ripropone la squadra del giocatore`);
+  const value = strengthOf(id);
+  assert.ok(value >= previousStrength - 1e-9, `la scala avversari retrocede al round ${round}`);
+  previousStrength = value;
+  seenOpponents.add(id);
+}
+assert.ok(seenOpponents.size > 40, `avversari troppo ripetuti nei primi 45 round (${seenOpponents.size})`);
+// le prime 20 della scala (con la squadra del giocatore esclusa) sono l'elite
+const eliteFloor = SURVIVAL_LADDER[SURVIVAL_LADDER.length - 21].strength;
+let last = null;
+for (let round = 46; round <= 70; round++) {
+  const id = survivalOpponent(round, 'ita');
+  assert.ok(strengthOf(id) >= eliteFloor, `fuori dalla elite al round ${round}`);
+  assert.notEqual(id, last, `avversario ripetuto due volte di fila al round ${round}`);
+  last = id;
+}
+
+// ============ SOPRAVVIVENZA: regole del round ============
+engine.setSurvivalRound(0);
+engine.startMatch('normal', 'survival', 1, ['bra', 'smr'], 3);
+const survivalSnap = engine.getSnapshot();
+assert.equal(survivalSnap.matchDuration, SURVIVAL_ROUND_DURATION, 'round non da 60 secondi');
+assert.ok(survivalSnap.timeLeft <= SURVIVAL_ROUND_DURATION, 'il round parte con più tempo del previsto');
+assert.equal(survivalSnap.survivalRound, 0, 'il round non deve salire da solo');
+engine.setSurvivalRound(3);
+assert.equal(engine.getSnapshot().survivalRound, 3, "l'HUD non può leggere il round");
+assert.equal(engine.survivalActive, true, 'sopravvivenza non attiva');
+engine.setSurvivalRound(0);
+assert.equal(engine.survivalActive, false, 'sopravvivenza non spenta');
+
+// la CPU cresce a ogni round superato, il giocatore no
+engine.setSurvivalRound(1);
+const keeperBase = engine.keeperScale(1);
+const playerKeeperBase = engine.keeperScale(0);
+const cpuBase = engine.scaledCfg(DIFFS.normal, 1);
+const playerBase = engine.scaledCfg(DIFFS.normal, 0);
+engine.setSurvivalRound(9);
+const keeperUp = engine.keeperScale(1);
+const cpuUp = engine.scaledCfg(DIFFS.normal, 1);
+assert.ok(keeperUp > keeperBase, 'il portiere avversario non cresce nei round alti');
+assert.equal(engine.keeperScale(0), playerKeeperBase, 'la squadra del giocatore non deve beneficiare del round');
+assert.ok(cpuUp.speed > cpuBase.speed, 'la CPU non accelera nei round alti');
+assert.ok(cpuUp.shootErr < cpuBase.shootErr, 'la CPU non diventa più precisa nei round alti');
+assert.equal(engine.scaledCfg(DIFFS.normal, 0).speed, playerBase.speed, 'il ramp tocca anche il giocatore');
+assert.ok(keeperUp / keeperBase <= 1.31, `ramp troppo pesante (${keeperUp / keeperBase})`);
+engine.setSurvivalRound(0);
+
+const ends = [];
+engine.on((event) => {
+  if (event.type === 'end') ends.push(event);
+});
+const closeRound = () => {
+  engine.phase = 'goal';
+  engine.goalT = 0.01;
+  for (let frame = 0; frame < 10; frame++) engine.update(1 / 60);
+  return engine.getSnapshot();
+};
+
+// chi subisce un gol chiude la serie: il round non prosegue
+engine.setSurvivalRound(3);
+engine.startMatch('normal', 'survival', 1, ['bra', 'smr'], 3);
+engine.setSurvivalRound(3);
+engine.goal(1);
+let snapEnd = closeRound();
+assert.equal(snapEnd.phase, 'over', 'il gol subìto non chiude il round');
+assert.equal(snapEnd.winner, 1, 'vittoria assegnata al posto della sconfitta');
+assert.equal(ends[ends.length - 1].decidedBy, 'survival', "l'esito non è classificato come sopravvivenza");
+
+// il gol del vantaggio chiude subito anche senza scadere il tempo
+const before = ends.length;
+engine.startMatch('normal', 'survival', 1, ['bra', 'smr'], 3);
+engine.goal(0);
+snapEnd = closeRound();
+assert.equal(snapEnd.phase, 'over', 'il gol segnato non chiude il round');
+assert.equal(snapEnd.winner, 0, 'round non considerato superato');
+assert.equal(snapEnd.timeLeft > 0, false, 'il round è andato oltre la morte subita');
+assert.equal(ends.length, before + 1, 'evento di fine round duplicato');
+
+// a tempo scaduto senza gol si sopravvive: niente supplementari, niente rigori
+engine.startMatch('normal', 'survival', 1, ['bra', 'smr'], 3);
+engine.phase = 'play';
+engine.score = [0, 0];
+engine.lastWholeSec = 99;
+engine.timeLeft = 0;
+engine.update(1 / 60);
+snapEnd = engine.getSnapshot();
+assert.equal(snapEnd.period, 'regular', 'la sopravvivenza è andata ai supplementari');
+assert.equal(snapEnd.phase, 'over', 'il round non è terminato');
+assert.equal(snapEnd.winner, -1, 'il pareggio non è sopravvivenza');
+assert.equal(snapEnd.pens, null, 'rigori inventati in sopravvivenza');
+
+// regressione: la partita lampo normale va ancora ai supplementari sul pareggio
+engine.startMatch('normal', 'match', 1, ['bra', 'smr'], 3);
+engine.phase = 'play';
+engine.score = [1, 1];
+engine.lastWholeSec = 99;
+engine.timeLeft = 0;
+engine.update(1 / 60);
+assert.equal(engine.getSnapshot().period, 'extra', 'la partita normale non fa più i supplementari');
+
+// la demo non eredita la morte subita
+engine.startDemo();
+assert.equal(engine.survivalActive, false, 'la demo è rimasta in sopravvivenza');
+engine.startMatch('normal', 'match', 1, ['ita', 'fra'], 3);
+engine.goal(0);
+snapEnd = closeRound();
+assert.equal(snapEnd.phase, 'countdown', 'un gol a tempo pieno non deve chiudere la partita');
+engine.update(1 / 60);
 
 engine.dispose();
 console.log('PASS: passaggi, filtrante, impostazioni tastiera/durata, tiro a giro, corner 1v1, campi e kickoff verificati.');

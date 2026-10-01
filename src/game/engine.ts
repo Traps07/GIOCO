@@ -2,18 +2,22 @@ import { SFX } from './sound';
 import { cloneKeyBindings, DEFAULT_KEY_BINDINGS, type KeyboardBindings } from './keyboard';
 import { DEFAULT_TEAMS, getTeamQuality, resolveKits, type TeamKit, type TeamSelection } from './teams';
 
-export type Difficulty = 'easy' | 'normal' | 'hard';
-export type GameMode = 'match' | 'pens';
+export type Difficulty = 'easy' | 'normal' | 'hard' | 'extreme';
+export type GameMode = 'match' | 'pens' | 'survival';
 export type PlayerCount = 1 | 2;
 export type TeamSize = 1 | 2 | 3 | 4 | 5;
 export const MATCH_DURATIONS = [60, 90, 120, 180] as const;
+/** Livelli di difficoltà disponibili, dal più morbido al più brutale. */
+export const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard', 'extreme'];
+/** Durata di un round in modalità sopravvivenza. */
+export const SURVIVAL_ROUND_DURATION = 60;
 export type MatchDuration = (typeof MATCH_DURATIONS)[number];
 export const DEFAULT_MATCH_DURATION: MatchDuration = 90;
 export type Phase = 'demo' | 'countdown' | 'play' | 'goal' | 'pens' | 'over';
 export type Period = 'regular' | 'extra' | 'pens';
 export type PenKickResult = 'goal' | 'save' | 'miss' | 'post';
 export type PenStage = 'intro' | 'aim' | 'kick' | 'resolve';
-export type DecidedBy = 'regular' | 'golden' | 'pens';
+export type DecidedBy = 'regular' | 'golden' | 'pens' | 'survival';
 
 export interface PensSnap {
   score: [number, number];
@@ -39,6 +43,8 @@ export interface Snapshot {
   teamSize: TeamSize;
   controlled: [number, number];
   gamepadsConnected: number;
+  /** Round corrente in sopravvivenza (0 = modalità normale). */
+  survivalRound: number;
   pens: PensSnap | null;
 }
 
@@ -127,13 +133,24 @@ interface DiffCfg {
   minHold: number;
 }
 
-const DIFFS: Record<Difficulty, DiffCfg> = {
+/** Configurazione IA per livello (esportata per i test di bilanciamento). */
+export const DIFFS: Record<Difficulty, DiffCfg> = {
   easy: { speed: 218, shootRange: 300, shootErr: 0.17, passErr: 0.24, minHold: 0.85 },
   normal: { speed: 252, shootRange: 385, shootErr: 0.1, passErr: 0.14, minHold: 0.5 },
   hard: { speed: 284, shootRange: 450, shootErr: 0.055, passErr: 0.08, minHold: 0.3 },
+  extreme: { speed: 316, shootRange: 520, shootErr: 0.03, passErr: 0.045, minHold: 0.16 },
 };
 
 const DEMO_CFG: DiffCfg = { speed: 195, shootRange: 340, shootErr: 0.14, passErr: 0.2, minHold: 0.7 };
+
+/** Moltiplicatori legati al livello di difficoltà (rigori, reattività, rischi). */
+const PEN_READ_CHANCE: Record<Difficulty, number> = { easy: 0.2, normal: 0.32, hard: 0.45, extreme: 0.56 };
+const PEN_ERR_CHANCE: Record<Difficulty, number> = { easy: 0.16, normal: 0.1, hard: 0.06, extreme: 0.03 };
+const PEN_KICK_DUR: Record<Difficulty, number> = { easy: 0.74, normal: 0.64, hard: 0.56, extreme: 0.5 };
+const PEN_AIM_TIME: Record<Difficulty, number> = { easy: 1.6, normal: 1.3, hard: 1.0, extreme: 0.85 };
+//** mira umana più ballerina sui livelli alti */
+const PEN_WOBBLE_MUL: Record<Difficulty, number> = { easy: 0.85, normal: 1, hard: 1.15, extreme: 1.32 };
+const THROUGH_CHANCE: Record<Difficulty, number> = { easy: 0.1, normal: 0.24, hard: 0.4, extreme: 0.55 };
 
 const dist = (x1: number, y1: number, x2: number, y2: number) => Math.hypot(x2 - x1, y2 - y1);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -333,6 +350,10 @@ export class GameEngine {
   /** Coefficiente normalizzato (0 = nazionale minore, 1 = corazzata) delle due squadre. */
   private teamQuality: [number, number] = [0.5, 0.5];
   private overtimeRules: { extraTime: boolean; penalties: boolean } = { extraTime: true, penalties: true };
+  /** In sopravvivenza il primo gol chiude il round. */
+  private suddenDeath = false;
+  /** Round corrente in sopravvivenza (0 = modalità normale). */
+  survivalRound = 0;
   private controlledIdx: [number, number] = [1, 1];
   private ball = { x: this.fieldWidth / 2, y: this.fieldHeight / 2, vx: 0, vy: 0, z: 0, vz: 0, curve: 0, lastTouch: -1, lastTouchWasKeeper: false };
   private ballCarrier: Player | null = null;
@@ -625,6 +646,12 @@ export class GameEngine {
     ];
   }
 
+  /** In sopravvivenza la CPU cresce a ogni round superato (max +30%). */
+  private survivalRamp(team: number) {
+    if (this.survivalRound <= 0 || team !== 1) return 1;
+    return 1 + Math.min(this.survivalRound - 1, 12) * 0.025;
+  }
+
   /** Coefficiente di una squadra in campo (0.5 se nazionale media). */
   private qualityOf(team: number) {
     return clamp(this.teamQuality[team] ?? 0.5, 0, 1);
@@ -652,12 +679,12 @@ export class GameEngine {
 
   /** Riflessi del portiere. */
   private keeperScale(team: number) {
-    return qFactor(this.qualityOf(team), 0.26);
+    return qFactor(this.qualityOf(team), 0.26) * this.survivalRamp(team);
   }
 
   /** Modula la cfg dell'IA in base al coefficiente (stelle) della nazionale. */
   private scaledCfg(base: DiffCfg, team: number): DiffCfg {
-    const q = this.qualityOf(team);
+    const q = clamp(this.qualityOf(team) + (this.survivalRamp(team) - 1) * 1.6, 0, 1);
     return {
       speed: base.speed * qFactor(q, 0.4),
       shootRange: base.shootRange * qFactor(q, 0.5),
@@ -670,6 +697,14 @@ export class GameEngine {
   setTeams(teams: TeamSelection) {
     this.selectedTeams = [...teams];
     this.refreshTeamMods();
+  }
+
+  /** Attiva la sopravvivenza (round ≥ 1) o torna alla modalità normale (0). */
+  setSurvivalRound(round: number) {
+    this.survivalRound = Math.max(0, Math.round(round));
+  }
+  get survivalActive() {
+    return this.survivalRound > 0;
   }
 
   /** Regola supplementari/rigori: usati dalla modalità torneo personalizzata. */
@@ -748,6 +783,8 @@ export class GameEngine {
     this.kickoffTeam = null;
     this.period = 'regular';
     this.allowDraw = false;
+    this.suddenDeath = false;
+    this.survivalRound = 0;
     this.pens = null;
     this.fpFx = [];
     this.fpTrail = [];
@@ -781,13 +818,19 @@ export class GameEngine {
     this.kickoffTeam = null;
     this.resetControlledPlayers();
     this.period = 'regular';
-    this.allowDraw = mode === 'group';
+    // in sopravvivenza il pareggio al 60° significa solo "sei ancora vivo"
+    this.allowDraw = mode === 'group' || mode === 'survival';
+    this.suddenDeath = mode === 'survival';
     this.pens = null;
     this.fpFx = [];
     this.fpTrail = [];
     if (mode === 'pens') {
       // modalità "solo rigori": dritti alla serie dal dischetto
       this.startPens();
+    } else if (mode === 'survival') {
+      this.matchDuration = SURVIVAL_ROUND_DURATION;
+      this.timeLeft = SURVIVAL_ROUND_DURATION;
+      this.kickoff();
     } else {
       this.kickoff();
     }
@@ -941,6 +984,7 @@ export class GameEngine {
 
   private endMatch(penScore?: [number, number]) {
     let decidedBy: DecidedBy = 'regular';
+    if (this.suddenDeath) decidedBy = 'survival';
     if (penScore) {
       decidedBy = 'pens';
       this.winner = penScore[0] > penScore[1] ? 0 : 1;
@@ -1048,7 +1092,7 @@ export class GameEngine {
 
   // imprecisione della mira: cresce se temporeggi
   private penWobble(ps: PensState) {
-    const mul = this.diff === 'easy' ? 0.85 : this.diff === 'hard' ? 1.15 : 1;
+    const mul = PEN_WOBBLE_MUL[this.diff];
     return Math.min(0.26, 0.05 + ps.aimT * 0.024) * mul;
   }
 
@@ -1070,7 +1114,7 @@ export class GameEngine {
       if (!this.penKeeperIsHuman()) {
         // Il portiere IA sceglie dove tuffarsi (a volte legge la mira).
         const readChance = clamp(
-          (this.diff === 'easy' ? 0.2 : this.diff === 'normal' ? 0.32 : 0.45) * this.keeperScale(1 - ps.turn),
+          PEN_READ_CHANCE[this.diff] * this.keeperScale(1 - ps.turn),
           0.05,
           0.6,
         );
@@ -1088,12 +1132,12 @@ export class GameEngine {
       const side = Math.random() < 0.5 ? -1 : 1;
       ps.toX = side * (0.35 + Math.random() * 0.6);
       ps.toY = 0.16 + Math.random() * 0.76;
-      const errChance = this.diff === 'easy' ? 0.16 : this.diff === 'normal' ? 0.1 : 0.06;
+      const errChance = PEN_ERR_CHANCE[this.diff];
       if (Math.random() < errChance) {
         if (Math.random() < 0.5) ps.toX = side * (1.08 + Math.random() * 0.15);
         else ps.toY = 1.04 + Math.random() * 0.1;
       }
-      ps.kickDur = this.diff === 'easy' ? 0.74 : this.diff === 'normal' ? 0.64 : 0.56;
+      ps.kickDur = PEN_KICK_DUR[this.diff];
     }
     this.sfx.kick(1);
     this.shake = Math.min(this.shake + 4, 10);
@@ -1235,7 +1279,7 @@ export class GameEngine {
         ps.aimT = 0;
         ps.stageT = humanShooter
           ? 8 // tempo massimo per mirare
-          : (this.diff === 'hard' ? 1.0 : this.diff === 'normal' ? 1.3 : 1.6) + Math.random() * 0.4;
+          : PEN_AIM_TIME[this.diff] + Math.random() * 0.4;
         if (humanShooter) this.sfx.whistle(false);
       }
       return;
@@ -1321,8 +1365,9 @@ export class GameEngine {
           this.goalkeepers.forEach((keeper) => keeper.reset());
           this.newBall();
           this.phase = 'demo';
-        } else if (this.period === 'extra') {
-          this.endMatch(); // golden goal: chi segna nei supplementari vince
+        } else if (this.period === 'extra' || this.suddenDeath) {
+          // golden goal e sopravvivenza: il primo gol chiude la partita
+          this.endMatch();
         } else {
           this.kickoff();
         }
@@ -2411,8 +2456,7 @@ export class GameEngine {
 
   /** L'IA alterna il passaggio sicuro alla palla in profondità. */
   private aiPass(p: Player, cfg: DiffCfg) {
-    const throughChance =
-      this.demo || p.throughRun > 0 ? 0 : this.diff === 'hard' ? 0.4 : this.diff === 'normal' ? 0.24 : 0.1;
+    const throughChance = this.demo || p.throughRun > 0 ? 0 : THROUGH_CHANCE[this.diff];
     if (this.teamSize > 1 && Math.random() < throughChance) {
       this.throughBall(p, cfg.passErr, false);
       return;
@@ -3633,6 +3677,7 @@ export class GameEngine {
       teamSize: this.teamSize,
       controlled: [...this.controlledIdx],
       gamepadsConnected: this.gamepadsConnected,
+      survivalRound: this.survivalRound,
       pens: ps
         ? {
             score: [...ps.score],

@@ -26,6 +26,9 @@ import {
   persistTournament,
   readTournamentSave,
   forgetTournament,
+  readSurvivalBest,
+  writeSurvivalBest,
+  SURVIVAL_BEST_KEY,
   TOURNAMENT_SAVE_KEY,
 } from './src/game/save.js';
 
@@ -366,6 +369,28 @@ check('salvataggio: localStorage scritto, riletto e cancellato', () => {
   forgetTournament();
   assert.equal(fakeStore.getItem(TOURNAMENT_SAVE_KEY), null, 'salvataggio non rimosso');
   assert.equal(readTournamentSave(), null);
+});
+
+check('salvataggio: ESTREMA accettata, i valori inventati no', () => {
+  const { cup } = resumeSetup();
+  const extreme = decodeTournamentSave(encodeTournamentSave(cup, { teamSize: 3, matchDuration: 90, difficulty: 'extreme' }));
+  assert.ok(extreme, 'il salvataggio a ESTREMA è stato scartato');
+  assert.equal(extreme.match.difficulty, 'extreme', 'ESTREMA non persistita');
+  const junk = structuredClone(JSON.parse(encodeTournamentSave(cup, { teamSize: 3, matchDuration: 90, difficulty: 'hard' })));
+  junk.match.difficulty = 'immortale';
+  assert.equal(decodeTournamentSave(JSON.stringify(junk)).match.difficulty, 'normal', 'difficoltà inventata non ripulita');
+});
+
+check('sopravvivenza: record protetto fra letture e scritture', () => {
+  assert.equal(readSurvivalBest(), 0, 'record fantasma all\'inizio');
+  writeSurvivalBest(7);
+  assert.equal(readSurvivalBest(), 7, 'record non persistito');
+  writeSurvivalBest(3);
+  assert.equal(readSurvivalBest(), 7, 'il record è peggiorato');
+  writeSurvivalBest(9.6);
+  assert.equal(readSurvivalBest(), 10, 'il record non è arrotondato');
+  fakeStore.setItem(SURVIVAL_BEST_KEY, 'fuffa');
+  assert.equal(readSurvivalBest(), 0, 'un valore spazzo non viene difeso');
 });
 
 check('tutti i tornei terminano e assegnano un campione', () => {

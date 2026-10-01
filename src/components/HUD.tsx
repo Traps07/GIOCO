@@ -1,4 +1,4 @@
-import { Volume2, VolumeX, Pause, Check, X } from 'lucide-react';
+import { Skull, Volume2, VolumeX, Pause, Check, X } from 'lucide-react';
 import type { Snapshot, PensSnap, PlayerCount } from '../game/engine';
 import { formatKeyCode, type KeyboardBindings, type PlayerKeyBindings } from '../game/keyboard';
 import { getNationalTeam, resolveKits, type TeamSelection } from '../game/teams';
@@ -190,6 +190,15 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
                   />
                 </div>
               </div>
+              {snap.survivalRound > 0 && (
+                <div className="mt-1.5 flex max-w-[92vw] items-center gap-1.5 rounded-full border border-rose-300/40 bg-rose-500/15 px-3 py-1">
+                  <Skull size={11} className="shrink-0 text-rose-300" />
+                  <span className="truncate font-display text-[10px] tracking-[0.3em] text-rose-100">
+                    {fmt(t.survivalRound, { round: snap.survivalRound })}
+                    <span className="hidden sm:inline"> · {t.modeSurvivalDesc}</span>
+                  </span>
+                </div>
+              )}
               {inExtra && (
                 <div className="mt-1.5 rounded-full border border-amber-300/40 bg-amber-400/15 px-3 py-1">
                   <span className="font-display text-[10px] tracking-[0.3em] text-amber-300 animate-pulse">

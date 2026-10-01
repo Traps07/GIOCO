@@ -2,8 +2,9 @@ import { useMemo, useState, type ReactNode } from 'react';
 import {
   Play, RotateCcw, Home, Trophy, Frown, Handshake, ChevronRight, ChevronLeft, Zap, Target, Timer, User, Users,
   Gamepad2, Settings, Search, X, Globe2, SlidersHorizontal, Shuffle, Star, Flag, Check, Layers, Minus, Plus, Info,
-  Save, Trash2,
+  Save, Trash2, Skull, Flame,
 } from 'lucide-react';
+import { SURVIVAL_ROUND_DURATION } from '../game/engine';
 import type { Difficulty, DecidedBy, GameMode, MatchDuration, PlayerCount, TeamSize } from '../game/engine';
 import type { TournamentSave } from '../game/save';
 import { formatKeyCode, type KeyboardBindings } from '../game/keyboard';
@@ -423,6 +424,7 @@ function SetupSection({ icon: Icon, title, children, tone = 'white' }: { icon: t
 
 export function MenuScreen({
   difficulty,
+  survivalBest = 0,
   setDifficulty,
   mode,
   setMode,
@@ -443,6 +445,8 @@ export function MenuScreen({
   t,
 }: ScreenProps & {
   difficulty: Difficulty;
+  /** Record di round superati in sopravvivenza (0 = nessuna serie giocata). */
+  survivalBest?: number;
   setDifficulty: (d: Difficulty) => void;
   mode: GameMode;
   setMode: (m: GameMode) => void;
@@ -469,30 +473,50 @@ export function MenuScreen({
     { id: 'easy', label: t.diffEasy, desc: t.diffEasyDesc },
     { id: 'normal', label: t.diffNormal, desc: t.diffNormalDesc },
     { id: 'hard', label: t.diffHard, desc: t.diffHardDesc },
+    { id: 'extreme', label: t.diffExtreme, desc: t.diffExtremeDesc },
   ];
-  const MODE_INFO: { id: GameMode; label: string; desc: string; icon: 'timer' | 'target' }[] = [
+  const MODE_INFO: { id: GameMode; label: string; desc: string; icon: 'timer' | 'target' | 'skull' }[] = [
     { id: 'match', label: `${t.modeMatch} · ${matchDuration}s`, desc: t.modeMatchDesc, icon: 'timer' },
     { id: 'pens', label: t.modePens, desc: t.modePensDesc, icon: 'target' },
+    { id: 'survival', label: `${t.modeSurvival} · ${SURVIVAL_ROUND_DURATION}s`, desc: t.modeSurvivalDesc, icon: 'skull' },
   ];
   const homeTeam = getNationalTeam(teams[0]);
   const awayTeam = getNationalTeam(teams[1]);
+  // la sopravvivenza si gioca solo in 1: il 2 giocatori torna alla partita lampo
+  const modes = playerCount === 1 ? MODE_INFO : MODE_INFO.filter((m) => m.id !== 'survival');
+  const choosePlayerCount = (count: PlayerCount) => {
+    setPlayerCount(count);
+    if (count === 2 && mode === 'survival') setMode('match');
+  };
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col items-center justify-center overflow-y-auto bg-gradient-to-b from-[#02040ad9] via-[#02040a8c] to-[#02040ae6] backdrop-blur-[2px] py-5">
       <div className="menu-stagger flex w-full max-w-5xl flex-col items-center px-4 text-center my-auto sm:px-6">
         <div className={`mb-2.5 flex items-center gap-2 rounded-full border px-3.5 py-1 ${
-          mode === 'pens' ? 'border-amber-400/30 bg-amber-400/10' : 'border-sky-400/30 bg-sky-400/10'
+          mode === 'pens'
+            ? 'border-amber-400/30 bg-amber-400/10'
+            : mode === 'survival'
+              ? 'border-rose-400/30 bg-rose-400/10'
+              : 'border-sky-400/30 bg-sky-400/10'
         }`}>
-          <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${mode === 'pens' ? 'bg-amber-300' : 'bg-sky-300'}`} />
-          <span className={`font-display text-[9px] tracking-[0.3em] ${mode === 'pens' ? 'text-amber-200' : 'text-sky-200'}`}>
-            {mode === 'pens' ? t.badgePens : fmt(t.badgeMatch, { seconds: matchDuration })}
+          <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${
+            mode === 'pens' ? 'bg-amber-300' : mode === 'survival' ? 'bg-rose-300' : 'bg-sky-300'
+          }`} />
+          <span className={`font-display text-[9px] tracking-[0.3em] ${
+            mode === 'pens' ? 'text-amber-200' : mode === 'survival' ? 'text-rose-200' : 'text-sky-200'
+          }`}>
+            {mode === 'pens'
+              ? t.badgePens
+              : mode === 'survival'
+                ? t.badgeSurvival
+                : fmt(t.badgeMatch, { seconds: matchDuration })}
           </span>
         </div>
 
         <h1 className="font-display leading-[0.9] tracking-tight">
           <span className="block text-[clamp(2rem,7vw,4.3rem)] text-white">STREET</span>
           <span className="block text-[clamp(2rem,7vw,4.3rem)] text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-cyan-200 to-rose-300 glow-soft">
-            SOCCER {mode === 'match' ? `${teamSize}v${teamSize}` : 'PENS'}
+            SOCCER {mode === 'match' ? `${teamSize}v${teamSize}` : mode === 'pens' ? 'PENS' : '∞'}
           </span>
         </h1>
 
@@ -535,7 +559,7 @@ export function MenuScreen({
                   key={id}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => setPlayerCount(id)}
+                  onClick={() => choosePlayerCount(id)}
                   className={`group flex min-w-32 flex-col items-center rounded-2xl border px-4 sm:px-6 py-2 transition-all duration-200 ${
                     active
                       ? id === 2
@@ -556,7 +580,7 @@ export function MenuScreen({
           </div>
         </div>
 
-        {mode === 'match' && (
+        {mode !== 'pens' && (
           <div className="mt-3.5 flex flex-col items-center gap-1.5">
             <div className="flex flex-col items-center">
               <span className="font-display text-[9px] tracking-[0.26em] text-white/50">{t.teamSizeTitle}</span>
@@ -587,15 +611,15 @@ export function MenuScreen({
         )}
 
         {/* modalità */}
-        <div className="mt-4 flex gap-2 sm:gap-2.5">
-          {MODE_INFO.map((m) => {
-            const Icon = m.icon === 'timer' ? Timer : Target;
+        <div className="mt-4 flex w-full flex-wrap items-stretch justify-center gap-2 sm:gap-2.5">
+          {modes.map((m) => {
+            const Icon = m.icon === 'timer' ? Timer : m.icon === 'target' ? Target : Skull;
             const active = mode === m.id;
             return (
               <button
                 key={m.id}
                 onClick={() => setMode(m.id)}
-                className={`group flex flex-col items-center rounded-2xl border px-4 sm:px-6 py-2 transition-all duration-200 ${
+                className={`group flex w-[calc(50%-0.25rem)] flex-col items-center rounded-2xl border px-3 py-2 transition-all duration-200 sm:w-auto sm:px-6 ${
                   active
                     ? 'border-amber-300/70 bg-amber-400/15 shadow-[0_0_30px_rgba(251,191,36,0.25)]'
                     : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10'
@@ -610,25 +634,37 @@ export function MenuScreen({
           })}
         </div>
 
-        {/* difficoltà */}
-        <div className="mt-2.5 flex gap-2 sm:gap-2.5">
-          {DIFF_INFO.map((d) => (
-            <button
-              key={d.id}
-              onClick={() => setDifficulty(d.id)}
-              className={`group flex flex-col items-center rounded-2xl border px-4 sm:px-5 py-2 transition-all duration-200 ${
-                difficulty === d.id
-                  ? 'border-sky-300/70 bg-sky-400/15 shadow-[0_0_30px_rgba(56,189,248,0.25)]'
-                  : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10'
-              }`}
-            >
-              <span className={`font-display text-[11px] leading-tight tracking-[0.14em] ${difficulty === d.id ? 'text-sky-200' : 'text-white/75'}`}>
-                {d.label}
-              </span>
-              <span className="mt-0.5 text-[9px] leading-snug text-white/40">{d.desc}</span>
-            </button>
-          ))}
-        </div>
+        {/* difficoltà: in sopravvivenza cresce da sola, quindi non si sceglie */}
+        {mode === 'survival' ? (
+          <div className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-2xl border border-rose-300/20 bg-rose-500/[0.07] px-3 py-2 text-center text-[9px] leading-snug text-white/50">
+            <Skull size={12} className="shrink-0 text-rose-300" />
+            <span>
+              {t.survivalRoundHint} · {t.survivalLadder}
+              {survivalBest > 0 && (
+                <span className="text-amber-200/80"> · {fmt(t.survivalBest, { round: survivalBest })}</span>
+              )}
+            </span>
+          </div>
+        ) : (
+          <div className="mt-2.5 grid w-full grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
+            {DIFF_INFO.map((d) => (
+              <button
+                key={d.id}
+                onClick={() => setDifficulty(d.id)}
+                className={`group flex flex-col items-center rounded-2xl border px-3 py-2 transition-all duration-200 ${
+                  difficulty === d.id
+                    ? 'border-sky-300/70 bg-sky-400/15 shadow-[0_0_30px_rgba(56,189,248,0.25)]'
+                    : 'border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10'
+                }`}
+              >
+                <span className={`font-display text-[11px] leading-tight tracking-[0.14em] ${difficulty === d.id ? 'text-sky-200' : 'text-white/75'}`}>
+                  {d.label}
+                </span>
+                <span className="mt-0.5 text-[9px] leading-snug text-white/40">{d.desc}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <button
           onClick={onStart}
@@ -793,7 +829,7 @@ export function TeamSelectScreen({
         </div>
 
         <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-          {mode === 'match' && (
+          {(mode === 'match' || mode === 'survival') && (
             <div dir="ltr" className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-1 text-[10px] text-emerald-100/75">
               {teamSize}v{teamSize} · {t.teamSizeDesc}
             </div>
@@ -801,6 +837,11 @@ export function TeamSelectScreen({
           <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[10px] text-white/55">
             {fmt(t.teamSelectCount, { n: TEAM_COUNT })}
           </div>
+          {mode === 'survival' && (
+            <div className="flex items-center gap-1.5 rounded-full border border-rose-300/30 bg-rose-500/10 px-3 py-1 text-[10px] text-rose-100/85">
+              <Skull size={11} /> {t.survivalRoundHint}
+            </div>
+          )}
           {clash && (
             <div className="flex items-center gap-1.5 rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-[10px] text-amber-100/80">
               <Info size={11} /> {getNationalTeam(teams[1]).flag} {getNationalTeam(teams[1]).names[lang]} · {t.teamKitAwayClash}
@@ -1261,6 +1302,7 @@ export function TournamentSetupScreen({
                     { id: 'easy' as Difficulty, label: t.diffEasy },
                     { id: 'normal' as Difficulty, label: t.diffNormal },
                     { id: 'hard' as Difficulty, label: t.diffHard },
+                    { id: 'extreme' as Difficulty, label: t.diffExtreme },
                   ]}
                   value={level}
                   onChange={(v) => setLevel(v as Difficulty)}
@@ -1659,6 +1701,18 @@ export function PauseScreen({
   );
 }
 
+/** Riepilogo di una serie in modalità sopravvivenza. */
+export interface SurvivalSummary {
+  /** Round in cui la serie si è interrotta. */
+  round: number;
+  /** Round superati di fila prima di cadere. */
+  cleared: number;
+  /** Record personale dopo questa serie. */
+  best: number;
+  /** true se questo run ha battuto il record. */
+  newRecord: boolean;
+}
+
 export function EndScreen({
   winner,
   score,
@@ -1672,6 +1726,7 @@ export function EndScreen({
   onRematch,
   rematchLabel,
   onMenu,
+  survival,
   t,
 }: ScreenProps & {
   winner: number;
@@ -1686,6 +1741,7 @@ export function EndScreen({
   onRematch: () => void;
   rematchLabel?: string;
   onMenu: () => void;
+  survival?: SurvivalSummary | null;
 }) {
   const homeWinner = winner === 0;
   const draw = winner === -1;
@@ -1727,6 +1783,24 @@ export function EndScreen({
           <p className="mt-2 flex items-center gap-1.5 font-display text-xs tracking-[0.3em] text-amber-300">
             <Target size={13} /> {pensOnly ? t.pensOnlyTitle : t.decPens}
           </p>
+        )}
+        {decidedBy === 'survival' && (
+          <p className="mt-2 flex items-center gap-1.5 font-display text-xs tracking-[0.3em] text-rose-300">
+            <Skull size={13} /> {t.decSurvival}
+          </p>
+        )}
+        {survival && (
+          <div className="mt-4 flex w-full max-w-sm flex-col items-center gap-1 rounded-2xl border border-rose-300/25 bg-rose-500/10 px-5 py-3">
+            <span className="font-display text-[11px] leading-snug tracking-[0.16em] text-rose-100">
+              {fmt(t.survivalGameOver, { round: survival.round })}
+            </span>
+            <span className="flex items-center gap-1.5 text-[10px] tracking-[0.14em] text-white/60">
+              <Flame size={12} className="text-orange-400" /> {fmt(t.survivalBest, { round: survival.best })}
+            </span>
+            {survival.newRecord && (
+              <span className="font-display text-[10px] tracking-[0.2em] text-amber-300">{t.survivalNewRecord}</span>
+            )}
+          </div>
         )}
         {pensOnly && pens ? (
           <div className="mt-5 flex items-center gap-4 rounded-2xl border border-amber-300/25 bg-amber-400/10 px-8 py-3 backdrop-blur-md">
