@@ -177,6 +177,8 @@ class Player {
   tackleT = 0;
   tackleResolved = false;
   number: number;
+  /** >0 quando sta attaccando la profondità su un passaggio filtrante. */
+  throughRun = 0;
   constructor(
     public team: number,
     public idx: number,
@@ -204,6 +206,7 @@ class Player {
     this.tackleCd = 0;
     this.tackleT = 0;
     this.tackleResolved = false;
+    this.throughRun = 0;
     this.faceX = this.team === 0 ? 1 : -1;
     this.faceY = 0;
   }
@@ -376,6 +379,7 @@ export class GameEngine {
   private gamepadButtonState = new Map<number, boolean[]>();
   private shootQ: [boolean, boolean] = [false, false];
   private passQ: [boolean, boolean] = [false, false];
+  private throughQ: [boolean, boolean] = [false, false];
   private switchQ: [boolean, boolean] = [false, false];
   private crossQ: [boolean, boolean] = [false, false];
   private curveQ: [boolean, boolean] = [false, false];
@@ -460,6 +464,8 @@ export class GameEngine {
     if (localMatch && e.code === p2.shoot) this.shootQ[1] = true;
     if (e.code === p1.pass) this.passQ[0] = true;
     if (localMatch && e.code === p2.pass) this.passQ[1] = true;
+    if (e.code === p1.through) this.throughQ[0] = true;
+    if (localMatch && e.code === p2.through) this.throughQ[1] = true;
     if (e.code === p1.cross) this.crossQ[0] = true;
     if (localMatch && e.code === p2.cross) this.crossQ[1] = true;
     if (e.code === p1.curve) this.curveQ[0] = true;
@@ -526,7 +532,8 @@ export class GameEngine {
         if (justPressed(3)) this.curveQ[slot as 0 | 1] = true; // Y / Triangle
         if (justPressed(4)) this.powerQ[slot as 0 | 1] = true; // LB / L1
         if (justPressed(5)) this.tackleQ[slot as 0 | 1] = true; // RB / R1
-        if (justPressed(6) || justPressed(8)) this.switchQ[slot as 0 | 1] = true; // LT / Select
+        if (justPressed(6)) this.throughQ[slot as 0 | 1] = true; // LT / L2
+        if (justPressed(8) || justPressed(10)) this.switchQ[slot as 0 | 1] = true; // Select / L3
       } else if (this.phase === 'pens' && justPressed(0)) {
         this.shootQ[slot as 0 | 1] = true;
       }
@@ -553,6 +560,9 @@ export class GameEngine {
   touchSwitch(slot: 0 | 1 = 0) {
     if (this.inputEnabled && !this.paused) this.switchQ[slot] = true;
   }
+  touchThrough(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.throughQ[slot] = true;
+  }
   touchCross(slot: 0 | 1 = 0) {
     if (this.inputEnabled && !this.paused) this.crossQ[slot] = true;
   }
@@ -578,6 +588,7 @@ export class GameEngine {
   private clearInputQueues() {
     this.shootQ = [false, false];
     this.passQ = [false, false];
+    this.throughQ = [false, false];
     this.switchQ = [false, false];
     this.crossQ = [false, false];
     this.curveQ = [false, false];
@@ -1278,6 +1289,7 @@ export class GameEngine {
       p.kickCd = Math.max(0, p.kickCd - dt);
       p.tackleCd = Math.max(0, p.tackleCd - dt);
       p.tackleT = Math.max(0, p.tackleT - dt);
+      p.throughRun = Math.max(0, p.throughRun - dt);
     });
 
     if (this.phase === 'countdown') {
@@ -1417,6 +1429,7 @@ export class GameEngine {
         const flaw = this.flawScale(team);
         if (this.powerQ[team]) this.powerShot(me);
         else if (this.curveQ[team]) this.curveShot(me);
+        else if (this.throughQ[team]) this.throughBall(me, 0.05 * flaw, true);
         else if (this.crossQ[team]) this.cross(me, 0.04 * flaw, true);
         else if (this.shootQ[team]) this.shoot(me, 0.05 * flaw);
         else if (this.passQ[team]) this.pass(me, 0.05, true);
@@ -1516,9 +1529,11 @@ export class GameEngine {
       const pressure = Math.min(...opps.map((o) => dist(o.x, o.y, p.x, p.y)));
       const dOwn = dist(p.x, p.y, ownX, this.fieldHeight / 2);
 
-      const aiActionHold = Math.min(cfg.minHold, 0.42);
+      const charging = p.throughRun > 0;
+      if (charging) p.throughRun = Math.max(0, p.throughRun - dt);
+      const aiActionHold = Math.min(cfg.minHold, 0.42) * (charging ? 2.1 : 1);
       if (p.kickCd <= 0 && p.holdT > aiActionHold) {
-        const passDistance = Math.max(250, cfg.shootRange * 0.72);
+        const passDistance = Math.max(250, cfg.shootRange * 0.72) * (charging ? 1.35 : 1);
         if (this.teamSize > 1 && Math.abs(p.y - this.fieldHeight / 2) > 145 && dGoal < 700 && pressure > 65 && p.holdT > 0.35) {
           this.aiCross(p, cfg);
         } else if (this.teamSize > 1 && dGoal > passDistance) {
@@ -1535,6 +1550,7 @@ export class GameEngine {
       }
 
       const gy = this.fieldHeight / 2 + Math.sin(this.time * 1.3 + p.idx * 2.1) * 90;
+      if (charging) maxS = cfg.speed * 1.42;
       const dx = oppX - p.x;
       const dy = gy - p.y;
       const dl = Math.hypot(dx, dy) || 1;
@@ -1552,6 +1568,7 @@ export class GameEngine {
       ty = p.y + (dy / dl) * 105 + sideY;
       maxS = cfg.speed * 1.24;
     } else if (!carrier && this.passReceiver === p) {
+      p.throughRun = Math.max(p.throughRun, 0.35);
       // Il ricevente corre sul pallone in arrivo, non anticipa una corsa in avanti.
       tx = ball.x;
       ty = ball.y;
@@ -2272,7 +2289,134 @@ export class GameEngine {
     this.shoot.call(this, p, cfg.shootErr);
   }
 
+  /**
+   * Cerca un corridoio filtrante: un compagno avanti, con campo alle spalle
+   * della linea avversaria e traiettoria libera. `aim` restringe la scelta alla
+   * direzione premuta dal giocatore.
+   */
+  private throughOption(
+    p: Player,
+    mates: Player[],
+    aim: { x: number; y: number } | null,
+    minClear: number,
+  ): { receiver: Player; land: { x: number; y: number }; distance: number; lane: number } | null {
+    const dir = p.team === 0 ? 1 : -1;
+    const goalX = this.oppGoalX(p.team);
+    const opponents = this.players.filter((q) => q.team !== p.team);
+    let best: { receiver: Player; land: { x: number; y: number }; distance: number; lane: number; score: number } | null =
+      null;
+
+    for (const mate of mates) {
+      const dx = mate.x - p.x;
+      const dy = mate.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 90 || d > 640) continue;
+      // il compagno deve attaccare la profondità: niente palloni giocati indietro
+      if (dx * dir < -50) continue;
+      const spaceAhead = (goalX - mate.x) * dir;
+      if (spaceAhead < 170) continue;
+      if (aim) {
+        const alignment = (dx * aim.x + dy * aim.y) / (d || 1);
+        if (alignment < 0.3) continue;
+      }
+      const lead = clamp(130 + spaceAhead * 0.22, 130, 320);
+      const land = {
+        x: clamp(mate.x + dir * lead + mate.vx * 0.3, B_R + 10, this.fieldWidth - B_R - 10),
+        y: clamp(mate.y + dy * 0.2 + mate.vy * 0.35, B_R + 10, this.fieldHeight - B_R - 10),
+      };
+      const travel = dist(p.x, p.y, land.x, land.y);
+      if (travel < 70) continue;
+      const marker = Math.min(...opponents.map((o) => dist(o.x, o.y, mate.x, mate.y)));
+      // distanza del marcatore più vicino dalla traiettoria palla-compagno
+      const segX = land.x - p.x;
+      const segY = land.y - p.y;
+      const lenSq = segX * segX + segY * segY || 1;
+      let minLane = Infinity;
+      for (const o of opponents) {
+        const t = clamp(((o.x - p.x) * segX + (o.y - p.y) * segY) / lenSq, 0, 1);
+        minLane = Math.min(minLane, Math.hypot(o.x - (p.x + segX * t), o.y - (p.y + segY * t)));
+      }
+      if (minLane < minClear) continue;
+      const score =
+        spaceAhead * 0.5 + minLane * 1.6 + marker * 0.2 - Math.abs(travel - 260) * 0.35 + (aim ? 120 : 0);
+      if (!best || score > best.score) best = { receiver: mate, land, distance: travel, lane: minLane, score };
+    }
+    return best ?? null;
+  }
+
+  /** Passaggio filtrante: rasoterra, rapido, giocato nello spazio davanti al compagno. */
+  private throughBall(p: Player, errRange: number, humanSwitch: boolean) {
+    if (this.ballCarrier !== p) return;
+    const mates = this.players.filter((q) => q.team === p.team && q !== p);
+    if (mates.length === 0) {
+      this.clear(p);
+      return;
+    }
+    let aim: { x: number; y: number } | null = null;
+    if (humanSwitch) {
+      const dir = this.inputDir(p.team);
+      const len = Math.hypot(dir.x, dir.y);
+      if (dir.len > 0.2 && len > 0) aim = { x: dir.x / len, y: dir.y / len };
+    }
+    // prima cerca un corridoio davvero libero, poi accetta una traiettoria stretta ma giocabile
+    const option =
+      this.throughOption(p, mates, aim, P_R + B_R + 4) ?? this.throughOption(p, mates, aim, B_R + 2);
+    if (!option) {
+      // nessun corridoio: meglio un controllo orientato che perdere la palla
+      this.pass(p, errRange, humanSwitch);
+      return;
+    }
+    const { receiver, land } = option;
+    // corsia stretta = palla meno secca, così un difensore può anticipare: il filtrante è un rischio
+    const firmness = clamp(0.74 + (option.lane - B_R) / 110, 0.74, 1.06);
+    const power = clamp(620 + option.distance * 0.95, 640, 1020) * qFactor(this.qualityOf(p.team), 0.14) * firmness;
+    // una nazionale scarsa pesa meno la battuta: l'errore cresce col calare del coefficiente
+    const sloppiness = humanSwitch ? clamp(1.3 - this.qualityOf(p.team), 0, 1.3) : 1;
+    const noise = (Math.random() - 0.5) * errRange * 460 * sloppiness;
+    const tx = land.x + noise;
+    const ty = land.y + noise * 0.7;
+
+    const fromX = tx - p.x;
+    const fromY = ty - p.y;
+    const fromLen = Math.hypot(fromX, fromY) || 1;
+    const dirX = fromX / fromLen;
+    const dirY = fromY / fromLen;
+    this.releaseBall(p);
+    const launchOffset = P_R + B_R + 12;
+    this.ball.x = clamp(p.x + dirX * launchOffset, B_R, this.fieldWidth - B_R);
+    this.ball.y = clamp(p.y + dirY * launchOffset, B_R, this.fieldHeight - B_R);
+    const dx = tx - this.ball.x;
+    const dy = ty - this.ball.y;
+    const dl = Math.hypot(dx, dy) || 1;
+    this.ball.vx = (dx / dl) * power;
+    this.ball.vy = (dy / dl) * power;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
+    this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
+    this.passReceiver = receiver;
+    this.recentKicker = p;
+    this.kickerGrace = 0.16;
+    receiver.throughRun = 1.5;
+    p.kickCd = 0.26;
+    this.sfx.pass();
+    this.sfx.kick(1.15);
+    this.spawnKick(this.ball.x, this.ball.y, dirX, dirY, this.teamKit(p.team).secondary);
+    if (humanSwitch) {
+      this.controlledIdx[p.team] = receiver.idx;
+      this.sfx.swap();
+    }
+  }
+
+  /** L'IA alterna il passaggio sicuro alla palla in profondità. */
   private aiPass(p: Player, cfg: DiffCfg) {
+    const throughChance =
+      this.demo || p.throughRun > 0 ? 0 : this.diff === 'hard' ? 0.4 : this.diff === 'normal' ? 0.24 : 0.1;
+    if (this.teamSize > 1 && Math.random() < throughChance) {
+      this.throughBall(p, cfg.passErr, false);
+      return;
+    }
     this.pass.call(this, p, Math.min(cfg.passErr, 0.06), false);
   }
 

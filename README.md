@@ -43,6 +43,7 @@ Shirt numbers are fixed to the classic arcade sequence: **the player you control
 Players keep possession after collecting the ball rather than losing it on every touch. Opponents press and attempt tackles, but tackles have a reduced chance of winning the ball. The CPU also makes passes and supports attacks.
 
 - **Pass** — point the movement keys or stick toward a teammate. The game tries to pass to the teammate in that direction, even if they are farther away. If nobody is there, it passes to the nearest teammate. The receiver runs toward the ball.
+- **Through ball** (`B` / `P` / `LT`) — a firm, low ball played into the space *ahead* of a teammate. The game only picks a target that is running forward with field behind the defensive line and a lane that is not fully blocked; when the closest defender is standing on the line, it degrades into a safe short pass instead of giving the ball away. Control switches to the runner, who keeps attacking the space for a moment: on hard the CPU uses the same read on 40% of its passes.
 - **Cross** — send a lofted ball into the box toward teammates in a shooting position.
 - **Curl shot** — a powerful curved shot that scores on 95% of uncovered attempts; the goalkeeper or an outfield player can still block its path.
 - **Power shot** — a fast, direct strike.
@@ -61,6 +62,7 @@ Every keyboard binding can be changed in **Settings**. These are the defaults:
 | `Left Shift` | Sprint |
 | `Space` | Shoot |
 | `C` | Pass |
+| `B` | Through ball |
 | `V` | Cross |
 | `F` | Curl shot |
 | `R` | Power shot |
@@ -70,16 +72,16 @@ Every keyboard binding can be changed in **Settings**. These are the defaults:
 
 ### Two players on one keyboard
 
-| Player | Movement | Sprint | Shoot | Pass | Cross | Curl | Power | Tackle | Switch |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **P1 · Home** | `W` `A` `S` `D` | `Left Shift` | `Space` | `C` | `V` | `F` | `R` | `E` | `Q` |
-| **P2 · Away** | Arrow keys | `Right Shift` | `Enter` | `/` | `M` | `U` | `O` | `I` | `.` |
+| Player | Movement | Sprint | Shoot | Pass | Through | Cross | Curl | Power | Tackle | Switch |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **P1 · Home** | `W` `A` `S` `D` | `Left Shift` | `Space` | `C` | `B` | `V` | `F` | `R` | `E` | `Q` |
+| **P2 · Away** | Arrow keys | `Right Shift` | `Enter` | `/` | `P` | `M` | `U` | `O` | `I` | `.` |
 
 ### Controllers and touch
 
-USB and Bluetooth controllers supported by the browser's Gamepad API work with Xbox, PlayStation, Switch, and generic gamepads. The default layout is: stick/D-pad to move, `A/×` to shoot, `B/○` to pass, `X/□` to cross, `Y/△` to curl, `LB/L1` for a power shot, `RB/R1` to tackle, `RT/R2` to sprint, `LT/L2` or Select to switch players, and Start to pause. Controller bindings are not changed by the keyboard remapping screen.
+USB and Bluetooth controllers supported by the browser's Gamepad API work with Xbox, PlayStation, Switch, and generic gamepads. The default layout is: stick/D-pad to move, `A/×` to shoot, `B/○` to pass, `LT/L2` for the through ball, `X/□` to cross, `Y/△` to curl, `LB/L1` for a power shot, `RB/R1` to tackle, `RT/R2` to sprint, `Select` or `L3` to switch players, and Start to pause. Controller bindings are not changed by the keyboard remapping screen.
 
-On mobile, use the on-screen joystick and action buttons. Two-player touch controls use independent joysticks.
+On mobile, use the on-screen joystick and action buttons — the through ball has its own `THROUGH` button in the mini-button cluster. Two-player touch controls use independent joysticks.
 
 ## 🛠️ Development
 

@@ -11,6 +11,7 @@ import { DEFAULT_TEAMS, NATIONAL_TEAMS, getNationalTeam } from './src/game/teams
 import { createTournament, drawParticipants, recordTournamentResult, getActiveTournamentMatch, DEFAULT_TOURNAMENT_CONFIG } from './src/game/tournament.js';
 import { encodeTournamentSave, decodeTournamentSave } from './src/game/save.js';
 import HUD from './src/components/HUD.js';
+import TouchControls from './src/components/TouchControls.js';
 
 const snap = (over = {}) => ({
   phase: 'play',
@@ -166,16 +167,38 @@ for (const { id } of LANGUAGES) {
     return html;
   });
 
-  check(`settings (${id})`, () =>
-    renderToStaticMarkup(
+  check(`settings (${id})`, () => {
+    const html = renderToStaticMarkup(
       h(SettingsScreen, {
         lang: id, setLang: noop, muted: false, onToggleMute: noop,
         matchDuration: 90, setMatchDuration: noop, keyBindings: DEFAULT_KEY_BINDINGS,
         onChangeKeyBinding: noop, onChangePauseKey: noop, onResetKeyBindings: noop,
         onBack: noop, t,
       }),
-    ),
-  );
+    );
+    if (!html.includes(t.kThrough)) throw new Error("manca la riga di rimappatura del filtrante");
+    if (!html.includes('B')) throw new Error('mancano i tasti predefiniti');
+    return html;
+  });
+
+  check(`controlli touch (${id})`, () => {
+    const html = renderToStaticMarkup(h(TouchControls, { engine: null, playerCount: 1, teamSize: 3, t }));
+    if (!html.includes(t.touchThrough)) throw new Error('manca il pulsante del filtrante');
+    if (!html.includes(t.kPass)) throw new Error('manca il pulsante del passaggio');
+    return html;
+  });
+
+  check(`hud con filtrante (${id})`, () => {
+    const html = renderToStaticMarkup(
+      h(HUD, {
+        snap: snap(), muted: false, onToggleMute: noop, onPause: noop,
+        playerCount: 2, teams: [...DEFAULT_TEAMS], keyBindings: DEFAULT_KEY_BINDINGS,
+        lang: id, goalBanner: null, eventBanner: null, t,
+      }),
+    );
+    if (!html.includes(t.kThrough)) throw new Error('la barra HUD non mostra il filtrante');
+    return html;
+  });
 
   check(`menu 2 giocatori (${id})`, () =>
     renderToStaticMarkup(

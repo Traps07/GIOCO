@@ -311,6 +311,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
               <span><kbd>{formatKeyCode(keyBindings.p1.sprint)}</kbd> {t.kSprint}</span>
               <span><kbd>{formatKeyCode(keyBindings.p1.shoot)}</kbd> {t.kShoot}</span>
               <span><kbd>{formatKeyCode(keyBindings.p1.pass)}</kbd> {t.kPass}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.through)}</kbd> {t.kThrough}</span>
               <span><kbd>{formatKeyCode(keyBindings.p1.cross)}</kbd> {t.kCross}</span>
               <span><kbd>{formatKeyCode(keyBindings.p1.curve)}</kbd> {t.kCurve}</span>
               <span><kbd>{formatKeyCode(keyBindings.p1.power)}</kbd> {t.kPower}</span>
@@ -323,6 +324,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
               <span><kbd>{formatKeyCode(keyBindings.p2.sprint)}</kbd> {t.kSprint}</span>
               <span><kbd>{formatKeyCode(keyBindings.p2.shoot)}</kbd> {t.kShoot}</span>
               <span><kbd>{formatKeyCode(keyBindings.p2.pass)}</kbd> {t.kPass}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.through)}</kbd> {t.kThrough}</span>
               <span><kbd>{formatKeyCode(keyBindings.p2.cross)}</kbd> {t.kCross}</span>
               <span><kbd>{formatKeyCode(keyBindings.p2.curve)}</kbd> {t.kCurve}</span>
               <span><kbd>{formatKeyCode(keyBindings.p2.power)}</kbd> {t.kPower}</span>
@@ -340,6 +342,8 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
             <span><kbd>{formatKeyCode(keyBindings.p1.shoot)}</kbd> {t.kShoot}</span>
             <span className="text-white/20">•</span>
             <span><kbd>{formatKeyCode(keyBindings.p1.pass)}</kbd> {t.kPass}</span>
+            <span className="text-white/20">•</span>
+            <span><kbd>{formatKeyCode(keyBindings.p1.through)}</kbd> {t.kThrough}</span>
             <span className="text-white/20">•</span>
             <span><kbd>{formatKeyCode(keyBindings.p1.cross)}</kbd> {t.kCross}</span>
             <span className="text-white/20">•</span>

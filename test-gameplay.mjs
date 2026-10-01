@@ -506,6 +506,96 @@ assert.equal(engine.passQ[0], true, 'il passaggio usa il tasto personalizzato');
 engine.onKeyUp({ code: 'KeyL' });
 engine.onKeyUp({ code: 'KeyZ' });
 
+// ---- passaggio filtrante ---------------------------------------------------
+engine.startMatch('normal', 'match', 1, ['bra', 'bol'], 3);
+engine.phase = 'play';
+const tbCarrier = engine.players[1];
+const tbMate = engine.players[2];
+const tbDef = engine.players[3];
+const tbOther = engine.players[4];
+const setupThrough = () => {
+  engine.controlledIdx[0] = tbCarrier.idx;
+  tbCarrier.x = 500; tbCarrier.y = 350; tbCarrier.vx = 0; tbCarrier.vy = 0; tbCarrier.kickCd = 0;
+  tbMate.x = 700; tbMate.y = 300; tbMate.vx = 0; tbMate.vy = 0; tbMate.throughRun = 0;
+  tbDef.x = 200; tbDef.y = 350; tbDef.vx = 0; tbDef.vy = 0;
+  tbOther.x = 260; tbOther.y = 460; tbOther.vx = 0; tbOther.vy = 0;
+  engine.ball.x = tbCarrier.x;
+  engine.ball.y = tbCarrier.y;
+  engine.ball.vx = 0; engine.ball.vy = 0;
+  engine.claimBall(tbCarrier);
+  engine.controlledIdx[0] = tbCarrier.idx;
+  engine.setStick(0, 1, 0, true);
+};
+
+setupThrough();
+engine.throughQ[0] = true;
+engine.update(1 / 60);
+assert.equal(engine.ballCarrier, null, 'il filtrante deve liberare il pallone');
+assert.equal(engine.passReceiver, tbMate, 'il filtrante non cerca il compagno avanti');
+assert.ok(tbMate.throughRun > 0, 'il ricevente non attacca la profondità');
+assert.equal(engine.controlledIdx[0], tbMate.idx, 'il controllo passa a chi attacca la profondità');
+assert.equal(engine.ball.z, 0, 'il filtrante deve restare rasoterra');
+assert.equal(engine.ball.vz, 0, 'il filtrante non deve alzarsi');
+assert.ok(engine.ball.vx > 300, `il filtrante deve viaggiare in avanti (${Math.round(engine.ball.vx)})`);
+const flight = Math.hypot(engine.ball.vx, engine.ball.vy);
+setupThrough();
+engine.passQ[0] = true;
+engine.update(1 / 60);
+const passFlight = Math.hypot(engine.ball.vx, engine.ball.vy);
+assert.ok(flight > passFlight + 40, `il filtrante deve essere più secco del passaggio (${Math.round(flight)} vs ${Math.round(passFlight)})`);
+// il pallone arriva davanti al ricevente, non fra i piedi dei difensori
+setupThrough();
+engine.throughQ[0] = true;
+engine.update(1 / 60);
+{
+  const t = Math.abs(engine.ball.vx) > 1 ? (tbMate.x - engine.ball.x) / engine.ball.vx : 0;
+  const arriveX = engine.ball.x + engine.ball.vx * (t + 0.28);
+  assert.ok(arriveX > tbMate.x + 40, `il filtrante deve morire nello spazio: arrivo a ${Math.round(arriveX)} su ${tbMate.x}`);
+}
+// traiettoria completamente otturata: meglio un passaggio sicuro
+setupThrough();
+tbDef.x = (tbCarrier.x + tbMate.x) / 2;
+tbDef.y = (tbCarrier.y + tbMate.y) / 2;
+tbOther.x = tbDef.x + 4;
+tbOther.y = tbDef.y - 4;
+tbMate.throughRun = 0;
+engine.throughQ[0] = true;
+engine.update(1 / 60);
+assert.equal(tbMate.throughRun, 0, 'senza corridoio il filtrante non deve essere forzato');
+assert.ok(engine.passReceiver === tbMate || engine.ballCarrier !== tbCarrier, 'il ripiego sul passaggio non funziona');
+// i tasti predefiniti attivano la nuova azione
+engine.setKeyBindings(cloneKeyBindings());
+engine.inputEnabled = true;
+engine.paused = false;
+engine.phase = 'play';
+engine.onKeyDown({ code: 'KeyB', repeat: false, preventDefault: noop });
+assert.equal(engine.throughQ[0], true, 'B deve armare il filtrante per P1');
+engine.onKeyUp({ code: 'KeyB' });
+engine.startMatch('normal', 'match', 2, ['bra', 'bol'], 3);
+engine.phase = 'play';
+engine.onKeyDown({ code: 'KeyP', repeat: false, preventDefault: noop });
+assert.equal(engine.throughQ[1], true, 'P deve armare il filtrante per P2');
+engine.onKeyUp({ code: 'KeyP' });
+// anches l'IA lo usa, e solo fuori dalla demo
+let throughCalls = 0;
+const realThrough = engine.throughBall.bind(engine);
+engine.throughBall = (p, err, human) => {
+  throughCalls += 1;
+  return realThrough(p, err, human);
+};
+engine.startMatch('hard', 'match', 1, ['bra', 'bol'], 3);
+engine.phase = 'play';
+for (let i = 0; i < 1500; i++) engine.update(1 / 60);
+assert.ok(throughCalls > 0, "l'IA non tenta mai un filtrante a difficoltà alta");
+const aiCalls = throughCalls;
+throughCalls = 0;
+engine.startDemo();
+for (let i = 0; i < 900; i++) engine.update(1 / 60);
+assert.equal(throughCalls, 0, 'la demo di sottofondo non deve usare i filtranti');
+assert.ok(aiCalls > 0, 'contatore IA azzerato troppo presto');
+engine.throughBall = realThrough;
+
+
 // Numeri di maglia: 10 al giocatore guidato, poi 9, 11, 7, 8 secondo la formazione.
 const SHIRTS = [10, 9, 11, 7, 8];
 for (const teamSize of [1, 2, 3, 4, 5]) {
@@ -560,4 +650,4 @@ assert.ok(engine.speedScale(1) < 1.1, 'la nazionale più forte vola');
 
 
 engine.dispose();
-console.log('PASS: passaggi, impostazioni tastiera/durata, tiro a giro, corner 1v1, campi e kickoff verificati.');
+console.log('PASS: passaggi, filtrante, impostazioni tastiera/durata, tiro a giro, corner 1v1, campi e kickoff verificati.');

@@ -693,7 +693,8 @@ export function MenuScreen({
                 P1 · {homeTeam.flag} {homeTeam.names[lang]}
               </span>
               <span><kbd>{[keyBindings.p1.up, keyBindings.p1.left, keyBindings.p1.down, keyBindings.p1.right].map(formatKeyCode).join(' ')}</kbd> {t.kMove} · <kbd>{formatKeyCode(keyBindings.p1.sprint)}</kbd> {t.kSprint}</span>
-              <span><kbd>{formatKeyCode(keyBindings.p1.shoot)}</kbd> {t.kShoot} · <kbd>{formatKeyCode(keyBindings.p1.pass)}</kbd> {t.kPass} · <kbd>{formatKeyCode(keyBindings.p1.cross)}</kbd> {t.kCross} · <kbd>{formatKeyCode(keyBindings.p1.curve)}</kbd> {t.kCurve}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.shoot)}</kbd> {t.kShoot} · <kbd>{formatKeyCode(keyBindings.p1.pass)}</kbd> {t.kPass} · <kbd>{formatKeyCode(keyBindings.p1.through)}</kbd> {t.kThrough}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.cross)}</kbd> {t.kCross} · <kbd>{formatKeyCode(keyBindings.p1.curve)}</kbd> {t.kCurve}</span>
               <span><kbd>{formatKeyCode(keyBindings.p1.power)}</kbd> {t.kPower} · <kbd>{formatKeyCode(keyBindings.p1.tackle)}</kbd> {t.kTackle}{teamSize > 1 && <> · <kbd>{formatKeyCode(keyBindings.p1.switch)}</kbd> {t.kSwitch}</>}</span>
             </div>
             <div
@@ -704,17 +705,19 @@ export function MenuScreen({
                 P2 · {awayTeam.flag} {awayTeam.names[lang]}
               </span>
               <span><kbd>{[keyBindings.p2.up, keyBindings.p2.left, keyBindings.p2.down, keyBindings.p2.right].map(formatKeyCode).join(' ')}</kbd> {t.kMove} · <kbd>{formatKeyCode(keyBindings.p2.sprint)}</kbd> {t.kSprint}</span>
-              <span><kbd>{formatKeyCode(keyBindings.p2.shoot)}</kbd> {t.kShoot} · <kbd>{formatKeyCode(keyBindings.p2.pass)}</kbd> {t.kPass} · <kbd>{formatKeyCode(keyBindings.p2.cross)}</kbd> {t.kCross} · <kbd>{formatKeyCode(keyBindings.p2.curve)}</kbd> {t.kCurve}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.shoot)}</kbd> {t.kShoot} · <kbd>{formatKeyCode(keyBindings.p2.pass)}</kbd> {t.kPass} · <kbd>{formatKeyCode(keyBindings.p2.through)}</kbd> {t.kThrough}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.cross)}</kbd> {t.kCross} · <kbd>{formatKeyCode(keyBindings.p2.curve)}</kbd> {t.kCurve}</span>
               <span><kbd>{formatKeyCode(keyBindings.p2.power)}</kbd> {t.kPower} · <kbd>{formatKeyCode(keyBindings.p2.tackle)}</kbd> {t.kTackle}{teamSize > 1 && <> · <kbd>{formatKeyCode(keyBindings.p2.switch)}</kbd> {t.kSwitch}</>}</span>
             </div>
           </div>
         ) : (
-          <div className="mt-5 hidden max-w-4xl flex-wrap justify-center gap-1.5 sm:flex">
+          <div className="mt-5 hidden max-w-5xl flex-wrap justify-center gap-1.5 sm:flex">
             {[
               [[keyBindings.p1.up, keyBindings.p1.left, keyBindings.p1.down, keyBindings.p1.right].map(formatKeyCode).join(' '), t.menuMove],
               [formatKeyCode(keyBindings.p1.sprint), t.menuSprint],
               [formatKeyCode(keyBindings.p1.shoot), t.menuShoot],
               [formatKeyCode(keyBindings.p1.pass), t.menuPass],
+              [formatKeyCode(keyBindings.p1.through), t.menuThrough],
               [formatKeyCode(keyBindings.p1.cross), t.menuCross],
               [formatKeyCode(keyBindings.p1.curve), t.menuCurve],
               [formatKeyCode(keyBindings.p1.power), t.menuPower],
