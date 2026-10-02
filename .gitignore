@@ -6,3 +6,5 @@ dist/
 .soak-bundle.mjs
 .ui-bundle.cjs
 .gameplay-bundle.mjs
+.tournament-bundle.mjs
+.nations-bundle.mjs

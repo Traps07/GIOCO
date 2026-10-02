@@ -3,12 +3,15 @@
 // mancanti o errori di render che i test del motore non vedono.
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement as h } from 'react';
-import { STRINGS, LANGUAGES } from './src/i18n.js';
-import { MenuScreen, EndScreen } from './src/components/Menus.js';
+import { STRINGS, LANGUAGES, fmt } from './src/i18n.js';
+import { MenuScreen, EndScreen, TeamSelectScreen, TournamentSetupScreen, TournamentScreen } from './src/components/Menus.js';
 import SettingsScreen from './src/components/SettingsScreen.js';
 import { DEFAULT_KEY_BINDINGS } from './src/game/keyboard.js';
-import { DEFAULT_TEAMS } from './src/game/teams.js';
+import { DEFAULT_TEAMS, NATIONAL_TEAMS, getNationalTeam } from './src/game/teams.js';
+import { createTournament, drawParticipants, recordTournamentResult, getActiveTournamentMatch, DEFAULT_TOURNAMENT_CONFIG } from './src/game/tournament.js';
+import { encodeTournamentSave, decodeTournamentSave } from './src/game/save.js';
 import HUD from './src/components/HUD.js';
+import TouchControls from './src/components/TouchControls.js';
 
 const snap = (over = {}) => ({
   phase: 'play',
@@ -25,6 +28,8 @@ const snap = (over = {}) => ({
   teamSize: 3,
   controlled: [1, 2],
   gamepadsConnected: 0,
+  survivalRound: 0,
+  setPiece: null,
   pens: null,
   ...over,
 });
@@ -56,6 +61,40 @@ const check = (name, fn) => {
 };
 
 const noop = () => {};
+const mulberry = (seed) => {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+
+/** Costruisce un salvataggio di torneo realistico, eventualmente già concluso. */
+const buildSave = (finished) => {
+  const rnd = mulberry(finished ? 4242 : 1234);
+  const participants = drawParticipants(8, 'ita', {}, rnd);
+  const config = { ...DEFAULT_TOURNAMENT_CONFIG, format: 'cup', groupSize: 4, qualify: 2 };
+  let cup = createTournament({ playerTeam: 'ita', participants, config }, rnd);
+  let guard = 0;
+  while (guard++ < 400) {
+    const fixture = getActiveTournamentMatch(cup);
+    if (!fixture) break;
+    const win = finished || rnd() > 0.5 ? [3, 1] : [1, 1];
+    const winner = win[0] === win[1] ? null : fixture.home;
+    cup = recordTournamentResult(cup, win, winner, null, rnd);
+    if (!finished) break;
+  }
+  const save = decodeTournamentSave(
+    encodeTournamentSave(cup, { teamSize: 3, matchDuration: 90, difficulty: 'normal' }),
+  );
+  if (!save) throw new Error('salvataggio di esempio non valido');
+  return save;
+};
+const savedOngoing = buildSave(false);
+const savedFinished = buildSave(true);
 
 for (const { id } of LANGUAGES) {
   const t = STRINGS[id];
@@ -83,16 +122,85 @@ for (const { id } of LANGUAGES) {
     ),
   );
 
-  check(`settings (${id})`, () =>
+  const menuWithSave = (resume) => (props = {}) =>
     renderToStaticMarkup(
+      h(MenuScreen, {
+        difficulty: 'normal',
+        setDifficulty: noop,
+        mode: 'match',
+        setMode: noop,
+        playerCount: 1,
+        setPlayerCount: noop,
+        teamSize: 3,
+        setTeamSize: noop,
+        matchDuration: 90,
+        teams: [...DEFAULT_TEAMS],
+        lang: id,
+        keyBindings: DEFAULT_KEY_BINDINGS,
+        onStart: noop,
+        onTournament: noop,
+        onSettings: noop,
+        resume,
+        onResume: noop,
+        onDiscardResume: noop,
+        t,
+        ...props,
+      }),
+    );
+
+  check(`menu con torneo salvato (${id})`, () => {
+    const html = menuWithSave(savedOngoing)();
+    if (!html.includes(t.menuResumeTitle)) throw new Error('manca lintestazione di ripresa');
+    if (!html.includes(t.menuResumeButton)) throw new Error('manca il pulsante RIPRENDI');
+    if (!html.includes(t.menuResumeDiscard)) throw new Error('manca il pulsante di eliminazione');
+    return html;
+  });
+
+  check(`menu con torneo concluso (${id})`, () => {
+    const html = menuWithSave(savedFinished)();
+    if (!html.includes(t.menuResumeFinished)) throw new Error('manca letichetta di torneo concluso');
+    if (!html.includes(t.menuResumeView)) throw new Error('manca il pulsante per vedere il tabellone');
+    return html;
+  });
+
+  check(`menu senza salvataggi (${id})`, () => {
+    const html = menuWithSave(null)();
+    if (html.includes(t.menuResumeTitle)) throw new Error('la card di ripresa non dovrebbe comparire');
+    return html;
+  });
+
+  check(`settings (${id})`, () => {
+    const html = renderToStaticMarkup(
       h(SettingsScreen, {
         lang: id, setLang: noop, muted: false, onToggleMute: noop,
         matchDuration: 90, setMatchDuration: noop, keyBindings: DEFAULT_KEY_BINDINGS,
         onChangeKeyBinding: noop, onChangePauseKey: noop, onResetKeyBindings: noop,
         onBack: noop, t,
       }),
-    ),
-  );
+    );
+    if (!html.includes(t.kThrough)) throw new Error("manca la riga di rimappatura del filtrante");
+    if (!html.includes('B')) throw new Error('mancano i tasti predefiniti');
+    return html;
+  });
+
+  check(`controlli touch (${id})`, () => {
+    const html = renderToStaticMarkup(h(TouchControls, { engine: null, playerCount: 1, teamSize: 3, t }));
+    if (!html.includes(t.touchThrough)) throw new Error('manca il pulsante del filtrante');
+    if (!html.includes(t.kPass)) throw new Error('manca il pulsante del passaggio');
+    return html;
+  });
+
+  check(`hud con filtrante (${id})`, () => {
+    const html = renderToStaticMarkup(
+      h(HUD, {
+        snap: snap(), muted: false, onToggleMute: noop, onPause: noop,
+        playerCount: 2, teams: [...DEFAULT_TEAMS], keyBindings: DEFAULT_KEY_BINDINGS,
+        lang: id, goalBanner: null, eventBanner: null, t,
+      }),
+    );
+    if (!html.includes(t.kThrough)) throw new Error('la barra HUD non mostra il filtrante');
+    return html;
+  });
 
   check(`menu 2 giocatori (${id})`, () =>
     renderToStaticMarkup(
@@ -176,6 +284,54 @@ for (const { id } of LANGUAGES) {
     ),
   );
 
+  check(`scelta nazionale mondiale (${id})`, () => {
+    const html = renderToStaticMarkup(
+      h(TeamSelectScreen, {
+        playerCount: 1, teamSize: 3, mode: 'match', teams: ['ita', 'bra'], lang: id,
+        onChooseTeam: noop, onBack: noop, onStart: noop, t,
+      }),
+    );
+    if (!html.includes(getNationalTeam('ita').names[id])) throw new Error('manca il nome della nazionale');
+    if (!html.includes('UEFA') || !html.includes('CONMEBOL')) throw new Error('mancano i filtri continentali');
+    return html;
+  });
+
+  check(`costruzione torneo (${id})`, () =>
+    renderToStaticMarkup(
+      h(TournamentSetupScreen, {
+        teamSize: 3, matchDuration: 90, difficulty: 'normal', initialTeam: 'ita', lang: id,
+        onBack: noop, onStart: noop, t,
+      }),
+    ),
+  );
+
+  check(`costruzione torneo - lega 24 squadre (${id})`, () =>
+    renderToStaticMarkup(
+      h(TournamentSetupScreen, {
+        teamSize: 2, matchDuration: 60, difficulty: 'hard', initialTeam: 'arg', lang: id,
+        onBack: noop, onStart: noop, t,
+      }),
+    ),
+  );
+
+  for (const [name, config, participants] of [
+    ['coppa 16', { ...DEFAULT_TOURNAMENT_CONFIG, format: 'cup', groupSize: 4, qualify: 2, thirdPlace: true }, 16],
+    ['lega 10', { ...DEFAULT_TOURNAMENT_CONFIG, format: 'league' }, 10],
+    ['tabellone 12', { ...DEFAULT_TOURNAMENT_CONFIG, format: 'knockout', thirdPlace: true }, 12],
+  ]) {
+    check(`schermo torneo — ${name} (${id})`, () => {
+      const list = drawParticipants(participants, 'ita', {}, mulberry(11));
+      const cup = createTournament({ playerTeam: 'ita', participants: list, config }, mulberry(12));
+      const html = renderToStaticMarkup(
+        h(TournamentScreen, {
+          tournament: cup, lang: id, onPlayNext: noop, onNewTournament: noop, onMenu: noop, t,
+        }),
+      );
+      if (!html.includes(getNationalTeam(cup.participants[0]).flag)) throw new Error('manca la bandiera di una partecipante');
+      return html;
+    });
+  }
+
   check(`schermata finale (${id})`, () =>
     renderToStaticMarkup(
       h(EndScreen, {
@@ -241,5 +397,193 @@ if (has(twoP, STRINGS.en.gamepadHint) && has(oneP, STRINGS.en.gamepadHint)) {
   console.log('FAIL  la legenda controller è visibile nelle modalità 1P e 2P');
 }
 
-console.log(failures ? `\n${failures} fallimenti` : '\ninterfaccia: tutto renders senza errori');
+// il selettore deve elencare tutte le nazionali del mondo in ogni lingua
+const allNames = new Set(NATIONAL_TEAMS.map((team) => team.names.en));
+if (NATIONAL_TEAMS.length > 200 && allNames.size === NATIONAL_TEAMS.length) {
+  console.log(`PASS  ${NATIONAL_TEAMS.length} nazioni mondiali selectable, nomi unici`);
+} else {
+  failures++;
+  console.log(`FAIL  nazioni mondiali: ${NATIONAL_TEAMS.length}, nomi unici ${allNames.size}`);
+}
+
+
+// ---------------- difficoltà ESTREMA e modalità sopravvivenza ----------------
+const SURVIVAL_KEYS = [
+  'diffExtreme', 'diffExtremeDesc', 'modeSurvival', 'modeSurvivalDesc', 'survivalLadder',
+  'survivalRoundHint', 'survivalRound', 'survivalRoundCleared', 'survivalNextOpponent',
+  'survivalGameOver', 'survivalBest', 'survivalNewRecord', 'badgeSurvival', 'decSurvival',
+];
+const SURVIVAL_STRINGS = ['diffExtreme', 'modeSurvival', 'survivalRound', 'survivalRoundCleared',
+  'survivalGameOver', 'survivalBest', 'badgeSurvival', 'decSurvival'];
+
+const menuAt = (lang, mode, extra = {}) =>
+  renderToStaticMarkup(
+    h(MenuScreen, {
+      difficulty: 'normal', setDifficulty: noop,
+      mode, setMode: noop,
+      playerCount: 1, setPlayerCount: noop,
+      teamSize: 3, setTeamSize: noop, matchDuration: 90, teams: [...DEFAULT_TEAMS],
+      lang, keyBindings: DEFAULT_KEY_BINDINGS, onStart: noop, onTournament: noop, onSettings: noop,
+      t: STRINGS[lang],
+      ...extra,
+    }),
+  );
+
+for (const { id } of LANGUAGES) {
+  const t = STRINGS[id];
+  check(`sopravvivenza: etichette complete (${id})`, () => {
+    const missing = SURVIVAL_KEYS.filter((k) => typeof t[k] !== 'string' || t[k].length === 0);
+    if (missing.length) throw new Error(`chiavi mancanti: ${missing.join(', ')}`);
+    const duplicated = SURVIVAL_STRINGS.filter((k, i) => SURVIVAL_STRINGS.indexOf(k) !== i);
+    const seen = new Map();
+    for (const k of SURVIVAL_STRINGS) {
+      const v = t[k];
+      if (seen.has(v)) throw new Error(`${k} identica a ${seen.get(v)}`);
+      seen.set(v, k);
+    }
+    if (duplicated.length) throw new Error(`chiavi duplicate ${duplicated.join(',')}`);
+    return '<i/>' + t.diffExtreme;
+  });
+
+  check(`menu: ESTREMA fra le difficoltà (${id})`, () => {
+    const html = menuAt(id, 'match');
+    for (const label of [t.diffEasy, t.diffNormal, t.diffHard, t.diffExtreme]) {
+      if (!has(html, label)) throw new Error(`mancanza dell'etichetta ${label}`);
+    }
+    if (!has(html, t.diffExtremeDesc)) throw new Error('mancanza della descrizione ESTREMA');
+    return html;
+  });
+
+  check(`menu: sopravvivenza nasconde la difficoltà (${id})`, () => {
+    const html = menuAt(id, 'survival');
+    if (!has(html, t.modeSurvival)) throw new Error('la modalità sopravvivenza non è selezionabile');
+    if (!has(html, t.survivalRoundHint)) throw new Error('manca l\'avviso sulla scala di difficoltà');
+    if (has(html, t.diffExtreme)) throw new Error('il selettore difficoltà è ancora visibile');
+    if (!has(html, t.badgeSurvival)) throw new Error('il badge non segnala la sopravvivenza');
+    const best = menuAt(id, 'survival', { survivalBest: 7 });
+    if (!has(best, fmt(t.survivalBest, { round: 7 }))) throw new Error('manca il record personale');
+    return best;
+  });
+
+  check(`HUD e schermata finale in sopravvivenza (${id})`, () => {
+    const hud = renderToStaticMarkup(
+      h(HUD, {
+        snap: snap({ survivalRound: 4, matchDuration: 60, timeLeft: 41 }),
+        muted: false, onToggleMute: noop, onPause: noop,
+        playerCount: 1, teams: [...DEFAULT_TEAMS], keyBindings: DEFAULT_KEY_BINDINGS,
+        lang: id, goalBanner: null, eventBanner: null, t,
+      }),
+    );
+    if (!has(hud, fmt(t.survivalRound, { round: 4 }))) throw new Error('l\'HUD non mostra il round');
+    const over = renderToStaticMarkup(
+      h(EndScreen, {
+        winner: 1, score: [1, 1], shots: [3, 5], pens: null, decidedBy: 'survival', pensOnly: false,
+        playerCount: 1, teams: [...DEFAULT_TEAMS], lang: id,
+        onRematch: noop, onMenu: noop,
+        survival: { round: 4, cleared: 3, best: 5, newRecord: false },
+        t,
+      }),
+    );
+    if (!has(over, t.decSurvival)) throw new Error('manca la dicitura morte subita');
+    if (!has(over, fmt(t.survivalGameOver, { round: 4 }))) throw new Error('manca il riepilogo del round');
+    if (!has(over, fmt(t.survivalBest, { round: 5 }))) throw new Error('manca il record');
+    if (has(over, t.survivalNewRecord)) throw new Error('record annunciato per errore');
+    const record = renderToStaticMarkup(
+      h(EndScreen, {
+        winner: 1, score: [0, 1], shots: [1, 4], pens: null, decidedBy: 'survival', pensOnly: false,
+        playerCount: 1, teams: [...DEFAULT_TEAMS], lang: id,
+        onRematch: noop, onMenu: noop,
+        survival: { round: 6, cleared: 5, best: 5, newRecord: true },
+        t,
+      }),
+    );
+    if (!has(record, t.survivalNewRecord)) throw new Error('nuovo record non celebrato');
+    return over;
+  });
+
+  check(`torneo: ESTREMA fra i livelli personalizzati (${id})`, () => {
+    const html = renderToStaticMarkup(
+      h(TournamentSetupScreen, {
+        teamSize: 3, matchDuration: 90, difficulty: 'extreme', initialTeam: 'ita', lang: id,
+        onBack: noop, onStart: noop, t,
+      }),
+    );
+    if (!has(html, t.diffExtreme)) throw new Error('il torneo non offre il livello ESTREMA');
+    return html;
+  });
+}
+
+{
+  const menu2p = (mode) =>
+    renderToStaticMarkup(
+      h(MenuScreen, {
+        difficulty: 'normal', setDifficulty: noop,
+        mode, setMode: noop,
+        playerCount: 2, setPlayerCount: noop,
+        teamSize: 3, setTeamSize: noop, matchDuration: 90, teams: [...DEFAULT_TEAMS],
+        lang: 'en', keyBindings: DEFAULT_KEY_BINDINGS, onStart: noop, onTournament: noop, onSettings: noop,
+        t: STRINGS.en,
+      }),
+    );
+  check('sopravvivenza non proposta in 2 giocatori', () => {
+    const html = menu2p('survival');
+    const modeLabel = `${STRINGS.en.modeSurvival} · 60s`;
+    if (has(html, modeLabel)) throw new Error('la sopravvivenza compare anche in 2P');
+    if (!has(html, STRINGS.en.modeMatch)) throw new Error('sparita anche la partita lampo in 2P');
+    const solo = renderToStaticMarkup(
+      h(MenuScreen, {
+        difficulty: 'normal', setDifficulty: noop,
+        mode: 'survival', setMode: noop,
+        playerCount: 1, setPlayerCount: noop,
+        teamSize: 3, setTeamSize: noop, matchDuration: 90, teams: [...DEFAULT_TEAMS],
+        lang: 'en', keyBindings: DEFAULT_KEY_BINDINGS, onStart: noop, onTournament: noop, onSettings: noop,
+        t: STRINGS.en,
+      }),
+    );
+    if (!has(solo, modeLabel)) throw new Error('in 1P la sopravvivenza non è selezionabile');
+    if (!has(solo, STRINGS.en.teamSizeTitle)) throw new Error('in sopravvivenza il formato delle squadre non si può scegliere');
+    return solo;
+  });
+}
+
+if (has(menuAt('en', 'survival'), '∞')) console.log('PASS  menu: titolo ∞ in sopravvivenza');
+else { failures++; console.log('FAIL  menu: titolo ∞ in sopravvivenza'); }
+
+// il pill dei calci da fermo deve comparire in ogni lingua
+const flat = (html) => html.replace(/&#x27;/g, "'");
+for (const { id } of LANGUAGES) {
+  const t = STRINGS[id];
+  check(`pill calcio da fermo nell'HUD (${id})`, () => {
+    if (typeof t.setPieceKickoff !== 'string' || typeof t.setPieceCorner !== 'string' || typeof t.setPieceShotHint !== 'string') {
+      throw new Error('etichette dei calci da fermo mancanti');
+    }
+    for (const kind of ['kickoff', 'corner']) {
+      const html = renderToStaticMarkup(
+        h(HUD, {
+          snap: snap({ setPiece: kind }),
+          muted: false, onToggleMute: noop, onPause: noop,
+          playerCount: 2, teams: [...DEFAULT_TEAMS], keyBindings: DEFAULT_KEY_BINDINGS,
+          lang: id, goalBanner: null, eventBanner: null, t,
+        }),
+      );
+      const label = kind === 'corner' ? t.setPieceCorner : t.setPieceKickoff;
+      const out = flat(html);
+      if (!has(out, label)) throw new Error(`nessun avviso per ${kind}`);
+      if (!has(out, t.setPieceShotHint)) throw new Error(`manca il 3% per ${kind}`);
+      if (kind === 'corner' && has(out, t.setPieceKickoff)) throw new Error('l\'angolo mostra il testo del calcio d\'inizio');
+    }
+    const live = renderToStaticMarkup(
+      h(HUD, {
+        snap: snap({ setPiece: null }),
+        muted: false, onToggleMute: noop, onPause: noop,
+        playerCount: 2, teams: [...DEFAULT_TEAMS], keyBindings: DEFAULT_KEY_BINDINGS,
+        lang: id, goalBanner: null, eventBanner: null, t,
+      }),
+    );
+    if (has(flat(live), t.setPieceShotHint)) throw new Error('l\'avviso resta anche a gioco in corso');
+    return live;
+  });
+}
+
+console.log(failures ? `\n${failures} fallimenti` : '\ninterfaccia: tutto renderizza senza errori');
 if (failures) process.exit(1);

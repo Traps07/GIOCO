@@ -31,6 +31,7 @@ const ACTIONS: { action: PlayerKeyAction; labelKey: keyof Strings }[] = [
   { action: 'sprint', labelKey: 'kSprint' },
   { action: 'shoot', labelKey: 'kShoot' },
   { action: 'pass', labelKey: 'kPass' },
+  { action: 'through', labelKey: 'kThrough' },
   { action: 'cross', labelKey: 'kCross' },
   { action: 'curve', labelKey: 'kCurve' },
   { action: 'power', labelKey: 'kPower' },

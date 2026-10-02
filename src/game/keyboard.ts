@@ -6,6 +6,7 @@ export type PlayerKeyAction =
   | 'sprint'
   | 'shoot'
   | 'pass'
+  | 'through'
   | 'cross'
   | 'curve'
   | 'power'
@@ -20,6 +21,8 @@ export interface PlayerKeyBindings {
   sprint: string;
   shoot: string;
   pass: string;
+  /** Passaggio filtrante: palla rasoterra in profondità. */
+  through: string;
   cross: string;
   curve: string;
   power: string;
@@ -42,6 +45,7 @@ export const DEFAULT_KEY_BINDINGS: KeyboardBindings = {
     sprint: 'ShiftLeft',
     shoot: 'Space',
     pass: 'KeyC',
+    through: 'KeyB',
     cross: 'KeyV',
     curve: 'KeyF',
     power: 'KeyR',
@@ -56,6 +60,7 @@ export const DEFAULT_KEY_BINDINGS: KeyboardBindings = {
     sprint: 'ShiftRight',
     shoot: 'Enter',
     pass: 'Slash',
+    through: 'KeyP',
     cross: 'KeyM',
     curve: 'KeyU',
     power: 'KeyO',

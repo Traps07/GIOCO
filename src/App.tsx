@@ -1,18 +1,49 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DEFAULT_MATCH_DURATION, GameEngine, MATCH_DURATIONS, type Difficulty, type GameMode, type MatchDuration, type PlayerCount, type Snapshot, type TeamSize } from './game/engine';
+import {
+  DEFAULT_MATCH_DURATION,
+  GameEngine,
+  MATCH_DURATIONS,
+  type DecidedBy,
+  type Difficulty,
+  type EngineEvent,
+  type GameMode,
+  type MatchDuration,
+  type PlayerCount,
+  type Snapshot,
+  type TeamSize,
+} from './game/engine';
 import HUD from './components/HUD';
 import TouchControls from './components/TouchControls';
-import { MenuScreen, TeamSelectScreen, TournamentSetupScreen, TournamentScreen, PauseScreen, EndScreen } from './components/Menus';
+import {
+  MenuScreen,
+  TeamSelectScreen,
+  TournamentSetupScreen,
+  TournamentScreen,
+  PauseScreen,
+  EndScreen,
+  type SurvivalSummary,
+  type TournamentLaunch,
+} from './components/Menus';
 import SettingsScreen from './components/SettingsScreen';
 import { cloneKeyBindings, DEFAULT_KEY_BINDINGS, type KeyboardBindings, type PlayerKeyAction } from './game/keyboard';
-import { DEFAULT_TEAMS, type NationalTeamId, type TeamSelection } from './game/teams';
+import { DEFAULT_TEAMS, getNationalTeam, type NationalTeamId, type TeamSelection } from './game/teams';
+import { survivalDifficulty, survivalOpponent } from './game/survival';
 import {
   createTournament,
   getActiveTournamentMatch,
   recordTournamentResult,
   type TournamentState,
 } from './game/tournament';
-import { STRINGS, isRTL, type Language } from './i18n';
+import {
+  forgetTournament,
+  persistTournament,
+  readSurvivalBest,
+  readTournamentSave,
+  type TournamentMatchSettings,
+  type TournamentSave,
+  writeSurvivalBest,
+} from './game/save';
+import { STRINGS, fmt, isRTL, type Language } from './i18n';
 
 const LANG_KEY = 'ss3v3-lang';
 const MUTE_KEY = 'ss3v3-muted';
@@ -95,9 +126,13 @@ export default function App() {
   const [teams, setTeams] = useState<TeamSelection>([...DEFAULT_TEAMS]);
   const [tournament, setTournament] = useState<TournamentState | null>(null);
   const tournamentRef = useRef<TournamentState | null>(null);
+  const tournamentMatchRef = useRef<TournamentLaunch['match'] | null>(null);
+  const [savedTournament, setSavedTournament] = useState<TournamentSave | null>(readTournamentSave);
   const [lang, setLangState] = useState<Language>(loadLang);
   const [muted, setMuted] = useState(loadMuted);
   const [matchDuration, setMatchDurationState] = useState<MatchDuration>(loadMatchDuration);
+  const matchDurationRef = useRef<MatchDuration>(matchDuration);
+  matchDurationRef.current = matchDuration;
   const [keyBindings, setKeyBindings] = useState<KeyboardBindings>(loadKeyBindings);
   const t = STRINGS[lang];
   const tRef = useRef(t);
@@ -115,8 +150,28 @@ export default function App() {
     score: [number, number];
     shots: [number, number];
     pens: [number, number] | null;
-    decidedBy: 'regular' | 'golden' | 'pens';
+    decidedBy: DecidedBy;
+    survival?: SurvivalSummary | null;
   } | null>(null);
+
+  /* ---------- modalità sopravvivenza ---------- */
+  const survivalRoundRef = useRef(0);
+  const survivalActiveRef = useRef(false);
+  const [survivalBest, setSurvivalBest] = useState(readSurvivalBest);
+  const survivalBestRef = useRef(survivalBest);
+  survivalBestRef.current = survivalBest;
+  const teamsRef = useRef<TeamSelection>(teams);
+  teamsRef.current = teams;
+  const modeRef = useRef<GameMode>(mode);
+  modeRef.current = mode;
+  /** Difficoltà scelta nel menu: è il primo gradino della scala di ogni serie. */
+  const survivalFloorRef = useRef<Difficulty>(difficulty);
+  /** Banner dagli handler fuori dal loop degli eventi (effect già montato). */
+  const bannerRef = useRef<(title: string, sub: string, tone: 'amber' | 'sky' | 'rose' | 'white', dur?: number) => void>(
+    () => {},
+  );
+  /** Fine di un round di sopravvivenza, assegnata a ogni render. */
+  const survivalEndRef = useRef<(e: Extract<EngineEvent, { type: 'end' }>, shots: [number, number]) => void>(() => {});
   const [isTouch] = useState(
     () => window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window,
   );
@@ -146,6 +201,7 @@ export default function App() {
       if (eventTimer.current) window.clearTimeout(eventTimer.current);
       eventTimer.current = window.setTimeout(() => setEventBanner(null), dur);
     };
+    bannerRef.current = showEventBanner;
 
     engine.on((e) => {
       if (e.type === 'goal') {
@@ -172,6 +228,11 @@ export default function App() {
         }
       } else if (e.type === 'end') {
         const s = engine.getSnapshot();
+        if (survivalActiveRef.current) {
+          // sopravvivenza: si va avanti col prossimo avversario o la serie è chiusa
+          survivalEndRef.current(e, [...s.shots] as [number, number]);
+          return;
+        }
         const res = {
           winner: e.winner,
           score: e.score,
@@ -194,6 +255,7 @@ export default function App() {
           const nextCup = recordTournamentResult(cup, fixtureScore, winnerTeam, fixturePens);
           tournamentRef.current = nextCup;
           setTournament(nextCup);
+          rememberRef.current(nextCup);
         }
         endTimer.current = window.setTimeout(() => {
           setResult(res);
@@ -249,7 +311,93 @@ export default function App() {
     engineRef.current?.setKeyBindings(keyBindings);
   }, [keyBindings]);
 
+  /** Avvia (o fa ripartire) il round `round` della sopravvivenza. */
+  const startSurvivalRound = useCallback(
+    (round: number) => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      const player = teamsRef.current[0];
+      const opponent = survivalOpponent(round, player);
+      survivalActiveRef.current = true;
+      survivalRoundRef.current = round;
+      setTeams([player, opponent] as TeamSelection);
+      const level = survivalDifficulty(round, survivalFloorRef.current);
+      engine.unlockAudio();
+      engine.setMuted(muted);
+      engine.setKeyBindings(keyBindings);
+      engine.setOvertimeRules({ extraTime: false, penalties: false });
+      engine.setSurvivalRound(round);
+      engine.startMatch(level, 'survival', 1, [player, opponent] as TeamSelection, teamSize);
+      engine.inputEnabled = true;
+      engine.setPaused(false);
+      setResult(null);
+      setGoalBanner(null);
+      if (round === 1) survivalFloorRef.current = difficulty;
+      if (round > 1) {
+        bannerRef.current(
+          fmt(tRef.current.survivalRoundCleared, { round: round - 1 }),
+          fmt(tRef.current.survivalNextOpponent, { team: getNationalTeam(opponent).names[lang] }),
+          'amber',
+          1700,
+        );
+      } else {
+        setEventBanner(null);
+      }
+      setScreen('playing');
+    },
+    [difficulty, keyBindings, lang, muted, teamSize],
+  );
+
+  /** Un round chiuso senza aver subito gol si trasforma subito nel round successivo. */
+  const endSurvivalRound = useCallback(
+    (e: Extract<EngineEvent, { type: 'end' }>, shots: [number, number]) => {
+      const engine = engineRef.current;
+      const round = survivalRoundRef.current;
+      const lost = e.winner === 1;
+      const cleared = lost ? round - 1 : round;
+      const previous = survivalBestRef.current;
+      const newRecord = cleared > previous;
+      if (newRecord) {
+        survivalBestRef.current = cleared;
+        setSurvivalBest(cleared);
+        writeSurvivalBest(cleared);
+      }
+      if (!lost) {
+        endTimer.current = window.setTimeout(() => {
+          // se nel frattempo si è usciti dal round (menu, torneo) non si riparte
+          if (survivalActiveRef.current) startSurvivalRound(round + 1);
+        }, 1100);
+        return;
+      }
+      survivalActiveRef.current = false;
+      survivalRoundRef.current = 0;
+      engine?.setSurvivalRound(0);
+      engine?.setMatchDuration(matchDurationRef.current);
+      engine?.setOvertimeRules({ extraTime: true, penalties: true });
+      const summary: SurvivalSummary = { round, cleared, best: Math.max(cleared, previous), newRecord };
+      endTimer.current = window.setTimeout(() => {
+        if (screenRef.current !== 'playing') return;
+        setResult({
+          winner: e.winner,
+          score: e.score,
+          shots,
+          pens: e.pens,
+          decidedBy: e.decidedBy,
+          survival: summary,
+        });
+        setScreen('over');
+        if (engine) engine.inputEnabled = false;
+      }, 1100);
+    },
+    [startSurvivalRound],
+  );
+  survivalEndRef.current = endSurvivalRound;
+
   const startGame = useCallback(() => {
+    if (modeRef.current === 'survival') {
+      startSurvivalRound(1);
+      return;
+    }
     const engine = engineRef.current;
     if (!engine) return;
     engine.unlockAudio();
@@ -259,11 +407,14 @@ export default function App() {
     engine.startMatch(difficulty, mode, playerCount, teams, teamSize);
     engine.inputEnabled = true;
     engine.setPaused(false);
+    survivalActiveRef.current = false;
+    survivalRoundRef.current = 0;
+    engine.setSurvivalRound(0);
     setResult(null);
     setGoalBanner(null);
     setEventBanner(null);
     setScreen('playing');
-  }, [difficulty, keyBindings, matchDuration, mode, muted, playerCount, teams, teamSize]);
+  }, [difficulty, keyBindings, matchDuration, mode, muted, playerCount, startSurvivalRound, teams, teamSize]);
 
   const openTeamSelect = useCallback(() => setScreen('teams'), []);
   const openSettings = useCallback(() => {
@@ -272,15 +423,53 @@ export default function App() {
   }, []);
   const closeSettings = useCallback(() => setScreen(settingsReturnScreen.current), []);
   const openTournamentSetup = useCallback(() => setScreen('tournamentSetup'), []);
-  const beginTournament = useCallback((playerTeam: NationalTeamId) => {
-    const nextCup = createTournament(playerTeam);
-    tournamentRef.current = nextCup;
-    setTournament(nextCup);
+  /** Salvataggio automatico: ogni progresso del torneo finisce su disco. */
+  const rememberTournament = useCallback(
+    (next: TournamentState) => {
+      const fallback: TournamentMatchSettings = { teamSize, matchDuration, difficulty };
+      setSavedTournament(persistTournament(next, tournamentMatchRef.current ?? fallback));
+    },
+    [difficulty, matchDuration, teamSize],
+  );
+  const rememberRef = useRef(rememberTournament);
+  rememberRef.current = rememberTournament;
+  const resumeTournament = useCallback(() => {
+    if (!savedTournament) return;
+    const next = savedTournament.tournament;
+    const settings = savedTournament.match;
+    tournamentMatchRef.current = settings;
+    tournamentRef.current = next;
+    setTournament(next);
+    setTeamSize(settings.teamSize);
+    setDifficulty(settings.difficulty);
+    setMatchDurationState(settings.matchDuration);
+    engineRef.current?.setMatchDuration(settings.matchDuration);
     setResult(null);
     setGoalBanner(null);
     setEventBanner(null);
     setScreen('tournament');
+  }, [savedTournament]);
+  const discardTournamentSave = useCallback(() => {
+    forgetTournament();
+    setSavedTournament(null);
   }, []);
+  const beginTournament = useCallback((launch: TournamentLaunch) => {
+    const nextCup = createTournament({
+      playerTeam: launch.playerTeam,
+      participants: launch.participants,
+      config: launch.config,
+    });
+    tournamentMatchRef.current = launch.match;
+    tournamentRef.current = nextCup;
+    setTournament(nextCup);
+    rememberTournament(nextCup);
+    setTeamSize(launch.match.teamSize);
+    setDifficulty(launch.match.difficulty);
+    setResult(null);
+    setGoalBanner(null);
+    setEventBanner(null);
+    setScreen('tournament');
+  }, [rememberTournament]);
   const startTournamentMatch = useCallback(() => {
     const cup = tournamentRef.current;
     const fixture = cup ? getActiveTournamentMatch(cup) : null;
@@ -288,14 +477,19 @@ export default function App() {
     if (!cup || !fixture || !engine) return;
     const opponent = fixture.home === cup.playerTeam ? fixture.away : fixture.home;
     const matchTeams: TeamSelection = [cup.playerTeam, opponent];
-    const matchMode = fixture.round === 'group' ? 'group' : 'match';
+    const matchMode = fixture.kind === 'group' ? 'group' : 'match';
+    const settings = tournamentMatchRef.current;
+    const size = settings?.teamSize ?? teamSize;
+    const length = settings?.matchDuration ?? matchDuration;
+    const level = settings?.difficulty ?? difficulty;
     setTeams(matchTeams);
     setPlayerCount(1);
     engine.unlockAudio();
     engine.setMuted(muted);
-    engine.setMatchDuration(matchDuration);
+    engine.setMatchDuration(length);
     engine.setKeyBindings(keyBindings);
-    engine.startMatch(difficulty, matchMode, 1, matchTeams, teamSize);
+    engine.setOvertimeRules({ extraTime: cup.config.extraTime, penalties: cup.config.penalties });
+    engine.startMatch(level, matchMode, 1, matchTeams, size);
     engine.inputEnabled = true;
     engine.setPaused(false);
     setResult(null);
@@ -344,6 +538,12 @@ export default function App() {
     if (!engine) return;
     engine.inputEnabled = false;
     engine.setPaused(false);
+    engine.setMatchDuration(matchDuration);
+    engine.setOvertimeRules({ extraTime: true, penalties: true });
+    survivalActiveRef.current = false;
+    survivalRoundRef.current = 0;
+    engine.setSurvivalRound(0);
+    tournamentMatchRef.current = null;
     engine.startDemo();
     tournamentRef.current = null;
     setTournament(null);
@@ -351,7 +551,7 @@ export default function App() {
     setEventBanner(null);
     setResult(null);
     setScreen('menu');
-  }, []);
+  }, [matchDuration]);
 
   const toggleMute = useCallback(() => {
     engineRef.current?.unlockAudio();
@@ -482,6 +682,7 @@ export default function App() {
       {screen === 'menu' && (
         <MenuScreen
           difficulty={difficulty}
+          survivalBest={survivalBest}
           setDifficulty={setDifficulty}
           mode={mode}
           setMode={setMode}
@@ -495,6 +696,9 @@ export default function App() {
           keyBindings={keyBindings}
           onStart={openTeamSelect}
           onTournament={openTournamentSetup}
+          resume={savedTournament}
+          onResume={resumeTournament}
+          onDiscardResume={discardTournamentSave}
           onSettings={openSettings}
           t={t}
         />
@@ -518,6 +722,8 @@ export default function App() {
       {screen === 'tournamentSetup' && (
         <TournamentSetupScreen
           teamSize={teamSize}
+          matchDuration={matchDuration}
+          difficulty={difficulty}
           initialTeam={tournament?.playerTeam ?? teams[0]}
           lang={lang}
           onBack={backToMenu}
@@ -551,7 +757,9 @@ export default function App() {
       {screen === 'paused' && (
         <PauseScreen
           onResume={resumeGame}
-          onRestart={tournament ? startTournamentMatch : startGame}
+          onRestart={
+            tournament ? startTournamentMatch : mode === 'survival' ? () => startSurvivalRound(survivalRoundRef.current) : startGame
+          }
           onSettings={openSettings}
           onMenu={toMenu}
           t={t}
@@ -568,7 +776,8 @@ export default function App() {
           playerCount={tournament ? 1 : playerCount}
           teams={teams}
           lang={lang}
-          onRematch={tournament ? continueTournament : startGame}
+          survival={result.survival ?? null}
+          onRematch={tournament ? continueTournament : mode === 'survival' ? () => startSurvivalRound(1) : startGame}
           rematchLabel={tournament ? t.tournamentBackToBracket : undefined}
           onMenu={toMenu}
           t={t}

@@ -1,19 +1,33 @@
 import { SFX } from './sound';
 import { cloneKeyBindings, DEFAULT_KEY_BINDINGS, type KeyboardBindings } from './keyboard';
-import { DEFAULT_TEAMS, getNationalTeam, type TeamKit, type TeamSelection } from './teams';
+import { DEFAULT_TEAMS, getTeamQuality, resolveKits, type TeamKit, type TeamSelection } from './teams';
 
-export type Difficulty = 'easy' | 'normal' | 'hard';
-export type GameMode = 'match' | 'pens';
+export type Difficulty = 'easy' | 'normal' | 'hard' | 'extreme';
+export type GameMode = 'match' | 'pens' | 'survival';
 export type PlayerCount = 1 | 2;
 export type TeamSize = 1 | 2 | 3 | 4 | 5;
 export const MATCH_DURATIONS = [60, 90, 120, 180] as const;
+/** Livelli di difficoltà disponibili, dal più morbido al più brutale. */
+export const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard', 'extreme'];
+/** Durata di un round in modalità sopravvivenza. */
+export const SURVIVAL_ROUND_DURATION = 60;
 export type MatchDuration = (typeof MATCH_DURATIONS)[number];
 export const DEFAULT_MATCH_DURATION: MatchDuration = 90;
 export type Phase = 'demo' | 'countdown' | 'play' | 'goal' | 'pens' | 'over';
 export type Period = 'regular' | 'extra' | 'pens';
 export type PenKickResult = 'goal' | 'save' | 'miss' | 'post';
 export type PenStage = 'intro' | 'aim' | 'kick' | 'resolve';
-export type DecidedBy = 'regular' | 'golden' | 'pens';
+export type DecidedBy = 'regular' | 'golden' | 'pens' | 'survival';
+/** Calcio da fermo che obbliga a servire un compagno (o a tentare il tiro beffardo). */
+export type SetPieceKind = 'kickoff' | 'corner';
+export interface SetPiece {
+  kind: SetPieceKind;
+  team: number;
+  /** Chi sta battendo: legato all'oggetto, non alla posizione in rosa. */
+  taker: Player;
+  /** Secondi di gioco già corsi sul calcio da fermo. */
+  t: number;
+}
 
 export interface PensSnap {
   score: [number, number];
@@ -39,6 +53,10 @@ export interface Snapshot {
   teamSize: TeamSize;
   controlled: [number, number];
   gamepadsConnected: number;
+  /** Round corrente in sopravvivenza (0 = modalità normale). */
+  survivalRound: number;
+  /** Calcio da fermo in corso: l'azione deve finire a un compagno (o al tiro). */
+  setPiece: SetPieceKind | null;
   pens: PensSnap | null;
 }
 
@@ -57,6 +75,20 @@ const BASE_H = 700;
 const LARGE_FIELD_W = 1380;
 const LARGE_FIELD_H = 780;
 const GOAL_HALF = 100;
+/** Sui calci da fermo il tiro diretto in porta entra solo nel 3% dei casi. */
+export const SET_PIECE_GOAL_CHANCE = 0.03;
+/** Finestra di gioco in cui anche il primo tocco del pallone neutro d'inizio è vincolato. */
+const SET_PIECE_PENDING = 6;
+/** Il battitore può solo spostarsi di poco: il pallone resta sul punto. */
+const SET_PIECE_SHUFFLE = 170;
+/** Il battitore non può allontanarsi oltre questo raggio dal pallone. */
+const SET_PIECE_TETHER = 46;
+/** Zona del calcio da fermo: gli avversari non possono entrarci. */
+const SET_PIECE_ZONE = 132;
+/** Dopo quanto l'IA batte il calcio da fermo invece di cincischiare. */
+const SET_PIECE_DELIVER = 0.45;
+/** Dopo questo tempo di gioco il pallone torna vivo: nessun blocco eterno. */
+const SET_PIECE_GRACE = 6;
 const GOAL_DEPTH = 32;
 const P_R = 17;
 const B_R = 9;
@@ -68,6 +100,15 @@ const GK_SPEED = 300;
 const BALL_GRAVITY = 980;
 const BALL_CARRY_OFFSET = P_R + B_R + 2;
 const TACKLE_RANGE = P_R * 2 + 16;
+
+/**
+ * Numeri di maglia standard: il giocatore di movimento indossa sempre il 10,
+ * poi compagni e avversari seguono con 9, 11, 7, 8 in base alla dimensione del campo.
+ */
+export const SHIRT_NUMBERS = [10, 9, 11, 7, 8];
+
+/** Fattore di un moltiplicatore legato al coefficiente della nazionale (q = 0 … 1). */
+const qFactor = (q: number, span: number) => 1 + (q - 0.5) * span;
 
 const FORMATIONS: Record<TeamSize, { x: number; y: number }[]> = {
   1: [{ x: 360, y: 350 }],
@@ -118,13 +159,24 @@ interface DiffCfg {
   minHold: number;
 }
 
-const DIFFS: Record<Difficulty, DiffCfg> = {
+/** Configurazione IA per livello (esportata per i test di bilanciamento). */
+export const DIFFS: Record<Difficulty, DiffCfg> = {
   easy: { speed: 218, shootRange: 300, shootErr: 0.17, passErr: 0.24, minHold: 0.85 },
   normal: { speed: 252, shootRange: 385, shootErr: 0.1, passErr: 0.14, minHold: 0.5 },
   hard: { speed: 284, shootRange: 450, shootErr: 0.055, passErr: 0.08, minHold: 0.3 },
+  extreme: { speed: 316, shootRange: 520, shootErr: 0.03, passErr: 0.045, minHold: 0.16 },
 };
 
 const DEMO_CFG: DiffCfg = { speed: 195, shootRange: 340, shootErr: 0.14, passErr: 0.2, minHold: 0.7 };
+
+/** Moltiplicatori legati al livello di difficoltà (rigori, reattività, rischi). */
+const PEN_READ_CHANCE: Record<Difficulty, number> = { easy: 0.2, normal: 0.32, hard: 0.45, extreme: 0.56 };
+const PEN_ERR_CHANCE: Record<Difficulty, number> = { easy: 0.16, normal: 0.1, hard: 0.06, extreme: 0.03 };
+const PEN_KICK_DUR: Record<Difficulty, number> = { easy: 0.74, normal: 0.64, hard: 0.56, extreme: 0.5 };
+const PEN_AIM_TIME: Record<Difficulty, number> = { easy: 1.6, normal: 1.3, hard: 1.0, extreme: 0.85 };
+//** mira umana più ballerina sui livelli alti */
+const PEN_WOBBLE_MUL: Record<Difficulty, number> = { easy: 0.85, normal: 1, hard: 1.15, extreme: 1.32 };
+const THROUGH_CHANCE: Record<Difficulty, number> = { easy: 0.1, normal: 0.24, hard: 0.4, extreme: 0.55 };
 
 const dist = (x1: number, y1: number, x2: number, y2: number) => Math.hypot(x2 - x1, y2 - y1);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -168,6 +220,8 @@ class Player {
   tackleT = 0;
   tackleResolved = false;
   number: number;
+  /** >0 quando sta attaccando la profondità su un passaggio filtrante. */
+  throughRun = 0;
   constructor(
     public team: number,
     public idx: number,
@@ -180,7 +234,7 @@ class Player {
     this.y = f.y;
     this.tx = f.x;
     this.ty = f.y;
-    this.number = team === 0 ? [4, 7, 10, 8, 11][idx] : [4, 9, 11, 7, 10][idx];
+    this.number = SHIRT_NUMBERS[Math.min(idx, SHIRT_NUMBERS.length - 1)];
     this.faceX = team === 0 ? 1 : -1;
   }
   reset() {
@@ -195,6 +249,7 @@ class Player {
     this.tackleCd = 0;
     this.tackleT = 0;
     this.tackleResolved = false;
+    this.throughRun = 0;
     this.faceX = this.team === 0 ? 1 : -1;
     this.faceY = 0;
   }
@@ -317,6 +372,18 @@ export class GameEngine {
   private playerCount: PlayerCount = 1;
   private teamSize: TeamSize = 3;
   private selectedTeams: TeamSelection = [...DEFAULT_TEAMS];
+  private teamKits: [TeamKit, TeamKit] = resolveKits(DEFAULT_TEAMS[0], DEFAULT_TEAMS[1]);
+  /** Coefficiente normalizzato (0 = nazionale minore, 1 = corazzata) delle due squadre. */
+  private teamQuality: [number, number] = [0.5, 0.5];
+  private overtimeRules: { extraTime: boolean; penalties: boolean } = { extraTime: true, penalties: true };
+  /** In sopravvivenza il primo gol chiude il round. */
+  private suddenDeath = false;
+  /** Calcio d'angolo o d'inizio in corso: il pallone è fermo sul punto. */
+  private setPiece: SetPiece | null = null;
+  /** Pallone neutro dell'inizio: chi lo raccoglie per primo deve giocarlo. */
+  private setPiecePending = 0;
+  /** Round corrente in sopravvivenza (0 = modalità normale). */
+  survivalRound = 0;
   private controlledIdx: [number, number] = [1, 1];
   private ball = { x: this.fieldWidth / 2, y: this.fieldHeight / 2, vx: 0, vy: 0, z: 0, vz: 0, curve: 0, lastTouch: -1, lastTouchWasKeeper: false };
   private ballCarrier: Player | null = null;
@@ -363,6 +430,7 @@ export class GameEngine {
   private gamepadButtonState = new Map<number, boolean[]>();
   private shootQ: [boolean, boolean] = [false, false];
   private passQ: [boolean, boolean] = [false, false];
+  private throughQ: [boolean, boolean] = [false, false];
   private switchQ: [boolean, boolean] = [false, false];
   private crossQ: [boolean, boolean] = [false, false];
   private curveQ: [boolean, boolean] = [false, false];
@@ -447,6 +515,8 @@ export class GameEngine {
     if (localMatch && e.code === p2.shoot) this.shootQ[1] = true;
     if (e.code === p1.pass) this.passQ[0] = true;
     if (localMatch && e.code === p2.pass) this.passQ[1] = true;
+    if (e.code === p1.through) this.throughQ[0] = true;
+    if (localMatch && e.code === p2.through) this.throughQ[1] = true;
     if (e.code === p1.cross) this.crossQ[0] = true;
     if (localMatch && e.code === p2.cross) this.crossQ[1] = true;
     if (e.code === p1.curve) this.curveQ[0] = true;
@@ -513,7 +583,8 @@ export class GameEngine {
         if (justPressed(3)) this.curveQ[slot as 0 | 1] = true; // Y / Triangle
         if (justPressed(4)) this.powerQ[slot as 0 | 1] = true; // LB / L1
         if (justPressed(5)) this.tackleQ[slot as 0 | 1] = true; // RB / R1
-        if (justPressed(6) || justPressed(8)) this.switchQ[slot as 0 | 1] = true; // LT / Select
+        if (justPressed(6)) this.throughQ[slot as 0 | 1] = true; // LT / L2
+        if (justPressed(8) || justPressed(10)) this.switchQ[slot as 0 | 1] = true; // Select / L3
       } else if (this.phase === 'pens' && justPressed(0)) {
         this.shootQ[slot as 0 | 1] = true;
       }
@@ -540,6 +611,9 @@ export class GameEngine {
   touchSwitch(slot: 0 | 1 = 0) {
     if (this.inputEnabled && !this.paused) this.switchQ[slot] = true;
   }
+  touchThrough(slot: 0 | 1 = 0) {
+    if (this.inputEnabled && !this.paused) this.throughQ[slot] = true;
+  }
   touchCross(slot: 0 | 1 = 0) {
     if (this.inputEnabled && !this.paused) this.crossQ[slot] = true;
   }
@@ -565,6 +639,7 @@ export class GameEngine {
   private clearInputQueues() {
     this.shootQ = [false, false];
     this.passQ = [false, false];
+    this.throughQ = [false, false];
     this.switchQ = [false, false];
     this.crossQ = [false, false];
     this.curveQ = [false, false];
@@ -589,11 +664,82 @@ export class GameEngine {
   }
 
   private teamKit(team: number): TeamKit {
-    return getNationalTeam(this.selectedTeams[team]).kit;
+    return this.teamKits[team] ?? this.teamKits[0];
+  }
+
+  /** Divise effettive (con trasferta automatica) e coefficiente delle due nazionali. */
+  private refreshTeamMods() {
+    this.teamKits = resolveKits(this.selectedTeams[0], this.selectedTeams[1]);
+    this.teamQuality = [
+      getTeamQuality(this.selectedTeams[0]),
+      getTeamQuality(this.selectedTeams[1]),
+    ];
+  }
+
+  /** In sopravvivenza la CPU cresce a ogni round superato (max +30%). */
+  private survivalRamp(team: number) {
+    if (this.survivalRound <= 0 || team !== 1) return 1;
+    return 1 + Math.min(this.survivalRound - 1, 12) * 0.025;
+  }
+
+  /** Coefficiente di una squadra in campo (0.5 se nazionale media). */
+  private qualityOf(team: number) {
+    return clamp(this.teamQuality[team] ?? 0.5, 0, 1);
+  }
+
+  /** Velocità del giocatore umano: la differenza si sente senza diventare un handicap. */
+  private speedScale(team: number) {
+    return qFactor(this.qualityOf(team), 0.18);
+  }
+
+  /** Potenza dei tiri. */
+  private powerScale(team: number) {
+    return qFactor(this.qualityOf(team), 0.3);
+  }
+
+  /** Margine d'errore: più la nazionale è debole, più impreciso è l'ultimo passaggio. */
+  private flawScale(team: number) {
+    return qFactor(this.qualityOf(team), -0.4);
+  }
+
+  /** Efficacia nei contrasti: rapporto fra chi ruba il pallone e chi lo porta. */
+  private gripRatio(tackler: number, carrier: number) {
+    return qFactor(this.qualityOf(tackler), 0.36) / qFactor(this.qualityOf(carrier), 0.36);
+  }
+
+  /** Riflessi del portiere. */
+  private keeperScale(team: number) {
+    return qFactor(this.qualityOf(team), 0.26) * this.survivalRamp(team);
+  }
+
+  /** Modula la cfg dell'IA in base al coefficiente (stelle) della nazionale. */
+  private scaledCfg(base: DiffCfg, team: number): DiffCfg {
+    const q = clamp(this.qualityOf(team) + (this.survivalRamp(team) - 1) * 1.6, 0, 1);
+    return {
+      speed: base.speed * qFactor(q, 0.4),
+      shootRange: base.shootRange * qFactor(q, 0.5),
+      shootErr: base.shootErr * qFactor(q, -0.45),
+      passErr: base.passErr * qFactor(q, -0.45),
+      minHold: base.minHold * qFactor(q, -0.2),
+    };
   }
 
   setTeams(teams: TeamSelection) {
     this.selectedTeams = [...teams];
+    this.refreshTeamMods();
+  }
+
+  /** Attiva la sopravvivenza (round ≥ 1) o torna alla modalità normale (0). */
+  setSurvivalRound(round: number) {
+    this.survivalRound = Math.max(0, Math.round(round));
+  }
+  get survivalActive() {
+    return this.survivalRound > 0;
+  }
+
+  /** Regola supplementari/rigori: usati dalla modalità torneo personalizzata. */
+  setOvertimeRules(rules: Partial<{ extraTime: boolean; penalties: boolean }>) {
+    this.overtimeRules = { ...this.overtimeRules, ...rules };
   }
 
   setDemoTeamSize(teamSize: TeamSize) {
@@ -618,6 +764,33 @@ export class GameEngine {
       new FixedGoalkeeper(1, this.fieldWidth, this.fieldHeight),
     ];
     this.resetControlledPlayers();
+    this.assignShirtNumbers();
+  }
+
+  /**
+   * Numeri di maglia: il giocatore guidato dall'umano riceve il 10, gli altri
+   * completano la sequenza 9, 11, 7, 8 secondo la formazione.
+   */
+  private assignShirtNumbers() {
+    for (const team of [0, 1]) {
+      const human = team === 0 || this.playerCount === 2;
+      const pool = SHIRT_NUMBERS.slice(0, this.teamSize);
+      const controlled = human ? clamp(this.controlledIdx[team] ?? 0, 0, this.teamSize - 1) : -1;
+      let filler = 1;
+      for (let idx = 0; idx < this.teamSize; idx++) {
+        const player = this.players[team * this.teamSize + idx];
+        if (!player) continue;
+        let slot = idx;
+        if (controlled >= 0) {
+          if (idx === controlled) slot = 0;
+          else {
+            slot = Math.min(filler, pool.length - 1);
+            filler += 1;
+          }
+        }
+        player.number = pool[slot];
+      }
+    }
   }
 
   private resetControlledPlayers() {
@@ -640,6 +813,10 @@ export class GameEngine {
     this.kickoffTeam = null;
     this.period = 'regular';
     this.allowDraw = false;
+    this.suddenDeath = false;
+    this.survivalRound = 0;
+    this.setPiece = null;
+    this.setPiecePending = 0;
     this.pens = null;
     this.fpFx = [];
     this.fpTrail = [];
@@ -659,6 +836,8 @@ export class GameEngine {
     this.diff = diff;
     this.playerCount = playerCount;
     this.selectedTeams = [...teams];
+    this.refreshTeamMods();
+    this.assignShirtNumbers();
     this.demo = false;
     this.keys.clear();
     this.clearInputQueues();
@@ -671,13 +850,21 @@ export class GameEngine {
     this.kickoffTeam = null;
     this.resetControlledPlayers();
     this.period = 'regular';
-    this.allowDraw = mode === 'group';
+    // in sopravvivenza il pareggio al 60° significa solo "sei ancora vivo"
+    this.allowDraw = mode === 'group' || mode === 'survival';
+    this.suddenDeath = mode === 'survival';
+    this.setPiece = null;
+    this.setPiecePending = 0;
     this.pens = null;
     this.fpFx = [];
     this.fpTrail = [];
     if (mode === 'pens') {
       // modalità "solo rigori": dritti alla serie dal dischetto
       this.startPens();
+    } else if (mode === 'survival') {
+      this.matchDuration = SURVIVAL_ROUND_DURATION;
+      this.timeLeft = SURVIVAL_ROUND_DURATION;
+      this.kickoff();
     } else {
       this.kickoff();
     }
@@ -700,7 +887,12 @@ export class GameEngine {
       taker.faceX = attackDirection;
       taker.faceY = 0;
       this.claimBall(taker);
+      this.armSetPiece('kickoff', taker);
       this.kickoffTeam = null;
+    } else {
+      // calcio d'inizio iniziale: pallone neutro, ma chi lo raccoglie deve giocarlo
+      this.setPiece = null;
+      this.setPiecePending = this.teamSize > 1 && !this.demo && !this.pens ? SET_PIECE_PENDING : 0;
     }
     this.countdown = 3.4;
     this.countdownShown = 4;
@@ -736,7 +928,152 @@ export class GameEngine {
     this.ballCarrier = null;
   }
 
+  /** Arma il vincolo sul calcio da fermo (mai in demo, mai in 1v1). */
+  private armSetPiece(kind: SetPieceKind, taker: Player) {
+    if (this.demo || this.teamSize < 2 || this.pens) {
+      this.setPiece = null;
+      return;
+    }
+    this.setPiecePending = 0;
+    this.setPiece = { kind, team: taker.team, taker, t: 0 };
+    // chi era già dentro la zona esce subito: il pallone è fermo, non si ruba
+    for (const p of this.players) if (p.team !== taker.team) this.evictFromSetPieceZone(p, Infinity);
+  }
+
+  /** Riporta un avversario fuori dalla zona del calcio da fermo. */
+  private evictFromSetPieceZone(p: Player, dt: number) {
+    const dx = p.x - this.ball.x;
+    const dy = p.y - this.ball.y;
+    const d = Math.hypot(dx, dy);
+    if (d >= SET_PIECE_ZONE) return;
+    const ux = d < 0.01 ? 1 : dx / d;
+    const uy = d < 0.01 ? 0 : dy / d;
+    const step = Number.isFinite(dt) ? Math.min(SET_PIECE_ZONE - d, SET_PIECE_ZONE * 3 * dt) : SET_PIECE_ZONE - d;
+    p.x += ux * step;
+    p.y += uy * step;
+    const inward = -((p.vx * ux) + (p.vy * uy));
+    if (inward > 0) {
+      p.vx += ux * inward;
+      p.vy += uy * inward;
+    }
+  }
+
+  /**
+   * Dove deve andare chi accompagna l'angolo: il piazzamento nell'area, non
+   * la posizione di formazione. `null` quando il giocatore non è in battuta.
+   */
+  private setPieceStation(p: Player): { x: number; y: number } | null {
+    const sp = this.setPiece;
+    if (!sp || sp.kind !== 'corner' || this.phase !== 'play') return null;
+    if (p.team !== sp.team || p === sp.taker) return null;
+    if (p.idx === this.controlledIdx[p.team] && (p.team === 0 || this.playerCount === 2)) return null;
+    const goalX = this.oppGoalX(p.team);
+    // verso il centro del campo: da qui si entra in area, non si esce
+    const inward = goalX > this.fieldWidth / 2 ? -1 : 1;
+    const cy = this.fieldHeight / 2;
+    const topSign = this.ball.y < cy ? 1 : -1;
+    const band = topSign === 1 ? 0 : this.fieldHeight;
+    const stations = [
+      { x: goalX + inward * 92, y: cy - topSign * 62 }, // primo palo
+      { x: goalX + inward * 148, y: cy + topSign * 76 }, // secondo palo
+      { x: goalX + inward * 208, y: cy + topSign * 6 }, // dischetto
+      { x: goalX + inward * 322, y: cy - topSign * 34 }, // limite dell'area
+      { x: goalX + inward * 178, y: band + topSign * 168 }, // opzione corta
+      { x: goalX + inward * 268, y: cy + topSign * 132 }, // sponda sul secondo palo
+    ];
+    const mates = this.players.filter((q) => q.team === p.team && q !== sp.taker);
+    const slot = mates.indexOf(p);
+    if (slot < 0) return null;
+    return stations[slot % stations.length];
+  }
+
+  /** Porta il compagno sulla sua stazione di angolo, senza teletrasporti. */
+  private driveSetPieceStation(p: Player, station: { x: number; y: number }, dt: number, cfg: DiffCfg) {
+    const dx = station.x - p.x;
+    const dy = station.y - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 12) {
+      p.vx *= Math.exp(-7 * dt);
+      p.vy *= Math.exp(-7 * dt);
+      const bx = this.ball.x - p.x;
+      const by = this.ball.y - p.y;
+      const bl = Math.hypot(bx, by) || 1;
+      p.faceX = bx / bl;
+      p.faceY = by / bl;
+      return;
+    }
+    const speed = Math.min(cfg.speed * 1.12, 330) * this.speedScale(p.team);
+    const wantX = (dx / d) * speed;
+    const wantY = (dy / d) * speed;
+    const dvx = wantX - p.vx;
+    const dvy = wantY - p.vy;
+    const dv = Math.hypot(dvx, dvy);
+    if (dv > 0) {
+      const k = Math.min(1, (1700 * dt) / dv);
+      p.vx += dvx * k;
+      p.vy += dvy * k;
+    }
+    p.faceX = dx / d;
+    p.faceY = dy / d;
+  }
+
+  /**
+   * Regole del calcio da fermo che valgono dopo i movimenti: il battitore
+   * non si stacca dal pallone e gli avversari restano fuori dalla zona.
+   */
+  private enforceSetPieceZone(dt: number) {
+    const sp = this.setPiece;
+    if (!sp || this.phase !== 'play') return;
+    const taker = sp.taker;
+    const tx = taker.x - this.ball.x;
+    const ty = taker.y - this.ball.y;
+    const td = Math.hypot(tx, ty);
+    if (td > SET_PIECE_TETHER) {
+      const k = SET_PIECE_TETHER / td;
+      taker.x = this.ball.x + tx * k;
+      taker.y = this.ball.y + ty * k;
+      const ux = tx / td;
+      const uy = ty / td;
+      const outward = taker.vx * ux + taker.vy * uy;
+      if (outward > 0) {
+        taker.vx -= outward * ux;
+        taker.vy -= outward * uy;
+      }
+    }
+    for (const p of this.players) {
+      if (p.team === sp.team) continue;
+      this.evictFromSetPieceZone(p, dt);
+    }
+  }
+
+  /** Il battitore è ancora sul pallone fermo? */
+  private setPieceHold(player: Player) {
+    return this.setPiece !== null && this.ballCarrier === player && this.setPiece.taker === player;
+  }
+
+  /**
+   * Tiro diretto da calcio da fermo: la porta la si trova nel 3% dei casi.
+   * `null` quando non sei su un calcio da fermo, `false` quando il tiro è viziato.
+   */
+  private setPieceShotRoll(p: Player): boolean | null {
+    if (!this.setPieceHold(p)) return null;
+    return Math.random() < SET_PIECE_GOAL_CHANCE;
+  }
+
+  /** Mira larga: pali fuori misura, così il tiro «fa scena» ma non entra. */
+  private wideSetPieceAim(p: Player) {
+    const goalX = this.oppGoalX(p.team);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const targetY = this.fieldHeight / 2 + side * (GOAL_HALF + 55 + Math.random() * 75);
+    const dx = goalX - this.ball.x;
+    const dy = targetY - this.ball.y;
+    const dl = Math.hypot(dx, dy) || 1;
+    return { x: dx / dl, y: dy / dl };
+  }
+
   private placeBallAtCarrier(player: Player) {
+    // sul punto del calcio da fermo il pallone non si trascina: va giocato
+    if (this.setPieceHold(player)) return;
     const fx = player.faceX || (player.team === 0 ? 1 : -1);
     const fy = player.faceY;
     this.ball.x = clamp(player.x + fx * BALL_CARRY_OFFSET, B_R, this.fieldWidth - B_R);
@@ -750,6 +1087,8 @@ export class GameEngine {
 
   private claimBall(player: Player) {
     if (this.ballCarrier === player) return;
+    const firstTouch = this.setPiecePending > 0;
+    if (firstTouch) this.setPiecePending = 0;
     this.releaseBall();
     this.ballCarrier = player;
     if (player.team === 0 || this.playerCount === 2) this.controlledIdx[player.team] = player.idx;
@@ -761,6 +1100,10 @@ export class GameEngine {
     this.ball.lastTouch = player.team;
     this.ball.lastTouchWasKeeper = false;
     this.placeBallAtCarrier(player);
+    if (firstTouch) {
+      // la prima palla raccolta al calcio d'inizio va giocata, non trascinata
+      this.setPiece = { kind: 'kickoff', team: player.team, taker: player, t: 0 };
+    }
   }
 
   private startTackle(player: Player, automated = false) {
@@ -782,6 +1125,8 @@ export class GameEngine {
     const carrier = this.ballCarrier;
     if (!carrier) return;
     for (const tackler of this.players) {
+      // il battitore di un calcio da fermo non si può spostare: la zona è sua
+      if (this.setPieceHold(carrier)) continue;
       if (tackler.team === carrier.team || tackler.tackleT <= 0 || tackler.tackleResolved) continue;
       const d = dist(tackler.x, tackler.y, carrier.x, carrier.y);
       if (d > TACKLE_RANGE) continue;
@@ -789,7 +1134,7 @@ export class GameEngine {
       const nx = (carrier.x - tackler.x) / (d || 1);
       const ny = (carrier.y - tackler.y) / (d || 1);
       const closing = (tackler.vx - carrier.vx) * nx + (tackler.vy - carrier.vy) * ny;
-      const success = clamp(0.1 + closing / 5000, 0.06, 0.24);
+      const success = clamp((0.1 + closing / 5000) * this.gripRatio(tackler.team, carrier.team), 0.05, 0.28);
       if (Math.random() < success) {
         this.claimBall(tackler);
         tackler.vx += nx * 55;
@@ -831,6 +1176,7 @@ export class GameEngine {
 
   private endMatch(penScore?: [number, number]) {
     let decidedBy: DecidedBy = 'regular';
+    if (this.suddenDeath) decidedBy = 'survival';
     if (penScore) {
       decidedBy = 'pens';
       this.winner = penScore[0] > penScore[1] ? 0 : 1;
@@ -843,6 +1189,8 @@ export class GameEngine {
     this.phase = 'over';
     this.timeLeft = 0;
     this.pens = null;
+    this.setPiece = null;
+    this.setPiecePending = 0;
     this.sfx.whistle(true);
     if (this.winner >= 0) setTimeout(() => this.sfx.cheer(), 400);
     this.emit({
@@ -938,7 +1286,7 @@ export class GameEngine {
 
   // imprecisione della mira: cresce se temporeggi
   private penWobble(ps: PensState) {
-    const mul = this.diff === 'easy' ? 0.85 : this.diff === 'hard' ? 1.15 : 1;
+    const mul = PEN_WOBBLE_MUL[this.diff];
     return Math.min(0.26, 0.05 + ps.aimT * 0.024) * mul;
   }
 
@@ -959,7 +1307,11 @@ export class GameEngine {
 
       if (!this.penKeeperIsHuman()) {
         // Il portiere IA sceglie dove tuffarsi (a volte legge la mira).
-        const readChance = this.diff === 'easy' ? 0.2 : this.diff === 'normal' ? 0.32 : 0.45;
+        const readChance = clamp(
+          PEN_READ_CHANCE[this.diff] * this.keeperScale(1 - ps.turn),
+          0.05,
+          0.6,
+        );
         if (Math.random() < readChance) {
           ps.aiDiveX = clamp(ps.toX + (Math.random() - 0.5) * 0.34, -1, 1);
           ps.aiDiveY = clamp(ps.toY + (Math.random() - 0.5) * 0.3, 0.1, 0.95);
@@ -974,12 +1326,12 @@ export class GameEngine {
       const side = Math.random() < 0.5 ? -1 : 1;
       ps.toX = side * (0.35 + Math.random() * 0.6);
       ps.toY = 0.16 + Math.random() * 0.76;
-      const errChance = this.diff === 'easy' ? 0.16 : this.diff === 'normal' ? 0.1 : 0.06;
+      const errChance = PEN_ERR_CHANCE[this.diff];
       if (Math.random() < errChance) {
         if (Math.random() < 0.5) ps.toX = side * (1.08 + Math.random() * 0.15);
         else ps.toY = 1.04 + Math.random() * 0.1;
       }
-      ps.kickDur = this.diff === 'easy' ? 0.74 : this.diff === 'normal' ? 0.64 : 0.56;
+      ps.kickDur = PEN_KICK_DUR[this.diff];
     }
     this.sfx.kick(1);
     this.shake = Math.min(this.shake + 4, 10);
@@ -1121,7 +1473,7 @@ export class GameEngine {
         ps.aimT = 0;
         ps.stageT = humanShooter
           ? 8 // tempo massimo per mirare
-          : (this.diff === 'hard' ? 1.0 : this.diff === 'normal' ? 1.3 : 1.6) + Math.random() * 0.4;
+          : PEN_AIM_TIME[this.diff] + Math.random() * 0.4;
         if (humanShooter) this.sfx.whistle(false);
       }
       return;
@@ -1175,6 +1527,7 @@ export class GameEngine {
       p.kickCd = Math.max(0, p.kickCd - dt);
       p.tackleCd = Math.max(0, p.tackleCd - dt);
       p.tackleT = Math.max(0, p.tackleT - dt);
+      p.throughRun = Math.max(0, p.throughRun - dt);
     });
 
     if (this.phase === 'countdown') {
@@ -1206,8 +1559,9 @@ export class GameEngine {
           this.goalkeepers.forEach((keeper) => keeper.reset());
           this.newBall();
           this.phase = 'demo';
-        } else if (this.period === 'extra') {
-          this.endMatch(); // golden goal: chi segna nei supplementari vince
+        } else if (this.period === 'extra' || this.suddenDeath) {
+          // golden goal e sopravvivenza: il primo gol chiude la partita
+          this.endMatch();
         } else {
           this.kickoff();
         }
@@ -1223,6 +1577,16 @@ export class GameEngine {
       return;
     }
 
+    if (this.phase === 'play' && this.setPiecePending > 0) this.setPiecePending -= dt;
+    if (this.setPiece && this.phase === 'play') {
+      const taker = this.setPiece.taker;
+      if (this.ballCarrier !== taker || Math.hypot(this.ball.vx, this.ball.vy) > 140) {
+        this.setPiece = null;
+      } else {
+        this.setPiece.t += dt;
+        if (this.setPiece.t > SET_PIECE_GRACE) this.setPiece = null;
+      }
+    }
     if (this.phase === 'play') {
       this.timeLeft -= dt;
       const whole = Math.ceil(this.timeLeft);
@@ -1231,9 +1595,12 @@ export class GameEngine {
         if (whole <= 5 && whole > 0) this.sfx.count(false);
         if (whole <= 0) {
           if (this.period === 'regular' && this.score[0] === this.score[1] && !this.allowDraw) {
-            this.startExtraTime();
+            if (this.overtimeRules.extraTime) this.startExtraTime();
+            else if (this.overtimeRules.penalties) this.startPens();
+            else this.endMatch();
           } else if (this.period === 'extra') {
-            this.startPens();
+            if (this.overtimeRules.penalties) this.startPens();
+            else this.endMatch();
           } else {
             this.endMatch();
           }
@@ -1255,22 +1622,29 @@ export class GameEngine {
       const hasHumanTeam = p.team === 0 || this.playerCount === 2;
       const isHuman = !isDemo && hasHumanTeam && p.idx === this.controlledIdx[p.team];
       const autoReceivingPass = !this.ballCarrier && this.passReceiver === p;
+      const cfg = isDemo
+        ? DEMO_CFG
+        : this.playerCount === 2
+          ? this.scaledCfg(DIFFS[this.diff], p.team)
+          : p.team === 1
+            ? this.scaledCfg(DIFFS[this.diff], 1)
+            : this.scaledCfg({ ...DIFFS.normal, speed: 262 }, 0);
       if (isHuman && this.phase === 'play' && !autoReceivingPass) {
         this.humanControl(p, dt);
+      } else if (!isDemo && this.setPieceHold(p) && this.setPiece!.t > SET_PIECE_DELIVER) {
+        // l'IA batte alla svelta: niente girotondo sul pallone fermo
+        if (this.setPiece!.kind === 'corner' && Math.random() < 0.72) this.aiCross(p, cfg);
+        else this.aiPass(p, cfg);
       } else {
-        const cfg = isDemo
-          ? DEMO_CFG
-          : this.playerCount === 2
-            ? DIFFS[this.diff]
-            : p.team === 1
-              ? DIFFS[this.diff]
-              : { ...DIFFS.normal, speed: 262 };
-        this.aiControl(p, dt, cfg);
+        const station = this.setPieceStation(p);
+        if (station) this.driveSetPieceStation(p, station, dt, cfg);
+        else this.aiControl(p, dt, cfg);
       }
       this.integratePlayer(p, dt);
     }
 
     this.separatePlayers();
+    this.enforceSetPieceZone(dt);
     this.resolveTackles();
     this.updateGoalkeepers(dt);
     this.updateBall(dt, isDemo);
@@ -1308,10 +1682,12 @@ export class GameEngine {
         const me = this.getControlled(team);
         if (this.tackleQ[team]) this.startTackle(me);
         if (this.ballCarrier !== me || me.kickCd > 0) continue;
+        const flaw = this.flawScale(team);
         if (this.powerQ[team]) this.powerShot(me);
         else if (this.curveQ[team]) this.curveShot(me);
-        else if (this.crossQ[team]) this.cross(me, 0.04, true);
-        else if (this.shootQ[team]) this.shoot(me, 0.05);
+        else if (this.throughQ[team]) this.throughBall(me, 0.05 * flaw, true);
+        else if (this.crossQ[team]) this.cross(me, 0.04 * flaw, true);
+        else if (this.shootQ[team]) this.shoot(me, 0.05 * flaw);
         else if (this.passQ[team]) this.pass(me, 0.05, true);
       }
     }
@@ -1355,7 +1731,7 @@ export class GameEngine {
   private humanControl(p: Player, dt: number) {
     const dir = this.inputDir(p.team);
     const sprint = this.gamepadSprint[p.team as 0 | 1] || this.keys.has(this.keyBindings[p.team === 0 ? 'p1' : 'p2'].sprint);
-    const maxS = (sprint ? 352 : 296) * (dir.len || 0);
+    const maxS = (sprint ? 352 : 296) * this.speedScale(p.team) * (dir.len || 0);
     const dvx = dir.x * maxS - p.vx;
     const dvy = dir.y * maxS - p.vy;
     const accel = 1900 * dt;
@@ -1409,9 +1785,11 @@ export class GameEngine {
       const pressure = Math.min(...opps.map((o) => dist(o.x, o.y, p.x, p.y)));
       const dOwn = dist(p.x, p.y, ownX, this.fieldHeight / 2);
 
-      const aiActionHold = Math.min(cfg.minHold, 0.42);
+      const charging = p.throughRun > 0;
+      if (charging) p.throughRun = Math.max(0, p.throughRun - dt);
+      const aiActionHold = Math.min(cfg.minHold, 0.42) * (charging ? 2.1 : 1);
       if (p.kickCd <= 0 && p.holdT > aiActionHold) {
-        const passDistance = Math.max(250, cfg.shootRange * 0.72);
+        const passDistance = Math.max(250, cfg.shootRange * 0.72) * (charging ? 1.35 : 1);
         if (this.teamSize > 1 && Math.abs(p.y - this.fieldHeight / 2) > 145 && dGoal < 700 && pressure > 65 && p.holdT > 0.35) {
           this.aiCross(p, cfg);
         } else if (this.teamSize > 1 && dGoal > passDistance) {
@@ -1428,6 +1806,7 @@ export class GameEngine {
       }
 
       const gy = this.fieldHeight / 2 + Math.sin(this.time * 1.3 + p.idx * 2.1) * 90;
+      if (charging) maxS = cfg.speed * 1.42;
       const dx = oppX - p.x;
       const dy = gy - p.y;
       const dl = Math.hypot(dx, dy) || 1;
@@ -1445,6 +1824,7 @@ export class GameEngine {
       ty = p.y + (dy / dl) * 105 + sideY;
       maxS = cfg.speed * 1.24;
     } else if (!carrier && this.passReceiver === p) {
+      p.throughRun = Math.max(p.throughRun, 0.35);
       // Il ricevente corre sul pallone in arrivo, non anticipa una corsa in avanti.
       tx = ball.x;
       ty = ball.y;
@@ -1545,13 +1925,23 @@ export class GameEngine {
       }
 
       targetY = clamp(targetY, this.fieldHeight / 2 - GOAL_HALF + GK_R * 0.55, this.fieldHeight / 2 + GOAL_HALF - GK_R * 0.55);
-      const step = clamp(targetY - keeper.y, -GK_SPEED * dt, GK_SPEED * dt);
+      const gkMax = GK_SPEED * this.keeperScale(keeper.team);
+      const step = clamp(targetY - keeper.y, -gkMax * dt, gkMax * dt);
       keeper.y += step;
       keeper.vy = step / dt;
     }
   }
 
   private integratePlayer(p: Player, dt: number) {
+    if (this.setPieceHold(p)) {
+      // sul dischetto si può solo aggiustare la posizione
+      const pace = Math.hypot(p.vx, p.vy);
+      if (pace > SET_PIECE_SHUFFLE) {
+        const k = SET_PIECE_SHUFFLE / pace;
+        p.vx *= k;
+        p.vy *= k;
+      }
+    }
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     p.vx *= Math.exp(-0.4 * dt);
@@ -1675,17 +2065,23 @@ export class GameEngine {
         return dist(p.x, p.y, cornerX, cornerY) < dist(best.x, best.y, cornerX, cornerY) ? p : best;
       });
 
+    // Si batte dal vertice esterno (la bandierina) e si gioca verso l'interno:
+    // il lato del campo lo decide il punto in cui il pallone è uscito, non la squadra.
+    const goalLineX = leftEnd ? 0 : this.fieldWidth;
+    const inwardX = leftEnd ? 1 : -1;
+    const inwardY = top ? 1 : -1;
     this.releaseBall();
-    taker.x = team === 0 ? this.fieldWidth - 48 : 48;
-    taker.y = top ? 48 : this.fieldHeight - 48;
+    taker.x = goalLineX + inwardX * 22;
+    taker.y = top ? 22 : this.fieldHeight - 22;
     taker.vx = 0;
     taker.vy = 0;
-    taker.faceX = team === 0 ? 1 : -1;
-    taker.faceY = top ? 0.5 : -0.5;
+    taker.faceX = inwardX * 0.707;
+    taker.faceY = inwardY * 0.707;
     this.controlledIdx[team] = taker.idx;
     this.claimBall(taker);
     this.ball.lastTouch = team;
     this.ball.lastTouchWasKeeper = false;
+    this.armSetPiece('corner', taker);
     this.emit({ type: 'corner', team });
   }
 
@@ -1950,8 +2346,9 @@ export class GameEngine {
 
   private shoot(p: Player, errRange: number) {
     if (this.ballCarrier !== p) return;
-    const dir = this.shootAim(p, errRange);
-    const power = 820 + Math.random() * 60;
+    const direct = this.setPieceShotRoll(p);
+    const dir = direct === false ? this.wideSetPieceAim(p) : this.shootAim(p, errRange);
+    const power = (820 + Math.random() * 60) * this.powerScale(p.team);
     this.releaseBall(p);
     this.ball.vx = dir.x * power + p.vx * 0.25;
     this.ball.vy = dir.y * power + p.vy * 0.25;
@@ -1960,6 +2357,8 @@ export class GameEngine {
     this.ball.curve = 0;
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
+    this.recentKicker = p;
+    this.kickerGrace = 0.2;
     p.kickCd = 0.3;
     this.shots[p.team]++;
     this.shake = Math.min(this.shake + 5, 14);
@@ -1969,8 +2368,12 @@ export class GameEngine {
 
   private powerShot(p: Player) {
     if (this.ballCarrier !== p) return;
-    const dir = this.shootAim(p, 0.015);
-    const power = 1460;
+    const direct = this.setPieceShotRoll(p);
+    const dir =
+      direct === false
+        ? this.wideSetPieceAim(p)
+        : this.shootAim(p, 0.015 * this.flawScale(p.team));
+    const power = 1460 * this.powerScale(p.team);
     this.releaseBall(p);
     this.ball.vx = dir.x * power + p.vx * 0.35;
     this.ball.vy = dir.y * power + p.vy * 0.35;
@@ -1979,6 +2382,8 @@ export class GameEngine {
     this.ball.curve = 0;
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
+    this.recentKicker = p;
+    this.kickerGrace = 0.2;
     p.kickCd = 0.42;
     this.shots[p.team]++;
     this.shake = Math.min(this.shake + 8, 16);
@@ -1993,7 +2398,8 @@ export class GameEngine {
     const targetOffset = steer.len > 0.2
       ? clamp(steer.y, -1, 1) * (GOAL_HALF - B_R - 10)
       : defaultOffset;
-    const scores = Math.random() < 0.95;
+    const direct = this.setPieceShotRoll(p);
+    const scores = (direct === null || direct) && Math.random() < 0.95;
     const direction = p.team === 0 ? 1 : -1;
     const goalX = this.oppGoalX(p.team);
     const keeper = this.goalkeepers[1 - p.team];
@@ -2018,6 +2424,8 @@ export class GameEngine {
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
     this.curveFlight = { team: p.team, shooter: p, startX, startY, targetX, targetY, duration, elapsed: 0, arc, scores };
+    this.recentKicker = p;
+    this.kickerGrace = 0.24;
     p.kickCd = 0.38;
     this.shots[p.team]++;
     this.shake = Math.min(this.shake + 7, 16);
@@ -2154,6 +2562,8 @@ export class GameEngine {
     this.ball.curve = 0;
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
+    this.recentKicker = p;
+    this.kickerGrace = 0.18;
     p.kickCd = 0.28;
     this.sfx.kick(1.15);
     this.spawnKick(this.ball.x, this.ball.y, dx / d, dy / d, '#d8f4ff');
@@ -2164,7 +2574,133 @@ export class GameEngine {
     this.shoot.call(this, p, cfg.shootErr);
   }
 
+  /**
+   * Cerca un corridoio filtrante: un compagno avanti, con campo alle spalle
+   * della linea avversaria e traiettoria libera. `aim` restringe la scelta alla
+   * direzione premuta dal giocatore.
+   */
+  private throughOption(
+    p: Player,
+    mates: Player[],
+    aim: { x: number; y: number } | null,
+    minClear: number,
+  ): { receiver: Player; land: { x: number; y: number }; distance: number; lane: number } | null {
+    const dir = p.team === 0 ? 1 : -1;
+    const goalX = this.oppGoalX(p.team);
+    const opponents = this.players.filter((q) => q.team !== p.team);
+    let best: { receiver: Player; land: { x: number; y: number }; distance: number; lane: number; score: number } | null =
+      null;
+
+    for (const mate of mates) {
+      const dx = mate.x - p.x;
+      const dy = mate.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 90 || d > 640) continue;
+      // il compagno deve attaccare la profondità: niente palloni giocati indietro
+      if (dx * dir < -50) continue;
+      const spaceAhead = (goalX - mate.x) * dir;
+      if (spaceAhead < 170) continue;
+      if (aim) {
+        const alignment = (dx * aim.x + dy * aim.y) / (d || 1);
+        if (alignment < 0.3) continue;
+      }
+      const lead = clamp(130 + spaceAhead * 0.22, 130, 320);
+      const land = {
+        x: clamp(mate.x + dir * lead + mate.vx * 0.3, B_R + 10, this.fieldWidth - B_R - 10),
+        y: clamp(mate.y + dy * 0.2 + mate.vy * 0.35, B_R + 10, this.fieldHeight - B_R - 10),
+      };
+      const travel = dist(p.x, p.y, land.x, land.y);
+      if (travel < 70) continue;
+      const marker = Math.min(...opponents.map((o) => dist(o.x, o.y, mate.x, mate.y)));
+      // distanza del marcatore più vicino dalla traiettoria palla-compagno
+      const segX = land.x - p.x;
+      const segY = land.y - p.y;
+      const lenSq = segX * segX + segY * segY || 1;
+      let minLane = Infinity;
+      for (const o of opponents) {
+        const t = clamp(((o.x - p.x) * segX + (o.y - p.y) * segY) / lenSq, 0, 1);
+        minLane = Math.min(minLane, Math.hypot(o.x - (p.x + segX * t), o.y - (p.y + segY * t)));
+      }
+      if (minLane < minClear) continue;
+      const score =
+        spaceAhead * 0.5 + minLane * 1.6 + marker * 0.2 - Math.abs(travel - 260) * 0.35 + (aim ? 120 : 0);
+      if (!best || score > best.score) best = { receiver: mate, land, distance: travel, lane: minLane, score };
+    }
+    return best ?? null;
+  }
+
+  /** Passaggio filtrante: rasoterra, rapido, giocato nello spazio davanti al compagno. */
+  private throughBall(p: Player, errRange: number, humanSwitch: boolean) {
+    if (this.ballCarrier !== p) return;
+    const mates = this.players.filter((q) => q.team === p.team && q !== p);
+    if (mates.length === 0) {
+      this.clear(p);
+      return;
+    }
+    let aim: { x: number; y: number } | null = null;
+    if (humanSwitch) {
+      const dir = this.inputDir(p.team);
+      const len = Math.hypot(dir.x, dir.y);
+      if (dir.len > 0.2 && len > 0) aim = { x: dir.x / len, y: dir.y / len };
+    }
+    // prima cerca un corridoio davvero libero, poi accetta una traiettoria stretta ma giocabile
+    const option =
+      this.throughOption(p, mates, aim, P_R + B_R + 4) ?? this.throughOption(p, mates, aim, B_R + 2);
+    if (!option) {
+      // nessun corridoio: meglio un controllo orientato che perdere la palla
+      this.pass(p, errRange, humanSwitch);
+      return;
+    }
+    const { receiver, land } = option;
+    // corsia stretta = palla meno secca, così un difensore può anticipare: il filtrante è un rischio
+    const firmness = clamp(0.74 + (option.lane - B_R) / 110, 0.74, 1.06);
+    const power = clamp(620 + option.distance * 0.95, 640, 1020) * qFactor(this.qualityOf(p.team), 0.14) * firmness;
+    // una nazionale scarsa pesa meno la battuta: l'errore cresce col calare del coefficiente
+    const sloppiness = humanSwitch ? clamp(1.3 - this.qualityOf(p.team), 0, 1.3) : 1;
+    const noise = (Math.random() - 0.5) * errRange * 460 * sloppiness;
+    const tx = land.x + noise;
+    const ty = land.y + noise * 0.7;
+
+    const fromX = tx - p.x;
+    const fromY = ty - p.y;
+    const fromLen = Math.hypot(fromX, fromY) || 1;
+    const dirX = fromX / fromLen;
+    const dirY = fromY / fromLen;
+    this.releaseBall(p);
+    const launchOffset = P_R + B_R + 12;
+    this.ball.x = clamp(p.x + dirX * launchOffset, B_R, this.fieldWidth - B_R);
+    this.ball.y = clamp(p.y + dirY * launchOffset, B_R, this.fieldHeight - B_R);
+    const dx = tx - this.ball.x;
+    const dy = ty - this.ball.y;
+    const dl = Math.hypot(dx, dy) || 1;
+    this.ball.vx = (dx / dl) * power;
+    this.ball.vy = (dy / dl) * power;
+    this.ball.z = 0;
+    this.ball.vz = 0;
+    this.ball.curve = 0;
+    this.ball.lastTouch = p.team;
+    this.ball.lastTouchWasKeeper = false;
+    this.passReceiver = receiver;
+    this.recentKicker = p;
+    this.kickerGrace = 0.16;
+    receiver.throughRun = 1.5;
+    p.kickCd = 0.26;
+    this.sfx.pass();
+    this.sfx.kick(1.15);
+    this.spawnKick(this.ball.x, this.ball.y, dirX, dirY, this.teamKit(p.team).secondary);
+    if (humanSwitch) {
+      this.controlledIdx[p.team] = receiver.idx;
+      this.sfx.swap();
+    }
+  }
+
+  /** L'IA alterna il passaggio sicuro alla palla in profondità. */
   private aiPass(p: Player, cfg: DiffCfg) {
+    const throughChance = this.demo || p.throughRun > 0 ? 0 : THROUGH_CHANCE[this.diff];
+    if (this.teamSize > 1 && Math.random() < throughChance) {
+      this.throughBall(p, cfg.passErr, false);
+      return;
+    }
     this.pass.call(this, p, Math.min(cfg.passErr, 0.06), false);
   }
 
@@ -2190,6 +2726,8 @@ export class GameEngine {
     this.ball.curve = 0;
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
+    this.recentKicker = p;
+    this.kickerGrace = 0.18;
     p.kickCd = 0.35;
     this.sfx.kick(0.8);
     this.spawnKick(this.ball.x, this.ball.y, dx / dl, dy / dl, this.teamKit(p.team).primary);
@@ -3124,6 +3662,64 @@ export class GameEngine {
       ctx.fillRect(x - r, y - r * 0.18, r * 2, r * 0.36);
       ctx.fillStyle = kit.accent;
       ctx.fillRect(x - r, y + r * 0.3, r * 2, r * 0.12);
+    } else if (kit.pattern === 'halves') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x, y - r, r, r * 2);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r * 0.04, y - r, r * 0.08, r * 2);
+    } else if (kit.pattern === 'hoops') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r, y - r * 0.72, r * 2, r * 0.34);
+      ctx.fillRect(x - r, y + r * 0.1, r * 2, r * 0.34);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r, y - r * 0.28, r * 2, r * 0.14);
+    } else if (kit.pattern === 'flag') {
+      // tre bande orizzontali riprese dal drappo nazionale
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r, y - r, r * 2, r * 0.72);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r, y + r * 0.28, r * 2, r * 0.72);
+      if (kit.trim) {
+        ctx.fillStyle = kit.trim;
+        ctx.globalAlpha = 0.55;
+        ctx.fillRect(x - r * 0.5, y - r * 0.28, r, r * 0.56);
+        ctx.globalAlpha = 1;
+      }
+    } else if (kit.pattern === 'star') {
+      ctx.fillStyle = kit.accent;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const rad = i % 2 === 0 ? r * 0.44 : r * 0.19;
+        const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+        const px = x + Math.cos(angle) * rad;
+        const py = y + Math.sin(angle) * rad * 0.92;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else if (kit.pattern === 'gradient') {
+      const grad = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
+      grad.addColorStop(0, kit.secondary);
+      grad.addColorStop(0.6, kit.primary);
+      grad.addColorStop(1, kit.accent);
+      ctx.globalAlpha = 0.62;
+      ctx.fillStyle = grad;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      ctx.globalAlpha = 1;
+    } else if (kit.pattern === 'sleeves') {
+      ctx.fillStyle = kit.secondary;
+      ctx.fillRect(x - r, y - r, r * 0.4, r * 2);
+      ctx.fillRect(x + r * 0.6, y - r, r * 0.4, r * 2);
+      ctx.fillStyle = kit.accent;
+      ctx.fillRect(x - r * 0.1, y - r, r * 0.2, r * 1.1);
+    } else if (kit.pattern === 'solid') {
+      if (kit.trim) {
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = kit.trim;
+        ctx.fillRect(x - r, y + r * 0.34, r * 2, r * 0.1);
+        ctx.globalAlpha = 1;
+      }
     } else {
       ctx.fillStyle = kit.secondary;
       ctx.fillRect(x - r * 0.18, y - r, r * 0.36, r * 2);
@@ -3322,7 +3918,9 @@ export class GameEngine {
       playerCount: this.playerCount,
       teamSize: this.teamSize,
       controlled: [...this.controlledIdx],
+      setPiece: this.setPiece?.kind ?? null,
       gamepadsConnected: this.gamepadsConnected,
+      survivalRound: this.survivalRound,
       pens: ps
         ? {
             score: [...ps.score],

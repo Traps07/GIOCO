@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Crosshair, MoveUpRight, RefreshCw, Send, Shield, Zap } from 'lucide-react';
+import { CornerUpRight, Crosshair, MoveUpRight, RefreshCw, Send, Shield, Zap } from 'lucide-react';
 import type { GameEngine, PlayerCount, TeamSize } from '../game/engine';
 import type { Strings } from '../i18n';
 
@@ -152,6 +152,16 @@ function TouchPad({
           >
             <MoveUpRight size={miniIcon} />
             <span className={`${miniText} font-bold leading-none`}>{t.touchCross}</span>
+          </button>
+          <button
+            aria-label={t.touchThrough}
+            title={t.touchThrough}
+            className={`flex ${miniSize} flex-col items-center justify-center rounded-full border border-emerald-200/35 bg-emerald-400/15 text-emerald-100 backdrop-blur-md active:bg-emerald-400/35`}
+            style={{ touchAction: 'none' }}
+            onPointerDown={(e) => press(e, () => engine?.touchThrough(slot))}
+          >
+            <CornerUpRight size={miniIcon} />
+            <span className={`${miniText} font-bold leading-none`}>{t.touchThrough}</span>
           </button>
           <button
             aria-label={t.touchCurve}

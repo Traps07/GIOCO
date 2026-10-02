@@ -1,7 +1,7 @@
-import { Volume2, VolumeX, Pause, Check, X } from 'lucide-react';
+import { Skull, Volume2, VolumeX, Pause, Check, X } from 'lucide-react';
 import type { Snapshot, PensSnap, PlayerCount } from '../game/engine';
 import { formatKeyCode, type KeyboardBindings, type PlayerKeyBindings } from '../game/keyboard';
-import { getNationalTeam, type TeamSelection } from '../game/teams';
+import { getNationalTeam, resolveKits, type TeamSelection } from '../game/teams';
 import { fmt, type Language, type Strings } from '../i18n';
 
 interface Props {
@@ -137,6 +137,8 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
   if (!snap) return null;
   const homeTeam = getNationalTeam(teams[0]);
   const awayTeam = getNationalTeam(teams[1]);
+  // colori effettivi in campo: l'ospite usa la trasferta se le divise casalinghe collidevano
+  const [homeKit, awayKit] = resolveKits(teams[0], teams[1]);
   const inPens = snap.period === 'pens' && snap.pens;
   const inExtra = snap.period === 'extra';
   const urgent = snap.timeLeft <= 10 && snap.phase === 'play';
@@ -151,18 +153,18 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
           <div dir="ltr" className="flex max-w-[76vw] items-center gap-2 rounded-2xl border border-white/10 bg-black/55 px-3 py-2.5 backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.5)] sm:gap-4 sm:px-5">
             <div className="flex min-w-0 flex-col items-center">
               <span dir="auto" title={`${homeTeam.flag} ${homeTeam.names[lang]}`} className="max-w-[30vw] truncate font-display text-[8px] leading-tight tracking-wide text-white/75 sm:max-w-32 sm:text-[10px]">
-                {homeTeam.flag} {homeTeam.names[lang]}
+                {homeTeam.flag} {homeTeam.names[lang]} <span className="text-white/30">{homeTeam.code}</span>
               </span>
-              <span className="font-display text-3xl leading-none tabular-nums sm:text-4xl" style={{ color: homeTeam.kit.primary, textShadow: `0 0 18px ${homeTeam.kit.glow}` }}>
+              <span className="font-display text-3xl leading-none tabular-nums sm:text-4xl" style={{ color: homeKit.primary, textShadow: `0 0 18px ${homeKit.glow}` }}>
                 {snap.score[0]}
               </span>
             </div>
             <span className="font-display text-xl leading-none text-white/30">—</span>
             <div className="flex min-w-0 flex-col items-center">
               <span dir="auto" title={`${awayTeam.flag} ${awayTeam.names[lang]}`} className="max-w-[30vw] truncate font-display text-[8px] leading-tight tracking-wide text-white/75 sm:max-w-32 sm:text-[10px]">
-                {awayTeam.flag} {awayTeam.names[lang]}
+                {awayTeam.flag} {awayTeam.names[lang]} <span className="text-white/30">{awayTeam.code}</span>
               </span>
-              <span className="font-display text-3xl leading-none tabular-nums sm:text-4xl" style={{ color: awayTeam.kit.primary, textShadow: `0 0 18px ${awayTeam.kit.glow}` }}>
+              <span className="font-display text-3xl leading-none tabular-nums sm:text-4xl" style={{ color: awayKit.primary, textShadow: `0 0 18px ${awayKit.glow}` }}>
                 {snap.score[1]}
               </span>
             </div>
@@ -188,6 +190,23 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
                   />
                 </div>
               </div>
+              {snap.setPiece && (
+                <div className="mt-1.5 flex max-w-[92vw] items-center gap-1.5 rounded-full border border-emerald-300/40 bg-emerald-400/12 px-3 py-1">
+                  <span className="truncate font-display text-[10px] tracking-[0.22em] text-emerald-100">
+                    {snap.setPiece === 'corner' ? t.setPieceCorner : t.setPieceKickoff}
+                    <span className="text-amber-200/85"> · {t.setPieceShotHint}</span>
+                  </span>
+                </div>
+              )}
+              {snap.survivalRound > 0 && (
+                <div className="mt-1.5 flex max-w-[92vw] items-center gap-1.5 rounded-full border border-rose-300/40 bg-rose-500/15 px-3 py-1">
+                  <Skull size={11} className="shrink-0 text-rose-300" />
+                  <span className="truncate font-display text-[10px] tracking-[0.3em] text-rose-100">
+                    {fmt(t.survivalRound, { round: snap.survivalRound })}
+                    <span className="hidden sm:inline"> · {t.modeSurvivalDesc}</span>
+                  </span>
+                </div>
+              )}
               {inExtra && (
                 <div className="mt-1.5 rounded-full border border-amber-300/40 bg-amber-400/15 px-3 py-1">
                   <span className="font-display text-[10px] tracking-[0.3em] text-amber-300 animate-pulse">
@@ -309,6 +328,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
               <span><kbd>{formatKeyCode(keyBindings.p1.sprint)}</kbd> {t.kSprint}</span>
               <span><kbd>{formatKeyCode(keyBindings.p1.shoot)}</kbd> {t.kShoot}</span>
               <span><kbd>{formatKeyCode(keyBindings.p1.pass)}</kbd> {t.kPass}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p1.through)}</kbd> {t.kThrough}</span>
               <span><kbd>{formatKeyCode(keyBindings.p1.cross)}</kbd> {t.kCross}</span>
               <span><kbd>{formatKeyCode(keyBindings.p1.curve)}</kbd> {t.kCurve}</span>
               <span><kbd>{formatKeyCode(keyBindings.p1.power)}</kbd> {t.kPower}</span>
@@ -321,6 +341,7 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
               <span><kbd>{formatKeyCode(keyBindings.p2.sprint)}</kbd> {t.kSprint}</span>
               <span><kbd>{formatKeyCode(keyBindings.p2.shoot)}</kbd> {t.kShoot}</span>
               <span><kbd>{formatKeyCode(keyBindings.p2.pass)}</kbd> {t.kPass}</span>
+              <span><kbd>{formatKeyCode(keyBindings.p2.through)}</kbd> {t.kThrough}</span>
               <span><kbd>{formatKeyCode(keyBindings.p2.cross)}</kbd> {t.kCross}</span>
               <span><kbd>{formatKeyCode(keyBindings.p2.curve)}</kbd> {t.kCurve}</span>
               <span><kbd>{formatKeyCode(keyBindings.p2.power)}</kbd> {t.kPower}</span>
@@ -338,6 +359,8 @@ export default function HUD({ snap, muted, onToggleMute, onPause, playerCount, t
             <span><kbd>{formatKeyCode(keyBindings.p1.shoot)}</kbd> {t.kShoot}</span>
             <span className="text-white/20">•</span>
             <span><kbd>{formatKeyCode(keyBindings.p1.pass)}</kbd> {t.kPass}</span>
+            <span className="text-white/20">•</span>
+            <span><kbd>{formatKeyCode(keyBindings.p1.through)}</kbd> {t.kThrough}</span>
             <span className="text-white/20">•</span>
             <span><kbd>{formatKeyCode(keyBindings.p1.cross)}</kbd> {t.kCross}</span>
             <span className="text-white/20">•</span>
