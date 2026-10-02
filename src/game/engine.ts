@@ -80,7 +80,13 @@ export const SET_PIECE_GOAL_CHANCE = 0.03;
 /** Finestra di gioco in cui anche il primo tocco del pallone neutro d'inizio è vincolato. */
 const SET_PIECE_PENDING = 6;
 /** Il battitore può solo spostarsi di poco: il pallone resta sul punto. */
-const SET_PIECE_SHUFFLE = 108;
+const SET_PIECE_SHUFFLE = 170;
+/** Il battitore non può allontanarsi oltre questo raggio dal pallone. */
+const SET_PIECE_TETHER = 46;
+/** Zona del calcio da fermo: gli avversari non possono entrarci. */
+const SET_PIECE_ZONE = 132;
+/** Dopo quanto l'IA batte il calcio da fermo invece di cincischiare. */
+const SET_PIECE_DELIVER = 0.45;
 /** Dopo questo tempo di gioco il pallone torna vivo: nessun blocco eterno. */
 const SET_PIECE_GRACE = 6;
 const GOAL_DEPTH = 32;
@@ -930,6 +936,114 @@ export class GameEngine {
     }
     this.setPiecePending = 0;
     this.setPiece = { kind, team: taker.team, taker, t: 0 };
+    // chi era già dentro la zona esce subito: il pallone è fermo, non si ruba
+    for (const p of this.players) if (p.team !== taker.team) this.evictFromSetPieceZone(p, Infinity);
+  }
+
+  /** Riporta un avversario fuori dalla zona del calcio da fermo. */
+  private evictFromSetPieceZone(p: Player, dt: number) {
+    const dx = p.x - this.ball.x;
+    const dy = p.y - this.ball.y;
+    const d = Math.hypot(dx, dy);
+    if (d >= SET_PIECE_ZONE) return;
+    const ux = d < 0.01 ? 1 : dx / d;
+    const uy = d < 0.01 ? 0 : dy / d;
+    const step = Number.isFinite(dt) ? Math.min(SET_PIECE_ZONE - d, SET_PIECE_ZONE * 3 * dt) : SET_PIECE_ZONE - d;
+    p.x += ux * step;
+    p.y += uy * step;
+    const inward = -((p.vx * ux) + (p.vy * uy));
+    if (inward > 0) {
+      p.vx += ux * inward;
+      p.vy += uy * inward;
+    }
+  }
+
+  /**
+   * Dove deve andare chi accompagna l'angolo: il piazzamento nell'area, non
+   * la posizione di formazione. `null` quando il giocatore non è in battuta.
+   */
+  private setPieceStation(p: Player): { x: number; y: number } | null {
+    const sp = this.setPiece;
+    if (!sp || sp.kind !== 'corner' || this.phase !== 'play') return null;
+    if (p.team !== sp.team || p === sp.taker) return null;
+    if (p.idx === this.controlledIdx[p.team] && (p.team === 0 || this.playerCount === 2)) return null;
+    const goalX = this.oppGoalX(p.team);
+    // verso il centro del campo: da qui si entra in area, non si esce
+    const inward = goalX > this.fieldWidth / 2 ? -1 : 1;
+    const cy = this.fieldHeight / 2;
+    const topSign = this.ball.y < cy ? 1 : -1;
+    const band = topSign === 1 ? 0 : this.fieldHeight;
+    const stations = [
+      { x: goalX + inward * 92, y: cy - topSign * 62 }, // primo palo
+      { x: goalX + inward * 148, y: cy + topSign * 76 }, // secondo palo
+      { x: goalX + inward * 208, y: cy + topSign * 6 }, // dischetto
+      { x: goalX + inward * 322, y: cy - topSign * 34 }, // limite dell'area
+      { x: goalX + inward * 178, y: band + topSign * 168 }, // opzione corta
+      { x: goalX + inward * 268, y: cy + topSign * 132 }, // sponda sul secondo palo
+    ];
+    const mates = this.players.filter((q) => q.team === p.team && q !== sp.taker);
+    const slot = mates.indexOf(p);
+    if (slot < 0) return null;
+    return stations[slot % stations.length];
+  }
+
+  /** Porta il compagno sulla sua stazione di angolo, senza teletrasporti. */
+  private driveSetPieceStation(p: Player, station: { x: number; y: number }, dt: number, cfg: DiffCfg) {
+    const dx = station.x - p.x;
+    const dy = station.y - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 12) {
+      p.vx *= Math.exp(-7 * dt);
+      p.vy *= Math.exp(-7 * dt);
+      const bx = this.ball.x - p.x;
+      const by = this.ball.y - p.y;
+      const bl = Math.hypot(bx, by) || 1;
+      p.faceX = bx / bl;
+      p.faceY = by / bl;
+      return;
+    }
+    const speed = Math.min(cfg.speed * 1.12, 330) * this.speedScale(p.team);
+    const wantX = (dx / d) * speed;
+    const wantY = (dy / d) * speed;
+    const dvx = wantX - p.vx;
+    const dvy = wantY - p.vy;
+    const dv = Math.hypot(dvx, dvy);
+    if (dv > 0) {
+      const k = Math.min(1, (1700 * dt) / dv);
+      p.vx += dvx * k;
+      p.vy += dvy * k;
+    }
+    p.faceX = dx / d;
+    p.faceY = dy / d;
+  }
+
+  /**
+   * Regole del calcio da fermo che valgono dopo i movimenti: il battitore
+   * non si stacca dal pallone e gli avversari restano fuori dalla zona.
+   */
+  private enforceSetPieceZone(dt: number) {
+    const sp = this.setPiece;
+    if (!sp || this.phase !== 'play') return;
+    const taker = sp.taker;
+    const tx = taker.x - this.ball.x;
+    const ty = taker.y - this.ball.y;
+    const td = Math.hypot(tx, ty);
+    if (td > SET_PIECE_TETHER) {
+      const k = SET_PIECE_TETHER / td;
+      taker.x = this.ball.x + tx * k;
+      taker.y = this.ball.y + ty * k;
+      const ux = tx / td;
+      const uy = ty / td;
+      const outward = taker.vx * ux + taker.vy * uy;
+      if (outward > 0) {
+        taker.vx -= outward * ux;
+        taker.vy -= outward * uy;
+      }
+    }
+    for (const p of this.players) {
+      if (p.team === sp.team) continue;
+      this.evictFromSetPieceZone(p, dt);
+    }
   }
 
   /** Il battitore è ancora sul pallone fermo? */
@@ -1011,6 +1125,8 @@ export class GameEngine {
     const carrier = this.ballCarrier;
     if (!carrier) return;
     for (const tackler of this.players) {
+      // il battitore di un calcio da fermo non si può spostare: la zona è sua
+      if (this.setPieceHold(carrier)) continue;
       if (tackler.team === carrier.team || tackler.tackleT <= 0 || tackler.tackleResolved) continue;
       const d = dist(tackler.x, tackler.y, carrier.x, carrier.y);
       if (d > TACKLE_RANGE) continue;
@@ -1506,22 +1622,29 @@ export class GameEngine {
       const hasHumanTeam = p.team === 0 || this.playerCount === 2;
       const isHuman = !isDemo && hasHumanTeam && p.idx === this.controlledIdx[p.team];
       const autoReceivingPass = !this.ballCarrier && this.passReceiver === p;
+      const cfg = isDemo
+        ? DEMO_CFG
+        : this.playerCount === 2
+          ? this.scaledCfg(DIFFS[this.diff], p.team)
+          : p.team === 1
+            ? this.scaledCfg(DIFFS[this.diff], 1)
+            : this.scaledCfg({ ...DIFFS.normal, speed: 262 }, 0);
       if (isHuman && this.phase === 'play' && !autoReceivingPass) {
         this.humanControl(p, dt);
+      } else if (!isDemo && this.setPieceHold(p) && this.setPiece!.t > SET_PIECE_DELIVER) {
+        // l'IA batte alla svelta: niente girotondo sul pallone fermo
+        if (this.setPiece!.kind === 'corner' && Math.random() < 0.72) this.aiCross(p, cfg);
+        else this.aiPass(p, cfg);
       } else {
-        const cfg = isDemo
-          ? DEMO_CFG
-          : this.playerCount === 2
-            ? this.scaledCfg(DIFFS[this.diff], p.team)
-            : p.team === 1
-              ? this.scaledCfg(DIFFS[this.diff], 1)
-              : this.scaledCfg({ ...DIFFS.normal, speed: 262 }, 0);
-        this.aiControl(p, dt, cfg);
+        const station = this.setPieceStation(p);
+        if (station) this.driveSetPieceStation(p, station, dt, cfg);
+        else this.aiControl(p, dt, cfg);
       }
       this.integratePlayer(p, dt);
     }
 
     this.separatePlayers();
+    this.enforceSetPieceZone(dt);
     this.resolveTackles();
     this.updateGoalkeepers(dt);
     this.updateBall(dt, isDemo);
@@ -1942,13 +2065,18 @@ export class GameEngine {
         return dist(p.x, p.y, cornerX, cornerY) < dist(best.x, best.y, cornerX, cornerY) ? p : best;
       });
 
+    // Si batte dal vertice esterno (la bandierina) e si gioca verso l'interno:
+    // il lato del campo lo decide il punto in cui il pallone è uscito, non la squadra.
+    const goalLineX = leftEnd ? 0 : this.fieldWidth;
+    const inwardX = leftEnd ? 1 : -1;
+    const inwardY = top ? 1 : -1;
     this.releaseBall();
-    taker.x = team === 0 ? this.fieldWidth - 48 : 48;
-    taker.y = top ? 48 : this.fieldHeight - 48;
+    taker.x = goalLineX + inwardX * 22;
+    taker.y = top ? 22 : this.fieldHeight - 22;
     taker.vx = 0;
     taker.vy = 0;
-    taker.faceX = team === 0 ? 1 : -1;
-    taker.faceY = top ? 0.5 : -0.5;
+    taker.faceX = inwardX * 0.707;
+    taker.faceY = inwardY * 0.707;
     this.controlledIdx[team] = taker.idx;
     this.claimBall(taker);
     this.ball.lastTouch = team;
@@ -2229,6 +2357,8 @@ export class GameEngine {
     this.ball.curve = 0;
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
+    this.recentKicker = p;
+    this.kickerGrace = 0.2;
     p.kickCd = 0.3;
     this.shots[p.team]++;
     this.shake = Math.min(this.shake + 5, 14);
@@ -2252,6 +2382,8 @@ export class GameEngine {
     this.ball.curve = 0;
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
+    this.recentKicker = p;
+    this.kickerGrace = 0.2;
     p.kickCd = 0.42;
     this.shots[p.team]++;
     this.shake = Math.min(this.shake + 8, 16);
@@ -2292,6 +2424,8 @@ export class GameEngine {
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
     this.curveFlight = { team: p.team, shooter: p, startX, startY, targetX, targetY, duration, elapsed: 0, arc, scores };
+    this.recentKicker = p;
+    this.kickerGrace = 0.24;
     p.kickCd = 0.38;
     this.shots[p.team]++;
     this.shake = Math.min(this.shake + 7, 16);
@@ -2428,6 +2562,8 @@ export class GameEngine {
     this.ball.curve = 0;
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
+    this.recentKicker = p;
+    this.kickerGrace = 0.18;
     p.kickCd = 0.28;
     this.sfx.kick(1.15);
     this.spawnKick(this.ball.x, this.ball.y, dx / d, dy / d, '#d8f4ff');
@@ -2590,6 +2726,8 @@ export class GameEngine {
     this.ball.curve = 0;
     this.ball.lastTouch = p.team;
     this.ball.lastTouchWasKeeper = false;
+    this.recentKicker = p;
+    this.kickerGrace = 0.18;
     p.kickCd = 0.35;
     this.sfx.kick(0.8);
     this.spawnKick(this.ball.x, this.ball.y, dx / dl, dy / dl, this.teamKit(p.team).primary);

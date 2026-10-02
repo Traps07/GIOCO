@@ -874,11 +874,38 @@ assert.equal(engine.ball.y, parkY, 'il pallone si è spostato in altezza');
 taker.vx = 420;
 taker.vy = 0;
 engine.integratePlayer(taker, 1 / 60);
-assert.ok(Math.hypot(taker.vx, taker.vy) <= 110, 'il battitore scatta via col pallone');
-engine.setStick(1, -1, 0.4, true);
-for (let frame = 0; frame < 8; frame++) engine.update(1 / 60);
+assert.ok(Math.hypot(taker.vx, taker.vy) <= 180, 'il battitore scatta via col pallone');
+// il battitore è legato al pallone: per quante volte prova a scappare resta lì
+engine.setStick(1, -1, -1, true);
+for (let frame = 0; frame < 120; frame++) {
+  engine.update(1 / 60);
+  const away = Math.hypot(taker.x - parkX, taker.y - parkY);
+  assert.ok(away <= 62, `il battitore si è allontanato di ${away.toFixed(0)} px dal pallone`);
+}
 assert.equal(engine.ball.x, parkX, 'il pallone segue il battitore durante i passi di rincorsa');
+assert.equal(engine.ball.y, parkY, 'il pallone si sposta anche in altezza');
 engine.setStick(1, 0, 0, false);
+
+// gli avversari non possono entrare nella zona del calcio da fermo
+const invader = engine.players.find((p) => p.team !== taker.team);
+invader.x = engine.ball.x + 30;
+invader.y = engine.ball.y;
+invader.vx = 0;
+invader.vy = 0;
+const invaderStart = Math.hypot(invader.x - engine.ball.x, invader.y - engine.ball.y);
+assert.ok(invaderStart < 40, 'il difensore è partito dentro la zona');
+engine.update(1 / 60);
+const pushedOut = Math.hypot(invader.x - engine.ball.x, invader.y - engine.ball.y);
+assert.ok(pushedOut > invaderStart + 4, `il difensore non è stato allontanato (${pushedOut.toFixed(0)} px)`);
+// e anche se insiste non riesce a rientrare
+for (let frame = 0; frame < 90; frame++) {
+  invader.tx = engine.ball.x;
+  invader.ty = engine.ball.y;
+  engine.update(1 / 60);
+}
+const stillOut = Math.hypot(invader.x - engine.ball.x, invader.y - engine.ball.y);
+assert.ok(stillOut > 118, `il difensore ha sfondato la zona (${stillOut.toFixed(0)} px)`);
+
 engine.setPiece = { kind: 'kickoff', team: taker.team, taker, t: 0 };
 
 // un passaggio normale scioglie il vincolo
@@ -930,6 +957,67 @@ const rival = engine.players.find((p) => p.team === 1);
 engine.claimBall(rival);
 engine.update(1 / 60);
 assert.equal(engine.setPiece, null, 'il vincolo deve cadere quando il pallone cambia proprietario');
+
+// l'angolo si batte dal vertice esterno e si gioca verso l'interno
+engine.startMatch('normal', 'match', 1, ['bra', 'fra'], 3);
+engine.phase = 'play';
+engine.awardCorner(0, false, 40); // angolo in alto a destra: la porta avversaria è a destra
+const topRight = engine.setPiece.taker;
+assert.ok(topRight.x > engine.fieldWidth - 40, `il battitore non è sul vertice esterno (x=${topRight.x.toFixed(0)})`);
+assert.ok(topRight.y < 40, `il battitore non è sul vertice esterno (y=${topRight.y.toFixed(0)})`);
+assert.ok(topRight.faceX < 0, 'il battitore guarda verso la linea di fondo invece che verso il campo');
+assert.ok(topRight.faceY > 0, 'il battitore non guarda verso l\'interno del campo');
+const flagDist = Math.hypot(engine.ball.x - engine.fieldWidth, engine.ball.y - 0);
+assert.ok(flagDist < 90, `il pallone non è sulla bandierina (${flagDist.toFixed(0)} px)`);
+engine.awardCorner(1, false, 40); // stesso lato, altra squadra: resta il vertice esterno
+const otherSide = engine.setPiece.taker;
+assert.ok(otherSide.faceX < 0 && otherSide.faceY > 0, 'il secondo battitore non gioca verso l\'interno');
+engine.awardCorner(1, true, 660); // angolo in basso a sinistra: speculare
+const bottomLeft = engine.setPiece.taker;
+assert.ok(bottomLeft.x < 40 && bottomLeft.y > engine.fieldHeight - 40, 'il vertice in basso a sinistra non è rispettato');
+assert.ok(bottomLeft.faceX > 0 && bottomLeft.faceY < 0, 'in basso a sinistra non si gioca verso l\'interno');
+
+// i compagni lasciano la formazione e si piazzano in area per cercare il gol
+engine.awardCorner(0, false, 40); // angolo per la squadra umana
+const goalX = engine.fieldWidth;
+const goalY = engine.fieldHeight / 2;
+const mates = engine.players.filter((p) => p.team === 0 && p !== engine.setPiece.taker);
+const boxBefore = mates.map((p) => Math.hypot(p.x - goalX, p.y - goalY));
+for (let frame = 0; frame < 240; frame++) engine.update(1 / 60);
+const boxAfter = mates.map((p) => Math.hypot(p.x - goalX, p.y - goalY));
+assert.ok(
+  boxAfter.reduce((a, b) => a + b, 0) < boxBefore.reduce((a, b) => a + b, 0) - 120,
+  'i compagni non si muovono verso l\'area',
+);
+const inBox = mates.filter((p) => Math.hypot(p.x - goalX, p.y - goalY) < 300).length;
+assert.ok(inBox >= Math.min(2, mates.length), `solo ${inBox} compagni sono arrivati in area`);
+const spread = new Set(mates.map((p) => `${Math.round(p.x / 40)}:${Math.round(p.y / 40)}`)).size;
+assert.equal(spread, mates.length, 'due compagni occupano lo stesso piazzamento');
+assert.ok(engine.setPiece && engine.setPiece.kind === 'corner', 'il calcio d\'angolo si è sciolto da solo');
+
+// dal vertice il cross arriva in area, dove ci sono i compagni piazzati
+const cornerTaker = engine.setPiece.taker;
+engine.cross(cornerTaker, 0.02, false);
+engine.update(1 / 60);
+assert.equal(engine.setPiece, null, 'il cross non scioglie il calcio da fermo');
+assert.ok(Math.hypot(engine.ball.vx, engine.ball.vy) > 180, 'il pallone non è partito dal vertice');
+for (let frame = 0; frame < 90; frame++) engine.update(1 / 60);
+assert.ok(engine.ball.x > engine.fieldWidth - 420, `il cross non arriva in area (x=${engine.ball.x.toFixed(0)})`);
+const attacker = mates
+  .map((p) => Math.hypot(p.x - engine.ball.x, p.y - engine.ball.y))
+  .reduce((a, b) => Math.min(a, b), Infinity);
+assert.ok(attacker < 190, `nessun compagno attacca il cross (${attacker.toFixed(0)} px dal pallone)`);
+engine.setPiece = null;
+
+// l'IA non cincischia: batte il pallone fermo invece di restare lì
+engine.startMatch('normal', 'match', 1, ['bra', 'fra'], 3);
+engine.phase = 'play';
+engine.awardCorner(1, false, 40);
+const botTaker = engine.setPiece.taker;
+assert.equal(botTaker.team, 1, 'a battere l\'angolo non è la squadra giusta');
+for (let frame = 0; frame < 120 && engine.setPiece; frame++) engine.update(1 / 60);
+assert.equal(engine.setPiece, null, 'il bot resta fermo sul pallone del calcio d\'angolo senza giocarlo');
+assert.ok(engine.ball.lastTouch === 1, 'il pallone del calcio d\'angolo non è stato giocato dalla squadra in battuta');
 
 // la grazia scade: dopo 6 secondi di gioco il pallone torna vivo
 engine.awardCorner(0, true, 40);
